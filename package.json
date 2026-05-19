@@ -7,7 +7,12 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "ts-node start.ts"
+    "start": "ts-node start.ts",
+    "test": "ts-node start.ts",
+    "test:basic": "ts-node examples/basicTest.ts",
+    "test:login": "ts-node examples/loginTest.ts",
+    "test:shopping": "ts-node examples/shoppingTest.ts",
+    "example:show": "cat examples/loginTest.ts"
   },
   "dependencies": {
     "testcafe-hammerhead": "^31.7.7",

@@ -1,36 +1,43 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const hammerhead = require('testcafe-hammerhead');
+/**
+ * Cypress Safari - Test Script Entry Point
+ */
 
-const TARGET_URL = process.argv[2] || 'https://www.saucedemo.com/';
-const PROXY_HOST = 'localhost';
-const PORT1 = 1337;
-const PORT2 = 1338;
+import { CypressSafariWrapper } from './wrapper';
 
-class ProxySession extends hammerhead.Session {
-    getAuthCredentials() { return null; }
-    handleFileDownload() {}
-    handleAttachment() {}
-    handlePageError(_ctx: unknown, err: string) { console.error('Page error:', err); }
-    async getPayloadScript() { return ''; }
-    async getIframePayloadScript() { return ''; }
+async function main() {
+    const targetUrl = process.argv[2] || 'https://www.saucedemo.com/';
+
+    // Initialize the wrapper
+    const wrapper = new CypressSafariWrapper({
+        targetUrl,
+        proxyHost: 'localhost',
+        port1: 1337,
+        port2: 1338,
+        controlPanelPort: 3000,
+        headless: process.env.HEADLESS === 'true',
+    });
+
+    try {
+        // Start the wrapper
+        await wrapper.start();
+
+        // Keep running for interactive testing
+        console.log('🎯 Virtual browser is now running!');
+        console.log('📍 Use the control panel to interact with the site');
+        console.log('⌨️  Press Ctrl+C to stop\n');
+
+        // Handle graceful shutdown
+        process.on('SIGINT', async () => {
+            console.log('\n\n🛑 Shutting down...');
+            await wrapper.stop();
+            process.exit(0);
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        await wrapper.stop();
+        process.exit(1);
+    }
 }
 
-const proxy = new hammerhead.Proxy({});
-
-proxy.start({
-    hostname: PROXY_HOST,
-    port1: PORT1,
-    port2: PORT2,
-});
-
-// @ts-ignore – Session has a protected constructor; we subclass it via require
-const session = new ProxySession([], {});
-const proxiedUrl = proxy.openSession(TARGET_URL, session);
-
-console.log(`Proxy: http://${PROXY_HOST}:${PORT1}`);
-console.log(`Opening: ${proxiedUrl}`);
-
-import { exec } from 'child_process';
-exec(`open -a Safari "${proxiedUrl}"`, (err: Error | null) => {
-    if (err) console.error('Failed to open Safari:', err.message);
-});
+// Run the main function
+main().catch(console.error);
