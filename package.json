@@ -7,9 +7,11 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "ts-node start.ts"
   },
   "dependencies": {
-    "cypress": "^15.15.0"
+    "testcafe-hammerhead": "^31.7.7",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
   }
 }
