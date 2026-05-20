@@ -222,32 +222,20 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
         .tx-spec-card.open .tx-spec-chevron { transform: rotate(90deg); }
 
-        .tx-spec-ext {
-            font-size: 9px;
-            font-weight: 700;
-            padding: 1px 4px;
-            border-radius: 3px;
-            background: var(--bg-active);
-            color: var(--text-muted);
-            flex-shrink: 0;
-            letter-spacing: 0.3px;
-        }
-
         .tx-spec-filename {
             flex: 1;
             font-family: var(--font-mono);
-            font-size: 11.5px;
+            font-size: 13.5px;
             color: var(--text);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
-        .tx-spec-badges { display: flex; gap: 4px; flex-shrink: 0; }
         .tx-suite-badges { display: flex; gap: 3px; flex-shrink: 0; }
 
         .tx-badge {
-            font-size: 10px;
+            font-size: 12px;
             font-weight: 700;
             padding: 1px 6px;
             border-radius: 10px;
@@ -286,7 +274,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
         .tx-suite-name {
             flex: 1;
-            font-size: 11px;
+            font-size: 13px;
             color: var(--text-dim);
             font-weight: 600;
             white-space: nowrap;
@@ -323,7 +311,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-test-item:hover .tx-test-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
 
         .tx-test-badge {
-            font-size: 9px;
+            font-size: 11px;
             font-weight: 600;
             padding: 1px 5px;
             border-radius: 3px;
@@ -335,7 +323,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
 
         .tx-test-item {
             padding: 2px 10px 2px 36px;
-            font-size: 11px;
+            font-size: 13px;
             color: var(--text-muted);
             display: flex;
             align-items: center;

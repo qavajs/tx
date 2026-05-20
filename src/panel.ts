@@ -160,9 +160,7 @@ function renderTestFileCard(f: ParsedFile): string {
   return '<div class="tx-spec-card" id="card-' + escAttr(f.filename) + '" data-filename="' + escHtml(f.filename) + '">' +
     '<div class="tx-spec-hdr" onclick="window.toggleCard(' + jsq(f.filename) + ')">' +
       '<span class="tx-spec-chevron">&#9658;</span>' +
-      '<span class="tx-spec-ext">' + escHtml(ext) + '</span>' +
-      '<span class="tx-spec-filename">' + escHtml(stem) + '</span>' +
-      '<span class="tx-spec-badges" id="badges-' + escAttr(f.filename) + '"></span>' +
+      '<span class="tx-spec-filename">' + escHtml(f.filename) + '</span>' +
       '<button class="tx-spec-run-btn" onclick="event.stopPropagation();window.runTestByFilename(' + jsq(f.filename) + ')">&#9654;</button>' +
     '</div>' +
     (Object.keys(suites).length ? '<div class="tx-spec-body">' + suiteHtml + '</div>' : '') +
