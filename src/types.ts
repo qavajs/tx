@@ -34,8 +34,8 @@ export interface TxConfig {
   /** Explicit list of test file paths (relative to config file) */
   testFiles?: string[];
 
-  /** Glob pattern(s) for discovering test files (relative to config file) */
-  testMatch?: string | string[];
+  /** Regexp string (e.g. "login" or "/should log in/i") to filter tests by name — display and run only matching tests */
+  grep?: string;
 
   /** Iframe viewport dimensions */
   viewport?: { width: number; height: number };

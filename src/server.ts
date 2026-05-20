@@ -22,10 +22,11 @@ export class TestServer {
   private testMode: boolean;
   private snapshot: boolean;
   private tasks: Record<string, TaskHandler>;
+  private grep: RegExp | undefined;
   private _doneResolve: ((r: { passed: number; failed: number }) => void) | null = null;
   private _donePromise: Promise<{ passed: number; failed: number }>;
 
-  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean, tasks?: Record<string, TaskHandler>) {
+  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean, tasks?: Record<string, TaskHandler>, grep?: RegExp) {
     this.port = port;
     this.reporters = reporters ?? [];
     this.emitter = new ReporterEmitter();
@@ -39,6 +40,7 @@ export class TestServer {
     this.testMode = testMode ?? false;
     this.snapshot = snapshot ?? false;
     this.tasks = tasks ?? {};
+    this.grep = grep;
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 
@@ -67,7 +69,7 @@ export class TestServer {
         }
 
         if (req.url === '/' && req.method === 'GET') {
-          const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode, this.snapshot);
+          const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode, this.snapshot, this.grep);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(html);
           return;
@@ -246,6 +248,15 @@ export class TestServer {
                 .filter(f => f.endsWith('.js'))
                 .sort()
                 .map(f => parseTestFile(path.join(examplesDir, f)));
+            }
+            if (this.grep) {
+              const grep = this.grep;
+              parsedFiles = parsedFiles
+                .map(f => ({ ...f, tests: f.tests.filter(t => {
+                  const fullName = t.suite ? `${t.suite} > ${t.name}` : t.name;
+                  return grep.test(fullName) || grep.test(t.name);
+                }) }))
+                .filter(f => f.tests.length > 0);
             }
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(parsedFiles));

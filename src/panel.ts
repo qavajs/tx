@@ -427,6 +427,11 @@ window.runTest = async (filename: string, fullName: string) => {
 };
 
 window.runAll = async (): Promise<{ passed: number; failed: number }> => {
+  const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
+  if (filterInput?.value.trim()) {
+    await window.runFiltered();
+    return { passed: 0, failed: 0 };
+  }
   const btn = document.getElementById('runAllBtn') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   _isTestRunning = true;
@@ -634,17 +639,32 @@ function openSnapshot(id: number) {
 
 // ── Filter ────────────────────────────────────────────────────────────────────
 
+function buildFilterMatcher(query: string): ((name: string) => boolean) | null {
+  const q = query.trim();
+  if (!q) return null;
+  const reMatch = q.match(/^\/(.+)\/([gimsuy]*)$/);
+  if (reMatch) {
+    try {
+      const re = new RegExp(reMatch[1], reMatch[2]);
+      return name => re.test(name);
+    } catch { /* fall through to substring */ }
+  }
+  const lower = q.toLowerCase();
+  return name => name.toLowerCase().includes(lower);
+}
+
 window.applyFilter = (query: string) => {
-  const q = query.trim().toLowerCase();
+  const matcher = buildFilterMatcher(query);
   const runBtn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
-  if (runBtn) runBtn.style.display = q ? 'flex' : 'none';
+  if (runBtn) runBtn.style.display = matcher ? 'flex' : 'none';
 
   for (const card of document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]')) {
     let cardHasMatch = false;
 
     for (const item of card.querySelectorAll<HTMLElement>('.tx-test-item')) {
-      const name = item.querySelector('.tx-test-name')?.textContent?.toLowerCase() ?? '';
-      const matches = !q || name.includes(q);
+      const name = item.querySelector('.tx-test-name')?.textContent ?? '';
+      const fullName = item.dataset.fullname ?? name;
+      const matches = !matcher || matcher(name) || matcher(fullName);
       item.style.display = matches ? '' : 'none';
       if (matches) cardHasMatch = true;
     }
@@ -653,11 +673,11 @@ window.applyFilter = (query: string) => {
       const suiteName = suiteRow.querySelector<HTMLElement>('.tx-suite-name')?.textContent ?? '';
       const hasSuiteVisible = Array.from(card.querySelectorAll<HTMLElement>('.tx-test-item'))
         .some(item => item.dataset.suite === suiteName && item.style.display !== 'none');
-      suiteRow.style.display = !q || hasSuiteVisible ? '' : 'none';
+      suiteRow.style.display = !matcher || hasSuiteVisible ? '' : 'none';
     }
 
-    card.style.display = !q || cardHasMatch ? '' : 'none';
-    if (q && cardHasMatch) card.classList.add('open');
+    card.style.display = !matcher || cardHasMatch ? '' : 'none';
+    if (matcher && cardHasMatch) card.classList.add('open');
   }
 };
 
@@ -767,6 +787,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       .observe(snapshotWrapper);
   }
   await loadTestList();
+  if (window.__CONFIG__.grep) {
+    const grepSource = window.__CONFIG__.grep;
+    const grepFlags = window.__CONFIG__.grepFlags ?? '';
+    const grepPattern = `/${grepSource}/${grepFlags}`;
+    const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
+    if (filterInput) {
+      filterInput.value = grepPattern;
+      window.applyFilter(grepPattern);
+    }
+  }
   pollUpdates();
   if (window.__CONFIG__.autorun) {
     const { passed, failed } = await window.runAll();

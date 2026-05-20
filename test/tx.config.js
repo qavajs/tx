@@ -5,6 +5,7 @@ module.exports = {
   controlPanelPort: 3000,
   headless: false,
   testFiles: ['./specs/**/*.spec.ts'],
+  grep: 'login',
   viewport: { width: 1600, height: 900 },
   reporters: [
     ['./ConsoleReporter.ts', {}],

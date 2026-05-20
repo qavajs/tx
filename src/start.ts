@@ -87,6 +87,9 @@ function setConfigField(config: TxConfig, key: string, value: string): void {
         case 'test':
             config.testMode = value === 'true' || value === '1';
             break;
+        case 'grep':
+            config.grep = value;
+            break;
         default:
             console.warn(`Unknown CLI option: --${key}`);
     }
@@ -111,6 +114,14 @@ function findDefaultConfigFile(): string | undefined {
         if (fs.existsSync(p)) return p;
     }
     return undefined;
+}
+
+// ── Regexp pattern helpers ─────────────────────────────────────────────────────
+
+function parseRegexpString(s: string): RegExp | null {
+    const m = s.match(/^\/(.+)\/([gimsuy]*)$/);
+    if (m) return new RegExp(m[1], m[2]);
+    return null;
 }
 
 // ── Test file glob resolution ──────────────────────────────────────────────────
@@ -149,7 +160,7 @@ function isGlobPattern(s: string): boolean {
     return s.includes('*') || s.includes('?');
 }
 
-function resolveTestFiles(config: TxConfig, configDir: string): string[] | undefined {
+function resolveTestFiles(config: Pick<TxConfig, 'testFiles'>, configDir: string): string[] | undefined {
     const files: string[] = [];
 
     const addGlobMatches = (pattern: string) => {
@@ -172,15 +183,6 @@ function resolveTestFiles(config: TxConfig, configDir: string): string[] | undef
                 const abs = path.resolve(configDir, f);
                 if (!files.includes(abs)) files.push(abs);
             }
-        }
-    }
-
-    if (config.testMatch) {
-        const patterns = Array.isArray(config.testMatch)
-            ? config.testMatch
-            : [config.testMatch];
-        for (const pattern of patterns) {
-            addGlobMatches(pattern);
         }
     }
 
@@ -217,9 +219,9 @@ async function main() {
         testMode:         cliConfig.testMode         ?? fileConfig.testMode         ?? false,
     };
 
-    // Resolve testFiles / testMatch into absolute paths
+    // Resolve testFiles into absolute paths
     const resolvedFiles = resolveTestFiles(
-        { testFiles: fileConfig.testFiles, testMatch: fileConfig.testMatch },
+        { testFiles: fileConfig.testFiles },
         configDir
     );
     if (resolvedFiles) {
@@ -227,11 +229,16 @@ async function main() {
     }
 
     const normalizePattern = (p: string) => p.startsWith('./') ? p.slice(2) : p;
-    const testFileGlobs = (fileConfig.testFiles ?? []).filter(isGlobPattern).map(normalizePattern);
-    const testMatchPatterns = fileConfig.testMatch
-        ? (Array.isArray(fileConfig.testMatch) ? fileConfig.testMatch : [fileConfig.testMatch]).map(normalizePattern)
-        : [];
-    const testPatterns = [...testFileGlobs, ...testMatchPatterns];
+    const testPatterns = (fileConfig.testFiles ?? []).filter(isGlobPattern).map(normalizePattern);
+
+    const grepRaw = fileConfig.grep ?? cliConfig.grep;
+    const grep: RegExp | undefined = grepRaw
+        ? (parseRegexpString(grepRaw) ?? new RegExp(grepRaw))
+        : undefined;
+
+    if (grep) {
+        console.log(`🔍 Test name filter (grep): ${grep}`);
+    }
 
     const reporters: Reporter[] = (fileConfig.reporters ?? []).map(entry => loadReporter(entry, configDir));
 
@@ -242,6 +249,7 @@ async function main() {
         watchBaseDir: configDir,
         reporters,
         tasks: fileConfig.tasks,
+        grep,
     });
 
     try {
