@@ -39,7 +39,7 @@ export interface RunResults {
 }
 
 export interface ParsedTest { suite: string; name: string; }
-export interface ParsedFile { filename: string; tests: ParsedTest[]; error?: string; }
+export interface ParsedFile { filename: string; relPath?: string; tests: ParsedTest[]; error?: string; }
 
 // ── Test file parsing ─────────────────────────────────────────────────────────
 

@@ -136,12 +136,13 @@ function setTopbarStatus(state: 'ready'|'running'|'passed'|'failed'|'connected'|
 // ── Spec list ─────────────────────────────────────────────────────────────────
 
 interface ParsedTest { suite: string; name: string; }
-interface ParsedFile { filename: string; tests: ParsedTest[]; }
+interface ParsedFile { filename: string; relPath?: string; tests: ParsedTest[]; }
 
 async function loadTestList() {
   const container = document.getElementById('testList')!;
   try {
-    const files = await fetch(API_BASE + '/api/tests').then(r => r.json()) as ParsedFile[];
+    const files = (await fetch(API_BASE + '/api/tests').then(r => r.json()) as ParsedFile[])
+      .sort((a, b) => a.filename.localeCompare(b.filename));
     container.innerHTML = files.length
       ? files.map(renderTestFileCard).join('')
       : '<div class="tx-empty">No .js files in examples/</div>';
@@ -179,12 +180,19 @@ function renderTestFileCard(f: ParsedFile): string {
     suites[k].push(t.name);
   });
   const suiteHtml = Object.entries(suites).map(([s, names]) => renderSuiteHtml(f.filename, s, names)).join('');
-  const ext  = f.filename.split('.').pop() ?? 'js';
-  const stem = f.filename.slice(0, -(ext.length + 1));
+  const display  = f.relPath ?? f.filename;
+  const ext      = display.split('.').pop() ?? 'js';
+  const noExt    = display.slice(0, -(ext.length + 1));
+  const lastSlash = noExt.lastIndexOf('/');
+  const dir  = lastSlash >= 0 ? noExt.slice(0, lastSlash + 1) : '';
+  const stem = lastSlash >= 0 ? noExt.slice(lastSlash + 1)    : noExt;
   return '<div class="tx-spec-card" id="card-' + escAttr(f.filename) + '" data-filename="' + escHtml(f.filename) + '">' +
     '<div class="tx-spec-hdr" onclick="window.toggleCard(' + jsq(f.filename) + ')">' +
       '<span class="tx-spec-chevron">&#9658;</span>' +
-      '<span class="tx-spec-filename">' + escHtml(stem) + '<span class="ext">.' + escHtml(ext) + '</span></span>' +
+      '<span class="tx-spec-filename">' +
+        (dir ? '<span class="tx-spec-dir">' + escHtml(dir) + '</span>' : '') +
+        escHtml(stem) + '<span class="ext">.' + escHtml(ext) + '</span>' +
+      '</span>' +
       '<button class="tx-spec-run-btn" onclick="event.stopPropagation();window.runTestByFilename(' + jsq(f.filename) + ')">&#9654;</button>' +
     '</div>' +
     (Object.keys(suites).length ? '<div class="tx-spec-body">' + suiteHtml + '</div>' : '') +

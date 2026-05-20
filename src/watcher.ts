@@ -36,11 +36,12 @@ async function bundleFile(filePath: string): Promise<string> {
   return result.outputFiles[0].text;
 }
 
-async function processFile(filePath: string, server: TestServer): Promise<void> {
+async function processFile(filePath: string, server: TestServer, baseDir?: string): Promise<void> {
   const basename = path.basename(filePath);
+  const relPath = baseDir ? path.relative(baseDir, filePath).replace(/\\/g, '/') : undefined;
   try {
     const code = await bundleFile(filePath);
-    const parsed: ParsedFile = { filename: basename, tests: parseTestCode(code) };
+    const parsed: ParsedFile = { filename: basename, relPath, tests: parseTestCode(code) };
     server.updateFile(basename, code, parsed);
     console.log(`📦 Bundled: ${basename}`);
   } catch (err: any) {
@@ -57,7 +58,7 @@ export async function startWatcher(
   if (testFiles.length === 0) return;
 
   // Bundle all files immediately on startup, await so callers can wait before opening browser
-  await Promise.all(testFiles.map(f => processFile(f, server)));
+  await Promise.all(testFiles.map(f => processFile(f, server, baseDir)));
   console.log(`👀 Watching ${testFiles.length} test file(s) for changes...`);
 
   // Resolve which directories to watch
@@ -92,7 +93,7 @@ export async function startWatcher(
         clearTimeout(debounce.get(fullPath));
         debounce.set(fullPath, setTimeout(() => {
           debounce.delete(fullPath);
-          if (fs.existsSync(fullPath)) processFile(fullPath, server);
+          if (fs.existsSync(fullPath)) processFile(fullPath, server, baseDir);
         }, 300));
       });
     } catch (err: any) {

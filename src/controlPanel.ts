@@ -278,6 +278,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             letter-spacing: 0.1px;
         }
         .tx-spec-filename .ext { color: var(--text-muted); }
+        .tx-spec-filename .tx-spec-dir { color: var(--text-muted); }
 
         .tx-suite-badges { display: flex; gap: 3px; flex-shrink: 0; }
 
