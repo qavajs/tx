@@ -1,7 +1,7 @@
 {
   "name": "tx",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.0.1",
+  "description": "tx — a Cypress-like virtual browser testing framework via Hammerhead proxy",
   "license": "ISC",
   "author": "",
   "type": "commonjs",

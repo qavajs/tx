@@ -97,19 +97,20 @@ function setConfigField(config: TxConfig, key: string, value: string): void {
 
 // ── Config file loading ────────────────────────────────────────────────────────
 
-function loadConfigFile(filePath: string): Partial<TxConfig> {
+async function loadConfigFile(filePath: string): Promise<Partial<TxConfig>> {
     const ext = path.extname(filePath).toLowerCase();
     if (ext === '.json') {
         return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Partial<TxConfig>;
     }
-    if (ext === '.js') {
-        return require(path.resolve(filePath)) as Partial<TxConfig>;
+    if (ext === '.js' || ext === '.mjs') {
+        const mod = await import(path.resolve(filePath)) as { default?: Partial<TxConfig> } & Partial<TxConfig>;
+        return (mod.default ?? mod) as Partial<TxConfig>;
     }
-    throw new Error(`Unsupported config file extension: ${ext} (use .json or .js)`);
+    throw new Error(`Unsupported config file extension: ${ext} (use .json, .js, or .mjs)`);
 }
 
 function findDefaultConfigFile(): string | undefined {
-    for (const name of ['tx.config.json', 'tx.config.js']) {
+    for (const name of ['tx.config.json', 'tx.config.js', 'tx.config.mjs']) {
         const p = path.join(process.cwd(), name);
         if (fs.existsSync(p)) return p;
     }
@@ -200,7 +201,7 @@ async function main() {
     const configPath = explicitConfigFile ?? findDefaultConfigFile();
     if (configPath) {
         try {
-            fileConfig = loadConfigFile(configPath);
+            fileConfig = await loadConfigFile(configPath);
             configDir = path.dirname(path.resolve(configPath));
             console.log(`📋 Using config: ${configPath}`);
         } catch (err: any) {
