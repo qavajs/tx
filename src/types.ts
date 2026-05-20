@@ -2,7 +2,11 @@
  * Type Definitions for Tx
  */
 
+import type { Reporter } from './reporter';
+
 export interface TxConfig {
+  /** Custom reporters. Defaults to ConsoleReporter when omitted. */
+  reporters?: Reporter[];
   /** Proxy hostname (default: localhost) */
   proxyHost?: string;
 

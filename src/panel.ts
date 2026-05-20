@@ -248,6 +248,14 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
   return results;
 }
 
+function reportToServer(results: TestResult[], filename?: string): void {
+  fetch(API_BASE + '/api/report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename, tests: results }),
+  }).catch(() => { /* non-critical */ });
+}
+
 function renderTestResults(results: TestResult[], filename?: string) {
   if (filename) logSection(filename);
   let passed = 0, failed = 0;
@@ -270,7 +278,9 @@ window.runTestByFilename = async (filename: string) => {
   try {
     const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    renderTestResults(await executeTests(await resp.text(), { filename }), filename);
+    const results = await executeTests(await resp.text(), { filename });
+    renderTestResults(results, filename);
+    reportToServer(results, filename);
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     updateCardStatus(filename, 0, 1);
@@ -285,7 +295,9 @@ window.runSuite = async (filename: string, suiteName: string) => {
   try {
     const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    renderTestResults(await executeTests(await resp.text(), { filterSuite: suiteName, filename }), filename);
+    const results = await executeTests(await resp.text(), { filterSuite: suiteName, filename });
+    renderTestResults(results, filename);
+    reportToServer(results, filename);
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     updateCardStatus(filename, 0, 1);
@@ -300,7 +312,9 @@ window.runTest = async (filename: string, fullName: string) => {
   try {
     const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    renderTestResults(await executeTests(await resp.text(), { filterTest: fullName, filename }), filename);
+    const results = await executeTests(await resp.text(), { filterTest: fullName, filename });
+    renderTestResults(results, filename);
+    reportToServer(results, filename);
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     setTestItemStatus(filename, fullName, 'fail');
@@ -323,6 +337,7 @@ window.runAll = async () => {
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const results = await executeTests(await resp.text(), { filename });
       renderTestResults(results, filename);
+      reportToServer(results, filename);
       results.forEach(r => r.passed ? totalPass++ : totalFail++);
     } catch (e: any) {
       log('Error: ' + e.message, 'error');

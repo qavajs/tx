@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { generateControlPanelHTML } from './controlPanel';
 import { TestRunner, parseTestFile, ParsedFile } from './testRunner';
+import { ConsoleReporter, ReporterEmitter, type Reporter, type Suite, type FullConfig, type TestResult as ReporterTestResult } from './reporter';
 
 export class TestServer {
   private server: http.Server | null = null;
@@ -15,9 +16,14 @@ export class TestServer {
   private bundledCodeMap = new Map<string, string>();  // basename → bundled browser JS
   private parsedCache = new Map<string, ParsedFile>(); // basename → parsed test structure
   private _version = 0;
+  private reporters: Reporter[];
+  private emitter: ReporterEmitter;
 
-  constructor(port: number = 3000, testFiles?: string[]) {
+  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[]) {
     this.port = port;
+    this.reporters = reporters ?? [new ConsoleReporter()];
+    this.emitter = new ReporterEmitter();
+    for (const r of this.reporters) this.emitter.add(r);
     this.testFileMap = new Map();
     if (testFiles) {
       for (const f of testFiles) {
@@ -78,9 +84,47 @@ export class TestServer {
             try {
               const { code } = JSON.parse(body) as { code: string };
               const runner = new TestRunner();
+              for (const r of this.reporters) runner.addReporter(r);
               const results = await runner.runCode(code);
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify(results));
+            } catch (err: any) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
+        // POST /api/report — receive browser-side test results and fire reporter events
+        if (req.url === '/api/report' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: Buffer) => (body += chunk));
+          req.on('end', () => {
+            try {
+              const { filename, tests } = JSON.parse(body) as {
+                filename?: string;
+                tests: Array<{ name: string; passed: boolean; error?: string; duration: number }>;
+              };
+              const allTestCases = tests.map(t => ({ title: t.name, fullTitle: t.name }));
+              const suite: Suite = { title: filename ?? '', tests: allTestCases, allTests() { return this.tests; } };
+              this.emitter.emitBegin({} as FullConfig, suite);
+              for (const t of tests) {
+                const testCase = { title: t.name, fullTitle: t.name };
+                const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error };
+                this.emitter.emitTestBegin(testCase, result);
+                this.emitter.emitTestEnd(testCase, result);
+              }
+              const passed = tests.filter(t => t.passed).length;
+              this.emitter.emitEnd({
+                status: passed === tests.length ? 'passed' : 'failed',
+                passed,
+                failed: tests.length - passed,
+                total: tests.length,
+                duration: tests.reduce((s, t) => s + t.duration, 0),
+              });
+              res.writeHead(204);
+              res.end();
             } catch (err: any) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: err.message }));

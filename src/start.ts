@@ -216,6 +216,7 @@ async function main() {
         testFiles: resolvedFiles,
         testPatterns,
         watchBaseDir: configDir,
+        reporters: fileConfig.reporters,
     });
 
     try {

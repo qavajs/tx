@@ -7,8 +7,19 @@ import * as vm from 'vm';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Page, Locator, createExpect } from './serverPage';
+import {
+  ReporterEmitter,
+  type Reporter,
+  type FullConfig,
+  type Suite,
+  type TestCase,
+  type TestResult as ReporterTestResult,
+  type FullResult,
+} from './reporter';
 
 export { Page, Locator, createExpect };
+export type { Reporter, FullConfig, Suite, TestCase, ReporterTestResult as ReporterTestResult, FullResult };
+export { ReporterEmitter } from './reporter';
 
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
@@ -71,6 +82,13 @@ export function parseTestFile(filePath: string): ParsedFile {
 // ── TestRunner ────────────────────────────────────────────────────────────────
 
 export class TestRunner {
+  private emitter = new ReporterEmitter();
+
+  addReporter(reporter: Reporter): this {
+    this.emitter.add(reporter);
+    return this;
+  }
+
   async runCode(code: string, extraContext: Record<string, any> = {}): Promise<RunResults> {
     const queue: Array<{ name: string; fn: () => any; beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
     const suiteStack: string[] = [];
@@ -135,26 +153,56 @@ export class TestRunner {
     const results: TestResult[] = [];
     const suiteStart = Date.now();
 
-    for (const t of queue) {
+    const allTestCases: TestCase[] = queue.map(t => ({ title: t.name, fullTitle: t.name }));
+    const suite: Suite = {
+      title: '',
+      tests: allTestCases,
+      allTests() { return this.tests; },
+    };
+    this.emitter.emitBegin({} as FullConfig, suite);
+
+    for (let i = 0; i < queue.length; i++) {
+      const t = queue[i];
+      const testCase = allTestCases[i];
+      const liveResult: ReporterTestResult = { status: 'passed', duration: 0 };
+      this.emitter.emitTestBegin(testCase, liveResult);
+
       const start = Date.now();
       try {
         for (const hook of t.beforeEachs) await Promise.resolve(hook());
         await Promise.resolve(t.fn());
         for (const hook of t.afterEachs) await Promise.resolve(hook());
-        results.push({ name: t.name, passed: true, duration: Date.now() - start });
+        liveResult.duration = Date.now() - start;
+        liveResult.status = 'passed';
+        results.push({ name: t.name, passed: true, duration: liveResult.duration });
       } catch (err: any) {
-        results.push({ name: t.name, passed: false, error: err.message, duration: Date.now() - start });
+        liveResult.duration = Date.now() - start;
+        liveResult.status = 'failed';
+        liveResult.error = err.message;
+        results.push({ name: t.name, passed: false, error: err.message, duration: liveResult.duration });
       }
+
+      this.emitter.emitTestEnd(testCase, liveResult);
     }
 
     const passed = results.filter(r => r.passed).length;
-    return {
+    const runResults: RunResults = {
       passed,
       failed: results.length - passed,
       total: results.length,
       duration: Date.now() - suiteStart,
       tests: results,
     };
+
+    this.emitter.emitEnd({
+      status: runResults.failed > 0 ? 'failed' : 'passed',
+      passed: runResults.passed,
+      failed: runResults.failed,
+      total: runResults.total,
+      duration: runResults.duration,
+    });
+
+    return runResults;
   }
 
   async runFile(filePath: string, extraContext: Record<string, any> = {}): Promise<RunResults> {
