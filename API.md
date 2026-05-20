@@ -11,7 +11,6 @@
 - [page](#page)
 - [Locator](#locator)
 - [expect](#expect)
-- [Legacy tx API](#legacy-tx-api)
 - [page Events](#page-events)
 - [TestRunner (Node.js)](#testrunner-nodejs)
 - [TestSuite & Assert (Node.js)](#testsuite--assert-nodejs)
@@ -83,7 +82,6 @@ describe('Suite name', () => {
 | `afterEach`   | Hook run after each test in the nearest `describe`       |
 | `page`        | Playwright-style page object (see [page](#page))         |
 | `expect`      | Assertion function (see [expect](#expect))               |
-| `tx`          | Legacy simple API (see [Legacy tx API](#legacy-tx-api))  |
 | `log`         | `(message, type?) => void` — write to the panel console  |
 
 ---
@@ -336,46 +334,6 @@ All matchers are available under `.not`:
 await expect(locator).not.toBeVisible()
 expect(value).not.toBe(expected)
 // etc.
-```
-
----
-
-## Legacy tx API
-
-The `tx` global (also accessible as `window.testApi`) provides a simpler synchronous-first API. It is the original API and is kept for backward compatibility. Prefer the `page` + `expect` API for new tests.
-
-### Navigation
-
-```js
-tx.visit(url: string): void       // navigate (no proxy rewriting)
-tx.reload(): void                  // reload current page
-tx.url(): string                   // current iframe URL
-tx.title(): string                 // current page <title>
-await tx.wait(ms?: number): Promise<void>  // wait ms (default 1000)
-```
-
-### Selectors
-
-```js
-tx.get(selector: string): Element[]         // querySelectorAll
-tx.find(selector: string): Element | null   // querySelector
-tx.text(selector: string): string           // textContent of first match
-tx.attr(selector: string, name: string): string | null
-tx.isVisible(selector: string): boolean
-```
-
-### Interactions
-
-```js
-tx.click(selector: string): void
-tx.type(selector: string, value: string): void  // sets value + fires input/change
-```
-
-### Waiting
-
-```js
-await tx.waitForElement(selector: string, timeout?: number): Promise<Element>
-await tx.waitForUrl(pattern: string | RegExp, timeout?: number): Promise<void>
 ```
 
 ---
