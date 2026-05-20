@@ -1,0 +1,358 @@
+import { log, API_BASE, testApi, page, pwExpect, initIframe } from './browser';
+
+declare global {
+  interface Window {
+    testApi: typeof testApi;
+    runTestInBrowser: () => void;
+    runTestOnServer:  () => void;
+    runSuite:         (filename: string, suiteName: string) => void;
+    runTest:          (filename: string, fullName: string) => void;
+    toggleCard:       (filename: string) => void;
+    runTestByFilename:(filename: string) => void;
+    runAll:           () => void;
+  }
+}
+
+window.testApi = testApi;
+
+// ── Command Log (panel UI) ────────────────────────────────────────────────────
+
+function logSection(title: string) {
+  const container = document.getElementById('console');
+  if (!container) return;
+  const hdr = document.createElement('div');
+  hdr.className = 'cy-log-section';
+  hdr.textContent = title;
+  container.appendChild(hdr);
+  container.scrollTop = container.scrollHeight;
+}
+
+function logResult(t: TestResult) {
+  const container = document.getElementById('console');
+  if (!container) return;
+  const cls  = t.passed ? 'pass' : 'fail';
+  const icon = t.passed ? '✓'   : '✗';
+  const entry = document.createElement('div');
+  entry.className = `cy-cmd ${cls}`;
+  const iconEl = document.createElement('span'); iconEl.className = `cy-cmd-icon ${cls}`; iconEl.textContent = icon;
+  const msgEl  = document.createElement('span'); msgEl.className  = 'cy-cmd-msg';         msgEl.textContent  = t.name + (t.error ? '  —  ' + t.error : '');
+  const durEl  = document.createElement('span'); durEl.className  = 'cy-cmd-dur';          durEl.textContent  = t.duration + 'ms';
+  entry.appendChild(iconEl); entry.appendChild(msgEl); entry.appendChild(durEl);
+  container.appendChild(entry);
+  container.scrollTop = container.scrollHeight;
+}
+
+// ── Spec card helpers ─────────────────────────────────────────────────────────
+
+function setCardRunning(filename: string) {
+  const b = document.getElementById('badges-' + escAttr(filename));
+  if (b) b.innerHTML = '<span class="cy-badge" style="color:var(--warn)">●</span>';
+}
+
+function updateCardStatus(filename: string, passed: number, failed: number) {
+  const b = document.getElementById('badges-' + escAttr(filename));
+  if (!b) return;
+  b.innerHTML = (passed > 0 ? `<span class="cy-badge cy-badge--pass">${passed}</span>` : '')
+              + (failed > 0 ? `<span class="cy-badge cy-badge--fail">${failed}</span>` : '');
+}
+
+function setTestItemStatus(filename: string, fullName: string, state: 'running'|'pass'|'fail', duration?: number) {
+  const key = escAttr(filename + '\x01' + fullName);
+  const item = document.querySelector<HTMLElement>(`[data-testkey="${key}"]`);
+  if (!item) return;
+  item.classList.remove('running', 'pass', 'fail');
+  item.classList.add(state);
+  const dot   = item.querySelector('.cy-test-dot');
+  const badge = item.querySelector<HTMLElement>('.cy-test-badge');
+  if (dot) { dot.classList.remove('running', 'pass', 'fail'); dot.classList.add(state); }
+  if (badge) {
+    badge.classList.remove('running', 'pass', 'fail');
+    if (state === 'running') {
+      badge.textContent = '';
+    } else {
+      badge.classList.add(state);
+      badge.textContent = duration != null ? duration + 'ms' : (state === 'pass' ? 'PASS' : 'FAIL');
+    }
+  }
+  refreshSuiteBadge(filename, item.dataset.suite ?? '');
+}
+
+function resetTestItems(filename: string) {
+  const card = document.getElementById('card-' + escAttr(filename));
+  card?.querySelectorAll('.cy-test-item, .cy-test-dot')
+    .forEach(el => el.classList.remove('running', 'pass', 'fail'));
+  card?.querySelectorAll<HTMLElement>('.cy-test-badge')
+    .forEach(el => { el.className = 'cy-test-badge'; el.textContent = ''; });
+  card?.querySelectorAll<HTMLElement>('.cy-suite-badges')
+    .forEach(el => { el.innerHTML = ''; });
+}
+
+function refreshSuiteBadge(filename: string, suiteName: string) {
+  const card = document.getElementById('card-' + escAttr(filename));
+  if (!card) return;
+  const items = Array.from(card.querySelectorAll<HTMLElement>('.cy-test-item')).filter(
+    el => el.dataset.suite === suiteName
+  );
+  let pass = 0, fail = 0, running = 0;
+  for (const item of items) {
+    if (item.classList.contains('pass')) pass++;
+    else if (item.classList.contains('fail')) fail++;
+    else if (item.classList.contains('running')) running++;
+  }
+  const b = document.getElementById('sbadges-' + escAttr(filename + '\x01' + suiteName));
+  if (!b) return;
+  if (running > 0) {
+    b.innerHTML = '<span class="cy-badge" style="color:var(--warn)">●</span>';
+  } else {
+    b.innerHTML = (pass > 0 ? `<span class="cy-badge cy-badge--pass">${pass}</span>` : '')
+                + (fail > 0 ? `<span class="cy-badge cy-badge--fail">${fail}</span>` : '');
+  }
+}
+
+function setTopbarStatus(state: 'ready'|'running'|'passed'|'failed', text: string) {
+  const dot  = document.getElementById('statusIndicator');
+  const span = document.getElementById('statusText');
+  if (dot)  dot.className    = 'cy-status-dot ' + state;
+  if (span) span.textContent = text;
+}
+
+// ── Spec list ─────────────────────────────────────────────────────────────────
+
+interface ParsedTest { suite: string; name: string; }
+interface ParsedFile { filename: string; tests: ParsedTest[]; }
+
+async function loadTestList() {
+  const container = document.getElementById('testList')!;
+  try {
+    const files = await fetch(API_BASE + '/api/tests').then(r => r.json()) as ParsedFile[];
+    container.innerHTML = files.length
+      ? files.map(renderTestFileCard).join('')
+      : '<div class="cy-empty">No .js files in examples/</div>';
+  } catch (e: any) {
+    container.innerHTML = `<div class="cy-empty" style="color:var(--fail)">Failed to load specs<br>${e.message}</div>`;
+  }
+}
+
+function renderTestFileCard(f: ParsedFile): string {
+  const suites: Record<string, string[]> = Object.create(null);
+  f.tests.forEach(t => {
+    const k = t.suite || '(root)';
+    if (!suites[k]) suites[k] = [];
+    suites[k].push(t.name);
+  });
+  const suiteHtml = Object.entries(suites).map(([s, names]) =>
+    '<div class="cy-suite-row">' +
+      '<span class="cy-suite-name">' + escHtml(s) + '</span>' +
+      '<span class="cy-suite-badges" id="sbadges-' + escAttr(f.filename + '\x01' + s) + '"></span>' +
+      '<button class="cy-suite-run-btn" onclick="window.runSuite(' + jsq(f.filename) + ',' + jsq(s) + ')">&#9654;</button>' +
+    '</div>' + names.map(n => {
+      const fullName = s === '(root)' ? n : s + ' > ' + n;
+      return '<div class="cy-test-item" data-testkey="' + escAttr(f.filename + '\x01' + fullName) + '" data-suite="' + escHtml(s) + '">' +
+        '<span class="cy-test-dot"></span>' +
+        '<span class="cy-test-name">' + escHtml(n) + '</span>' +
+        '<span class="cy-test-badge"></span>' +
+        '<button class="cy-test-run-btn" onclick="event.stopPropagation();window.runTest(' + jsq(f.filename) + ',' + jsq(fullName) + ')">&#9654;</button>' +
+      '</div>';
+    }).join('')
+  ).join('');
+  const ext  = f.filename.split('.').pop() ?? 'js';
+  const stem = f.filename.slice(0, -(ext.length + 1));
+  return '<div class="cy-spec-card" id="card-' + escAttr(f.filename) + '" data-filename="' + escHtml(f.filename) + '">' +
+    '<div class="cy-spec-hdr" onclick="window.toggleCard(' + jsq(f.filename) + ')">' +
+      '<span class="cy-spec-chevron">&#9658;</span>' +
+      '<span class="cy-spec-ext">' + escHtml(ext) + '</span>' +
+      '<span class="cy-spec-filename">' + escHtml(stem) + '</span>' +
+      '<span class="cy-spec-badges" id="badges-' + escAttr(f.filename) + '"></span>' +
+      '<button class="cy-spec-run-btn" onclick="event.stopPropagation();window.runTestByFilename(' + jsq(f.filename) + ')">&#9654;</button>' +
+    '</div>' +
+    (Object.keys(suites).length ? '<div class="cy-spec-body">' + suiteHtml + '</div>' : '') +
+    '</div>';
+}
+
+window.toggleCard = (filename: string) =>
+  document.getElementById('card-' + filename)?.classList.toggle('open');
+
+// ── Test execution ────────────────────────────────────────────────────────────
+
+interface TestResult { name: string; passed: boolean; error?: string; duration: number; }
+
+async function executeTests(code: string, opts?: { filterSuite?: string; filterTest?: string; filename?: string }): Promise<TestResult[]> {
+  const filterSuite = opts?.filterSuite;
+  const filterTest  = opts?.filterTest;
+  const filename    = opts?.filename;
+  const queue: Array<{ name: string; fn: () => any }> = [];
+  const stack: string[] = [];
+  const it = (name: string, fn: () => any) => {
+    const suite    = stack.join(' > ');
+    const fullName = stack.length ? suite + ' > ' + name : name;
+    if (filterSuite && suite !== filterSuite) return;
+    if (filterTest && fullName !== filterTest) return;
+    queue.push({ name: fullName, fn });
+  };
+  const describe = (name: string, fn: () => void) => { stack.push(name); fn(); stack.pop(); };
+
+  try {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      'describe','it','test','expect','cy','page',
+      'setTimeout','clearTimeout','Promise','console',
+      code
+    );
+    fn(describe, it, it, pwExpect, testApi, page, setTimeout, clearTimeout, Promise, console);
+  } catch (e: any) {
+    return [{ name: '(parse/compile error)', passed: false, error: e.message, duration: 0 }];
+  }
+
+  const results: TestResult[] = [];
+  for (const t of queue) {
+    if (filename) setTestItemStatus(filename, t.name, 'running');
+    const t0 = Date.now();
+    try {
+      await Promise.resolve(t.fn());
+      const dur = Date.now() - t0;
+      results.push({ name: t.name, passed: true, duration: dur });
+      if (filename) setTestItemStatus(filename, t.name, 'pass', dur);
+    } catch (e: any) {
+      const dur = Date.now() - t0;
+      results.push({ name: t.name, passed: false, error: e.message, duration: dur });
+      if (filename) setTestItemStatus(filename, t.name, 'fail', dur);
+    }
+  }
+  return results;
+}
+
+function renderTestResults(results: TestResult[], filename?: string) {
+  if (filename) logSection(filename);
+  let passed = 0, failed = 0;
+  results.forEach(t => { logResult(t); t.passed ? passed++ : failed++; });
+  const status = document.getElementById('testRunnerStatus');
+  if (status) {
+    status.textContent = `${passed} passed, ${failed} failed`;
+    status.style.color = failed === 0 ? 'var(--pass)' : 'var(--fail)';
+  }
+  if (filename) updateCardStatus(filename, passed, failed);
+}
+
+// ── Window actions ────────────────────────────────────────────────────────────
+
+window.runTestByFilename = async (filename: string) => {
+  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+  resetTestItems(filename);
+  setCardRunning(filename);
+  log(`run  ${filename}`, 'info');
+  try {
+    const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    renderTestResults(await executeTests(await resp.text(), { filename }), filename);
+  } catch (e: any) {
+    log('Error: ' + e.message, 'error');
+    updateCardStatus(filename, 0, 1);
+  }
+};
+
+window.runSuite = async (filename: string, suiteName: string) => {
+  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+  resetTestItems(filename);
+  setCardRunning(filename);
+  log(`suite  "${suiteName}"  in ${filename}`, 'info');
+  try {
+    const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    renderTestResults(await executeTests(await resp.text(), { filterSuite: suiteName, filename }), filename);
+  } catch (e: any) {
+    log('Error: ' + e.message, 'error');
+    updateCardStatus(filename, 0, 1);
+  }
+};
+
+window.runTest = async (filename: string, fullName: string) => {
+  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+  setTestItemStatus(filename, fullName, 'running');
+  setCardRunning(filename);
+  log(`it  "${fullName}"`, 'info');
+  try {
+    const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    renderTestResults(await executeTests(await resp.text(), { filterTest: fullName, filename }), filename);
+  } catch (e: any) {
+    log('Error: ' + e.message, 'error');
+    setTestItemStatus(filename, fullName, 'fail');
+  }
+};
+
+window.runAll = async () => {
+  const btn = document.getElementById('runAllBtn') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  setTopbarStatus('running', 'Running…');
+  let totalPass = 0, totalFail = 0;
+  for (const card of Array.from(document.querySelectorAll<HTMLElement>('.cy-spec-card[data-filename]'))) {
+    const filename = card.dataset.filename!;
+    document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+    resetTestItems(filename);
+    setCardRunning(filename);
+    log(`run  ${filename}`, 'info');
+    try {
+      const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const results = await executeTests(await resp.text(), { filename });
+      renderTestResults(results, filename);
+      results.forEach(r => r.passed ? totalPass++ : totalFail++);
+    } catch (e: any) {
+      log('Error: ' + e.message, 'error');
+      updateCardStatus(filename, 0, 1);
+      totalFail++;
+    }
+  }
+  setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
+  if (btn) btn.disabled = false;
+};
+
+window.runTestInBrowser = async () => {
+  const input = document.getElementById('testFileInput') as HTMLInputElement;
+  const file  = input.files?.[0];
+  if (!file) { log('Select a .js file first', 'error'); return; }
+  log(`run  ${file.name}  (browser)`, 'info');
+  renderTestResults(await executeTests(await file.text()), file.name);
+};
+
+window.runTestOnServer = async () => {
+  const input = document.getElementById('testFileInput') as HTMLInputElement;
+  const file  = input.files?.[0];
+  if (!file) { log('Select a .js file first', 'error'); return; }
+  log(`upload  ${file.name}  → server`, 'info');
+  try {
+    const resp = await fetch(API_BASE + '/api/run-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: await file.text() }),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json() as any;
+    if (data.error) throw new Error(data.error);
+    renderTestResults(data.tests, file.name);
+    log(`server: ${data.passed} passed, ${data.failed} failed (${data.duration}ms)`,
+      data.failed === 0 ? 'success' : 'error');
+  } catch (e: any) {
+    log('Server error: ' + e.message, 'error');
+  }
+};
+
+// ── HTML helpers ──────────────────────────────────────────────────────────────
+
+function escHtml(s: string) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s: string) {
+  return String(s).replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+function jsq(s: string) {
+  return JSON.stringify(s).replace(/"/g, '&quot;');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  log('cypress-safari ready', 'info');
+  initIframe();
+  loadTestList();
+});

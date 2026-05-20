@@ -7,7 +7,7 @@ const sharedOpts = watch ? { watch: true } : {};
 
 await esbuild.build({
   ...sharedOpts,
-  entryPoints: ['start.ts'],
+  entryPoints: ['src/start.ts'],
   bundle: true,
   platform: 'node',
   packages: 'external',   // keep node_modules external — no native-addon issues
@@ -17,7 +17,7 @@ await esbuild.build({
 
 await esbuild.build({
   ...sharedOpts,
-  entryPoints: ['panel.ts'],
+  entryPoints: ['src/panel.ts'],
   bundle: true,
   platform: 'browser',
   format: 'iife',
