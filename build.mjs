@@ -38,6 +38,16 @@ await esbuild.build({
 
 await esbuild.build({
   ...sharedOpts,
+  entryPoints: ['test/HtmlReporter.ts'],
+  bundle: true,
+  platform: 'node',
+  packages: 'external',
+  outfile: 'dist/HtmlReporter.js',
+  sourcemap: true,
+});
+
+await esbuild.build({
+  ...sharedOpts,
   entryPoints: ['src/panel.ts'],
   bundle: true,
   platform: 'browser',

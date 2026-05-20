@@ -18,7 +18,6 @@
     "build.mjs",
     "dist",
     "node_modules",
-    "test/specs",
-    "test/tx.config.js"
+    "test"
   ]
 }

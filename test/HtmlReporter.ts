@@ -1,0 +1,110 @@
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from '../src/reporter';
+
+interface TestEntry {
+  title: string;
+  fullTitle: string;
+  status: 'passed' | 'failed' | 'skipped';
+  duration: number;
+  error?: string;
+}
+
+export class HtmlReporter implements Reporter {
+  private tests: TestEntry[] = [];
+  private outputPath: string;
+
+  constructor(outputPath = 'report.html') {
+    this.outputPath = resolve(outputPath);
+  }
+
+  onBegin(_config: FullConfig, _suite: Suite): void {
+    this.tests = [];
+  }
+
+  onTestEnd(test: TestCase, result: TestResult): void {
+    this.tests.push({
+      title: test.title,
+      fullTitle: test.fullTitle,
+      status: result.status,
+      duration: result.duration,
+      error: result.error,
+    });
+  }
+
+  onEnd(result: FullResult): void {
+    writeFileSync(this.outputPath, buildHtml(this.tests, result));
+    console.log(`HTML report written to ${this.outputPath}`);
+  }
+}
+
+function escape(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildHtml(tests: TestEntry[], result: FullResult): string {
+  const rows = tests.map(t => {
+    const statusClass = t.status === 'passed' ? 'pass' : t.status === 'failed' ? 'fail' : 'skip';
+    const errorHtml = t.error
+      ? `<pre class="error">${escape(t.error)}</pre>`
+      : '';
+    return `
+    <tr class="${statusClass}">
+      <td class="badge">${t.status}</td>
+      <td>${escape(t.fullTitle)}</td>
+      <td class="dur">${t.duration}ms</td>
+    </tr>${errorHtml ? `\n    <tr class="${statusClass} error-row"><td colspan="3">${errorHtml}</td></tr>` : ''}`;
+  }).join('');
+
+  const overallClass = result.status === 'passed' ? 'pass' : 'fail';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Report</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f5f5f5; color: #222; }
+    h1 { margin: 0 0 16px; font-size: 1.4rem; }
+    .summary { display: flex; gap: 16px; margin-bottom: 24px; }
+    .stat { background: #fff; border-radius: 6px; padding: 12px 20px; border: 1px solid #ddd; }
+    .stat .n { font-size: 1.8rem; font-weight: 700; }
+    .stat.pass .n { color: #1a9c4e; }
+    .stat.fail .n { color: #c0392b; }
+    .stat .label { font-size: 0.8rem; color: #666; text-transform: uppercase; letter-spacing: .05em; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 6px; overflow: hidden; border: 1px solid #ddd; }
+    th { text-align: left; padding: 10px 14px; background: #f0f0f0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: .05em; color: #555; }
+    td { padding: 10px 14px; border-top: 1px solid #eee; vertical-align: top; }
+    tr.pass td:first-child { color: #1a9c4e; }
+    tr.fail td:first-child { color: #c0392b; }
+    tr.skip td:first-child { color: #888; }
+    .badge { font-weight: 600; font-size: 0.85rem; white-space: nowrap; }
+    .dur { color: #888; font-size: 0.85rem; white-space: nowrap; }
+    pre.error { margin: 0; font-size: 0.82rem; color: #c0392b; white-space: pre-wrap; word-break: break-all; }
+    tr.error-row td { padding-top: 0; background: #fff8f8; }
+    .overall { margin-bottom: 12px; font-size: 1rem; }
+    .overall.pass { color: #1a9c4e; font-weight: 700; }
+    .overall.fail { color: #c0392b; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>Test Report</h1>
+  <p class="overall ${overallClass}">${result.status.toUpperCase()} &mdash; ${result.duration}ms</p>
+  <div class="summary">
+    <div class="stat pass"><div class="n">${result.passed}</div><div class="label">Passed</div></div>
+    <div class="stat fail"><div class="n">${result.failed}</div><div class="label">Failed</div></div>
+    <div class="stat"><div class="n">${result.total}</div><div class="label">Total</div></div>
+  </div>
+  <table>
+    <thead><tr><th>Status</th><th>Test</th><th>Duration</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+}
