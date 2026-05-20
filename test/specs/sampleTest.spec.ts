@@ -1,6 +1,10 @@
 import { theAnswer } from './testData.js';
 
 describe('Math utilities', () => {
+  beforeAll(() => {
+    console.log('Before all tests');
+  });
+
   it('should return the correct answer to the Ultimate Question of Life, The Universe, and Everything', () => {
     expect(theAnswer).toBe(42);
   });

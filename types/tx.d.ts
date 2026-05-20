@@ -2,7 +2,7 @@
  * Type declarations for the Tx test runner.
  *
  * Globals available in every test file:
- *   page, browser, expect, describe, it, test, beforeEach, afterEach
+ *   page, browser, expect, describe, it, test, beforeAll, afterAll, beforeEach, afterEach
  *
  * Module available via require / import:
  *   const { page, expect, Locator } = require('tx')
@@ -256,6 +256,8 @@ declare function expect(actual: any): ValueAssertions;
 declare function describe(name: string, fn: () => void): void;
 declare function it(name: string, fn: () => void | Promise<void>): void;
 declare const test: typeof it;
+declare function beforeAll(fn: () => void | Promise<void>): void;
+declare function afterAll(fn: () => void | Promise<void>): void;
 declare function beforeEach(fn: () => void | Promise<void>): void;
 declare function afterEach(fn: () => void | Promise<void>): void;
 

@@ -56,7 +56,7 @@ export function parseTestCode(code: string): ParsedTest[] {
   const pageProxy: any = new Proxy({}, { get: () => noop });
   const sandbox = vm.createContext({
     describe, it, test: it,
-    beforeEach: noop, afterEach: noop,
+    beforeEach: noop, afterEach: noop, beforeAll: noop, afterAll: noop,
     expect: () => noop,
     tx: new Proxy({}, { get: () => noop }),
     page: pageProxy,
@@ -90,9 +90,14 @@ export class TestRunner {
   }
 
   async runCode(code: string, extraContext: Record<string, any> = {}): Promise<RunResults> {
-    const queue: Array<{ name: string; fn: () => any; beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
+    type QueueItem = {
+      name: string; fn: () => any;
+      beforeEachs: Array<() => any>; afterEachs: Array<() => any>;
+      setupBeforeAlls: Array<() => any>; teardownAfterAlls: Array<() => any>;
+    };
+    const queue: QueueItem[] = [];
     const suiteStack: string[] = [];
-    const hookStack: Array<{ beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
+    const hookStack: Array<{ beforeEachs: Array<() => any>; afterEachs: Array<() => any>; beforeAlls: Array<() => any>; afterAlls: Array<() => any> }> = [];
 
     const beforeEach = (fn: () => any) => {
       if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push(fn);
@@ -100,17 +105,33 @@ export class TestRunner {
     const afterEach = (fn: () => any) => {
       if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push(fn);
     };
+    const beforeAll = (fn: () => any) => {
+      if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn);
+    };
+    const afterAll = (fn: () => any) => {
+      if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn);
+    };
 
     const it = (name: string, fn: () => any) => {
       const full = suiteStack.length ? `${suiteStack.join(' > ')} > ${name}` : name;
       const beforeEachs = hookStack.flatMap(s => s.beforeEachs);
       const afterEachs = hookStack.flatMap(s => s.afterEachs).reverse();
-      queue.push({ name: full, fn, beforeEachs, afterEachs });
+      queue.push({ name: full, fn, beforeEachs, afterEachs, setupBeforeAlls: [], teardownAfterAlls: [] });
     };
     const describe = (name: string, fn: () => void) => {
       suiteStack.push(name);
-      hookStack.push({ beforeEachs: [], afterEachs: [] });
-      try { fn(); } finally { suiteStack.pop(); hookStack.pop(); }
+      hookStack.push({ beforeEachs: [], afterEachs: [], beforeAlls: [], afterAlls: [] });
+      const lenBefore = queue.length;
+      try { fn(); } finally {
+        const scope = hookStack[hookStack.length - 1];
+        const scopeTests = queue.slice(lenBefore);
+        if (scopeTests.length > 0) {
+          if (scope.beforeAlls.length) scopeTests[0].setupBeforeAlls = [...scope.beforeAlls, ...scopeTests[0].setupBeforeAlls];
+          if (scope.afterAlls.length) scopeTests[scopeTests.length - 1].teardownAfterAlls = [...scopeTests[scopeTests.length - 1].teardownAfterAlls, ...scope.afterAlls];
+        }
+        suiteStack.pop();
+        hookStack.pop();
+      }
     };
 
     const txStub: any = new Proxy({}, {
@@ -132,7 +153,7 @@ export class TestRunner {
 
     const sandbox = vm.createContext({
       describe, it, test: it,
-      beforeEach, afterEach,
+      beforeEach, afterEach, beforeAll, afterAll,
       require: _require,
       expect: createExpect,
       console, setTimeout, clearTimeout, setInterval, clearInterval, Promise,
@@ -169,9 +190,11 @@ export class TestRunner {
 
       const start = Date.now();
       try {
+        for (const hook of t.setupBeforeAlls) await Promise.resolve(hook());
         for (const hook of t.beforeEachs) await Promise.resolve(hook());
         await Promise.resolve(t.fn());
         for (const hook of t.afterEachs) await Promise.resolve(hook());
+        for (const hook of t.teardownAfterAlls) await Promise.resolve(hook());
         liveResult.duration = Date.now() - start;
         liveResult.status = 'passed';
         results.push({ name: t.name, passed: true, duration: liveResult.duration });

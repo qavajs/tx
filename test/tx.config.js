@@ -6,7 +6,7 @@ module.exports = {
   port2: 1338,
   controlPanelPort: 3000,
   headless: false,
-  testFiles: ['./specs/**/*.spec.[js,ts]'],
+  testFiles: ['./specs/**/*.spec.ts'],
   viewport: { width: 1920, height: 1080 },
   reporters: [new ConsoleReporter()],
 };

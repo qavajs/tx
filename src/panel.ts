@@ -186,15 +186,26 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
   const filterSuite = opts?.filterSuite;
   const filterTest  = opts?.filterTest;
   const filename    = opts?.filename;
-  const queue: Array<{ name: string; fn: () => any; beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
+  type QueueItem = {
+    name: string; fn: () => any;
+    beforeEachs: Array<() => any>; afterEachs: Array<() => any>;
+    setupBeforeAlls: Array<() => any>; teardownAfterAlls: Array<() => any>;
+  };
+  const queue: QueueItem[] = [];
   const stack: string[] = [];
-  const hookStack: Array<{ beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
+  const hookStack: Array<{ beforeEachs: Array<() => any>; afterEachs: Array<() => any>; beforeAlls: Array<() => any>; afterAlls: Array<() => any> }> = [];
 
   const beforeEach = (fn: () => any) => {
     if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push(fn);
   };
   const afterEach = (fn: () => any) => {
     if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push(fn);
+  };
+  const beforeAll = (fn: () => any) => {
+    if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn);
+  };
+  const afterAll = (fn: () => any) => {
+    if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn);
   };
 
   const it = (name: string, fn: () => any) => {
@@ -204,12 +215,24 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     if (filterTest && fullName !== filterTest) return;
     const beforeEachs = hookStack.flatMap(s => s.beforeEachs);
     const afterEachs  = hookStack.flatMap(s => s.afterEachs).reverse();
-    queue.push({ name: fullName, fn, beforeEachs, afterEachs });
+    queue.push({ name: fullName, fn, beforeEachs, afterEachs, setupBeforeAlls: [], teardownAfterAlls: [] });
   };
   const describe = (name: string, fn: () => void) => {
     stack.push(name);
-    hookStack.push({ beforeEachs: [], afterEachs: [] });
-    try { fn(); } finally { stack.pop(); hookStack.pop(); }
+    hookStack.push({ beforeEachs: [], afterEachs: [], beforeAlls: [], afterAlls: [] });
+    const lenBefore = queue.length;
+    try { fn(); } finally {
+      const scope = hookStack[hookStack.length - 1];
+      const scopeTests = queue.slice(lenBefore);
+      if (scopeTests.length > 0) {
+        // Prepend so outer beforeAlls run before inner ones
+        if (scope.beforeAlls.length) scopeTests[0].setupBeforeAlls = [...scope.beforeAlls, ...scopeTests[0].setupBeforeAlls];
+        // Append so inner afterAlls run before outer ones
+        if (scope.afterAlls.length) scopeTests[scopeTests.length - 1].teardownAfterAlls = [...scopeTests[scopeTests.length - 1].teardownAfterAlls, ...scope.afterAlls];
+      }
+      stack.pop();
+      hookStack.pop();
+    }
   };
 
   // Expose execution-scoped helpers on window so the bundled IIFE can resolve them
@@ -219,6 +242,8 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
   (window as any).test       = it;
   (window as any).beforeEach = beforeEach;
   (window as any).afterEach  = afterEach;
+  (window as any).beforeAll  = beforeAll;
+  (window as any).afterAll   = afterAll;
 
   try {
     // eslint-disable-next-line no-new-func
@@ -233,9 +258,11 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     const t0 = Date.now();
     try {
       closeExtraTabs();
+      for (const hook of t.setupBeforeAlls) await Promise.resolve(hook());
       for (const hook of t.beforeEachs) await Promise.resolve(hook());
       await Promise.resolve(t.fn());
       for (const hook of t.afterEachs) await Promise.resolve(hook());
+      for (const hook of t.teardownAfterAlls) await Promise.resolve(hook());
       const dur = Date.now() - t0;
       results.push({ name: t.name, passed: true, duration: dur });
       if (filename) setTestItemStatus(filename, t.name, 'pass', dur);

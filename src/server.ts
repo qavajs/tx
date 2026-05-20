@@ -192,7 +192,7 @@ export class TestServer {
         if (req.url?.startsWith('/api/test-source') && req.method === 'GET') {
           const qs = new URL(req.url, `http://localhost`).searchParams;
           const file = qs.get('file') ?? '';
-          if (!file || file.includes('/') || file.includes('\\') || !file.endsWith('.js')) {
+          if (!file || file.includes('/') || file.includes('\\') || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
             res.writeHead(400, { 'Content-Type': 'text/plain' });
             res.end('Invalid filename');
             return;
