@@ -7,16 +7,18 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node start.ts",
-    "test": "ts-node start.ts",
-    "test:basic": "ts-node examples/basicTest.ts",
-    "test:login": "ts-node examples/loginTest.ts",
-    "test:shopping": "ts-node examples/shoppingTest.ts",
-    "example:show": "cat examples/loginTest.ts"
+    "prestart": "node build.mjs",
+    "build:watch": "node build.mjs --watch",
+    "start": "node dist/index.js",
+    "dev": "ts-node start.ts",
+    "example:show": "cat examples/sampleTest.js"
   },
   "dependencies": {
     "testcafe-hammerhead": "^31.7.7",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
   }
 }

@@ -5,6 +5,7 @@
 
 import * as vm from 'vm';
 import * as fs from 'fs';
+import * as path from 'path';
 
 export interface TestResult {
   name: string;
@@ -57,6 +58,59 @@ function createExpect(actual: any) {
 
   return matchers;
 }
+
+// ── Test file parsing ────────────────────────────────────────────────────────
+
+export interface ParsedTest {
+  suite: string;
+  name: string;
+}
+
+export interface ParsedFile {
+  filename: string;
+  tests: ParsedTest[];
+  error?: string;
+}
+
+/** Collect describe/it names from code without executing test bodies. */
+export function parseTestCode(code: string): ParsedTest[] {
+  const tests: ParsedTest[] = [];
+  const suiteStack: string[] = [];
+
+  const it = (name: string) => {
+    tests.push({ suite: suiteStack.join(' > '), name: String(name) });
+  };
+  const describe = (name: string, fn: () => void) => {
+    suiteStack.push(String(name));
+    try { fn(); } catch { /* ignore test body errors during parse */ }
+    suiteStack.pop();
+  };
+
+  const noop = () => ({});
+  const sandbox = vm.createContext({
+    describe, it, test: it,
+    expect: () => noop,
+    cy: new Proxy({}, { get: () => noop }),
+    console: { log: noop, error: noop, warn: noop },
+    setTimeout: noop, clearTimeout: noop,
+    Promise: { resolve: () => ({ then: noop }) },
+  });
+
+  try { vm.runInContext(code, sandbox); } catch { /* syntax errors */ }
+  return tests;
+}
+
+export function parseTestFile(filePath: string): ParsedFile {
+  const filename = path.basename(filePath);
+  try {
+    const code = fs.readFileSync(filePath, 'utf-8');
+    return { filename, tests: parseTestCode(code) };
+  } catch (err: any) {
+    return { filename, tests: [], error: err.message };
+  }
+}
+
+// ── Runner ───────────────────────────────────────────────────────────────────
 
 export class TestRunner {
   /**
