@@ -143,18 +143,58 @@ class Locator {
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   }
 
-  async fill(value: string, opts?: { timeout?: number }): Promise<void> {
-    const el = await this._waitForEl(opts?.timeout) as HTMLInputElement | HTMLTextAreaElement;
-    const win = iframeWin() as any;
-    const tag  = el.tagName;
-    const proto = tag === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
+  async fill(value: string, opts?: { timeout?: number; delay?: number }): Promise<void> {
+    const el    = await this._waitForEl(opts?.timeout) as HTMLInputElement | HTMLTextAreaElement;
+    const win   = iframeWin() as any;
+    const delay = opts?.delay ?? 30;
+
+    // Use the iframe's own constructors so events are trusted by page scripts
+    const KE = win.KeyboardEvent as typeof KeyboardEvent;
+    const E  = win.Event        as typeof Event;
+
+    // Native value setter — required for React/Vue controlled inputs
+    const tag    = el.tagName;
+    const proto  = tag === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
     const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
+    const setVal = (v: string) => { if (setter) setter.call(el, v); else (el as any).value = v; };
+
+    // Helper: build keyboard event init for a single character
+    const kInit = (ch: string) => {
+      const code    = ch === ' ' ? 32 : ch.charCodeAt(0);
+      const isAlpha = /[a-zA-Z]/.test(ch);
+      return {
+        key:        ch,
+        code:       ch === ' ' ? 'Space' : isAlpha ? 'Key' + ch.toUpperCase() : 'Unidentified',
+        keyCode:    isAlpha ? ch.toUpperCase().charCodeAt(0) : code,
+        charCode:   code,
+        which:      isAlpha ? ch.toUpperCase().charCodeAt(0) : code,
+        bubbles:    true,
+        cancelable: true,
+      };
+    };
+
     el.focus();
-    el.dispatchEvent(new Event('focus',  { bubbles: true }));
-    if (setter) setter.call(el, value); else (el as any).value = value;
-    el.dispatchEvent(new Event('input',  { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('blur',   { bubbles: true }));
+    el.dispatchEvent(new E('focus', { bubbles: true }));
+
+    // Clear existing value with a select-all + delete sequence
+    setVal('');
+    el.dispatchEvent(new E('input', { bubbles: true }));
+
+    // Type character by character
+    let current = '';
+    for (const ch of value) {
+      const ki = kInit(ch);
+      el.dispatchEvent(new KE('keydown',  ki));
+      el.dispatchEvent(new KE('keypress', ki));
+      current += ch;
+      setVal(current);
+      el.dispatchEvent(new E('input', { bubbles: true }));
+      el.dispatchEvent(new KE('keyup', ki));
+      if (delay > 0) await new Promise(r => setTimeout(r, delay));
+    }
+
+    el.dispatchEvent(new E('change', { bubbles: true }));
+    el.dispatchEvent(new E('blur',   { bubbles: true }));
     log(`fill  "${value}"`, 'success');
   }
 
