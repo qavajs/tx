@@ -2,7 +2,7 @@
  * Control Panel - HTML UI for managing the virtual browser
  */
 
-export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): string {
+export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, controlPanelPort: number = 3000): string {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -253,49 +253,17 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): s
             </div>
             
             <div class="toolbar-content">
-                <!-- Navigation -->
+                <!-- Test Runner -->
                 <div class="control-section">
-                    <div class="section-title">Navigation</div>
+                    <div class="section-title">Test Runner</div>
                     <div class="control-group">
-                        <input type="text" id="urlInput" placeholder="Enter URL..." value="${targetUrl}">
-                        <button class="primary" onclick="window.testApi && window.testApi.visit(document.getElementById('urlInput').value)">Visit</button>
-                        <button onclick="window.testApi && window.testApi.reload()">Reload</button>
+                        <input type="file" id="testFileInput" accept=".js" style="font-size: 12px; padding: 4px 0;">
+                        <button class="primary" onclick="runTestInBrowser()" style="background: #7b1fa2; border-color: #7b1fa2;">▶ Run in Browser</button>
+                        <button onclick="runTestOnServer()">⬆ Run on Server</button>
+                        <div id="testRunnerStatus" style="font-size: 11px; color: #666; margin-top: 4px;"></div>
                     </div>
                 </div>
-                
-                <!-- Selectors -->
-                <div class="control-section">
-                    <div class="section-title">Selectors</div>
-                    <div class="control-group">
-                        <div class="selector-input">
-                            <input type="text" id="selectorInput" placeholder="CSS selector...">
-                            <button onclick="findSelector()">Find</button>
-                        </div>
-                        <div id="selectorResults" style="font-size: 12px; color: #666;"></div>
-                    </div>
-                </div>
-                
-                <!-- Actions -->
-                <div class="control-section">
-                    <div class="section-title">Actions</div>
-                    <div class="control-group">
-                        <button class="primary" onclick="runDemoLogin()" style="background: #4caf50;">🔐 Demo Login</button>
-                        <button onclick="debugPageElements()">🔍 Debug Elements</button>
-                        <button onclick="performClick()">Click Selected</button>
-                        <button onclick="performType()">Type Text</button>
-                        <input type="text" id="typeInput" placeholder="Text to type...">
-                    </div>
-                </div>
-                
-                <!-- Inspect -->
-                <div class="control-section">
-                    <div class="section-title">Inspect</div>
-                    <div class="control-group">
-                        <button onclick="toggleInspector()">Toggle Inspector</button>
-                        <div id="inspectorInfo" style="font-size: 11px; color: #666; margin-top: 8px;"></div>
-                    </div>
-                </div>
-                
+
                 <!-- Console -->
                 <div class="console" id="console"></div>
             </div>
@@ -313,8 +281,6 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): s
     </div>
     
     <script>
-        let selectedElement = null;
-        let inspectorMode = false;
         let iframe = null;
         
         // TestApi - Simplified browser-side version
@@ -338,13 +304,22 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): s
             },
             
             get(selector) {
-                if (!iframe || !iframe.contentDocument) return [];
-                return Array.from(iframe.contentDocument.querySelectorAll(selector));
+                try {
+                    if (!iframe || !iframe.contentDocument) return [];
+                    return Array.from(iframe.contentDocument.querySelectorAll(selector));
+                } catch (e) {
+                    log('Cross-origin access blocked. Open via proxy URL, not localhost:3000 directly.', 'error');
+                    return [];
+                }
             },
-            
+
             find(selector) {
-                if (!iframe || !iframe.contentDocument) return null;
-                return iframe.contentDocument.querySelector(selector);
+                try {
+                    if (!iframe || !iframe.contentDocument) return null;
+                    return iframe.contentDocument.querySelector(selector);
+                } catch (e) {
+                    return null;
+                }
             },
             
             text(selector) {
@@ -369,19 +344,77 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): s
                     return;
                 }
                 if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                    el.value = text;
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    // Use the native setter so React controlled inputs pick up the change
+                    const proto = el.tagName === 'INPUT'
+                        ? iframe.contentWindow.HTMLInputElement.prototype
+                        : iframe.contentWindow.HTMLTextAreaElement.prototype;
+                    const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+                    el.focus();
+                    el.dispatchEvent(new Event('focus', { bubbles: true }));
+                    nativeSetter.call(el, text);
+                    el.dispatchEvent(new Event('input',  { bubbles: true }));
                     el.dispatchEvent(new Event('change', { bubbles: true }));
+                    el.dispatchEvent(new Event('blur',   { bubbles: true }));
                     log(\`Typed: \${text}\`, 'success');
                 }
             },
-            
-            url() {
-                return iframe && iframe.contentWindow ? iframe.contentWindow.location.href : '';
+
+            isVisible(selector) {
+                const el = this.find(selector);
+                if (!el || !iframe || !iframe.contentWindow) return false;
+                const style = iframe.contentWindow.getComputedStyle(el);
+                return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
             },
-            
+
+            attr(selector, attrName) {
+                const el = this.find(selector);
+                return el ? el.getAttribute(attrName) : null;
+            },
+
+            waitForElement(selector, timeout = 5000) {
+                return new Promise((resolve, reject) => {
+                    const start = Date.now();
+                    const check = () => {
+                        const el = this.find(selector);
+                        if (el) return resolve(el);
+                        if (Date.now() - start >= timeout) return reject(new Error('Timeout waiting for: ' + selector));
+                        setTimeout(check, 100);
+                    };
+                    check();
+                });
+            },
+
+            waitForUrl(pattern, timeout = 5000) {
+                return new Promise((resolve, reject) => {
+                    const start = Date.now();
+                    const re = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
+                    const check = () => {
+                        if (re.test(this.url())) return resolve();
+                        if (Date.now() - start >= timeout) return reject(new Error('Timeout waiting for URL: ' + pattern));
+                        setTimeout(check, 100);
+                    };
+                    check();
+                });
+            },
+
+            wait(ms = 500) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            },
+
+            url() {
+                try {
+                    return iframe && iframe.contentWindow ? iframe.contentWindow.location.href : '';
+                } catch (e) {
+                    return '';
+                }
+            },
+
             title() {
-                return iframe && iframe.contentDocument ? iframe.contentDocument.title : '';
+                try {
+                    return iframe && iframe.contentDocument ? iframe.contentDocument.title : '';
+                } catch (e) {
+                    return '';
+                }
             }
         };
         
@@ -406,6 +439,8 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): s
             iframe.sandbox.add('allow-scripts');
             iframe.sandbox.add('allow-forms');
             iframe.sandbox.add('allow-popups');
+            iframe.sandbox.add('allow-modals');
+            iframe.sandbox.add('allow-top-navigation-by-user-activation');
             
             iframe.onload = () => {
                 log('iframe loaded', 'success');
@@ -422,277 +457,111 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): s
             log('iframe created and navigating to proxy...', 'info');
         }
         
-        // Find selector
-        function findSelector() {
+        // ── Test Runner ────────────────────────────────────────────────
+
+        const API_BASE = 'http://localhost:${controlPanelPort}';
+
+        function testExpect(actual) {
+            const fail = msg => { throw new Error(msg); };
+            const fmt  = v   => JSON.stringify(v);
+            const m = {
+                toBe:            e => actual !== e   && fail('Expected ' + fmt(e) + ', got ' + fmt(actual)),
+                toEqual:         e => JSON.stringify(actual) !== JSON.stringify(e) && fail('Expected ' + fmt(e) + ', got ' + fmt(actual)),
+                toContain:       e => Array.isArray(actual)
+                                        ? (!actual.includes(e)              && fail('Array does not contain ' + fmt(e)))
+                                        : (!String(actual).includes(String(e)) && fail('"' + actual + '" does not contain "' + e + '"')),
+                toBeTruthy:      () => !actual  && fail('Expected truthy, got ' + fmt(actual)),
+                toBeFalsy:       () =>  actual  && fail('Expected falsy, got ' + fmt(actual)),
+                toBeNull:        () => actual !== null      && fail('Expected null, got ' + fmt(actual)),
+                toBeUndefined:   () => actual !== undefined && fail('Expected undefined, got ' + fmt(actual)),
+                toBeGreaterThan: n  => actual <= n && fail(fmt(actual) + ' is not > ' + n),
+                toBeLessThan:    n  => actual >= n && fail(fmt(actual) + ' is not < ' + n),
+                toMatch:         r  => { const re = typeof r === 'string' ? new RegExp(r) : r; !re.test(String(actual)) && fail('"' + actual + '" does not match ' + re); },
+            };
+            m.not = {
+                toBe:       e => actual === e   && fail('Expected not ' + fmt(e)),
+                toEqual:    e => JSON.stringify(actual) === JSON.stringify(e) && fail('Expected values not to be equal'),
+                toBeTruthy: () =>  actual  && fail('Expected falsy, got '  + fmt(actual)),
+                toBeFalsy:  () => !actual  && fail('Expected truthy, got ' + fmt(actual)),
+                toBeNull:   () => actual === null && fail('Expected not null'),
+            };
+            return m;
+        }
+
+        async function executeTests(code) {
+            const queue = [];
+            const stack = [];
+            const it = (name, fn) => queue.push({ name: stack.length ? stack.join(' > ') + ' > ' + name : name, fn });
+            const describe = (name, fn) => { stack.push(name); fn(); stack.pop(); };
+            const results = [];
+
             try {
-                const selector = document.getElementById('selectorInput').value;
-                if (!selector) return;
-                
-                const elements = window.testApi.get(selector);
-                const results = document.getElementById('selectorResults');
-                results.innerHTML = \`Found: \${elements.length} element(s)\`;
-                
-                if (elements.length > 0) {
-                    selectedElement = elements[0];
-                }
-                
-                log(\`Found \${elements.length} elements for "\${selector}"\`, 'success');
+                // eslint-disable-next-line no-new-func
+                const fn = new Function(
+                    'describe', 'it', 'test', 'expect', 'cy',
+                    'setTimeout', 'clearTimeout', 'Promise', 'console',
+                    code
+                );
+                fn(describe, it, it, testExpect, window.testApi, setTimeout, clearTimeout, Promise, console);
             } catch (e) {
-                log('Error: ' + e.message, 'error');
+                return [{ name: '(parse error)', passed: false, error: e.message, duration: 0 }];
             }
-        }
-        
-        // Perform click
-        function performClick() {
-            try {
-                const selector = document.getElementById('selectorInput').value;
-                if (!selector) {
-                    log('Please enter a selector', 'error');
-                    return;
+
+            for (const t of queue) {
+                const start = Date.now();
+                try {
+                    await Promise.resolve(t.fn());
+                    results.push({ name: t.name, passed: true, duration: Date.now() - start });
+                } catch (e) {
+                    results.push({ name: t.name, passed: false, error: e.message, duration: Date.now() - start });
                 }
-                window.testApi.click(selector);
-            } catch (e) {
-                log('Error: ' + e.message, 'error');
             }
+            return results;
         }
-        
-        // Perform type
-        function performType() {
+
+        function renderTestResults(results) {
+            let passed = 0, failed = 0;
+            for (const t of results) {
+                if (t.passed) { passed++; log('✅ ' + t.name + ' (' + t.duration + 'ms)', 'success'); }
+                else          { failed++; log('❌ ' + t.name + (t.error ? ': ' + t.error : '') + ' (' + t.duration + 'ms)', 'error'); }
+            }
+            const status = document.getElementById('testRunnerStatus');
+            status.textContent = passed + ' passed, ' + failed + ' failed';
+            status.style.color = failed === 0 ? '#4caf50' : '#f44336';
+        }
+
+        async function runTestInBrowser() {
+            const input = document.getElementById('testFileInput');
+            const file  = input.files && input.files[0];
+            if (!file) { log('Select a .js test file first', 'error'); return; }
+            log('Running ' + file.name + ' in browser...', 'info');
+            const code = await file.text();
+            const results = await executeTests(code);
+            renderTestResults(results);
+        }
+
+        async function runTestOnServer() {
+            const input = document.getElementById('testFileInput');
+            const file  = input.files && input.files[0];
+            if (!file) { log('Select a .js test file first', 'error'); return; }
+            log('Uploading ' + file.name + ' to server...', 'info');
             try {
-                const selector = document.getElementById('selectorInput').value;
-                const text = document.getElementById('typeInput').value;
-                if (!selector || !text) {
-                    log('Please enter selector and text', 'error');
-                    return;
-                }
-                window.testApi.type(selector, text);
-            } catch (e) {
-                log('Error: ' + e.message, 'error');
-            }
-        }
-        
-        // Toggle inspector
-        function toggleInspector() {
-            inspectorMode = !inspectorMode;
-            const info = document.getElementById('inspectorInfo');
-            
-            if (inspectorMode && iframe && iframe.contentDocument) {
-                iframe.contentDocument.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const target = e.target;
-                    info.innerHTML = \`Tag: \${target.tagName}<br>Class: \${target.className}<br>ID: \${target.id}\`;
-                    log(\`Inspected: \${target.tagName}.\${target.className}#\${target.id}\`, 'info');
-                }, true);
-                log('Inspector mode: ON', 'success');
-            } else {
-                log('Inspector mode: OFF', 'info');
-            }
-        }
-        
-        // Demo login script
-        function runDemoLogin() {
-            try {
-                log('🔐 Starting demo login...', 'info');
-                
-                // First, let's see what inputs we have
-                const inputs = window.testApi.get('input');
-                log('Found ' + inputs.length + ' input fields on page', 'info');
-                
-                if (inputs.length === 0) {
-                    log('❌ No input fields found! Try clicking Debug Elements to see page structure', 'error');
-                    return;
-                }
-                
-                // Log all inputs
-                inputs.forEach((input, idx) => {
-                    const id = input.getAttribute('id') || '(none)';
-                    const type = input.getAttribute('type') || 'text';
-                    log('  Input ' + idx + ': id="' + id + '" type="' + type + '"', 'info');
+                const code = await file.text();
+                const resp = await fetch(API_BASE + '/api/run-test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code }),
                 });
-                
-                // Try to find username field - try different selectors
-                let usernameInput = null;
-                let usernameSelector = null;
-                
-                // Method 1: Look for text input
-                const textInputs = window.testApi.get('input[type="text"]');
-                if (textInputs.length > 0) {
-                    usernameInput = textInputs[0];
-                    usernameSelector = 'input[type="text"]';
-                    log('✓ Found username field: input[type="text"]', 'success');
-                } else {
-                    log('❌ No text input found', 'error');
-                    return;
-                }
-                
-                // Fill username
-                if (usernameInput) {
-                    // Focus first
-                    usernameInput.focus();
-                    
-                    // Clear any existing value
-                    usernameInput.value = '';
-                    usernameInput.dispatchEvent(new Event('focus', { bubbles: true }));
-                    
-                    // Simulate typing with keyboard events
-                    const username = 'standard_user';
-                    for (let i = 0; i < username.length; i++) {
-                        const char = username[i];
-                        usernameInput.value += char;
-                        usernameInput.dispatchEvent(new KeyboardEvent('keydown', { 
-                            key: char, 
-                            code: char, 
-                            bubbles: true 
-                        }));
-                        usernameInput.dispatchEvent(new KeyboardEvent('keypress', { 
-                            key: char, 
-                            code: char, 
-                            bubbles: true 
-                        }));
-                        usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
-                        usernameInput.dispatchEvent(new KeyboardEvent('keyup', { 
-                            key: char, 
-                            code: char, 
-                            bubbles: true 
-                        }));
-                    }
-                    
-                    usernameInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    usernameInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    log('✓ Username entered: standard_user', 'success');
-                }
-                
-                // Find password field
-                const passwordInputs = window.testApi.get('input[type="password"]');
-                if (passwordInputs.length > 0) {
-                    const passwordInput = passwordInputs[0];
-                    
-                    // Focus first
-                    passwordInput.focus();
-                    
-                    // Clear any existing value
-                    passwordInput.value = '';
-                    passwordInput.dispatchEvent(new Event('focus', { bubbles: true }));
-                    
-                    // Simulate typing with keyboard events
-                    const password = 'secret_sauce';
-                    for (let i = 0; i < password.length; i++) {
-                        const char = password[i];
-                        passwordInput.value += char;
-                        passwordInput.dispatchEvent(new KeyboardEvent('keydown', { 
-                            key: char, 
-                            code: char, 
-                            bubbles: true 
-                        }));
-                        passwordInput.dispatchEvent(new KeyboardEvent('keypress', { 
-                            key: char, 
-                            code: char, 
-                            bubbles: true 
-                        }));
-                        passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
-                        passwordInput.dispatchEvent(new KeyboardEvent('keyup', { 
-                            key: char, 
-                            code: char, 
-                            bubbles: true 
-                        }));
-                    }
-                    
-                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    passwordInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    log('✓ Password entered', 'success');
-                } else {
-                    log('❌ No password field found', 'error');
-                    return;
-                }
-                
-                // Find and click login button
-                let loginButton = null;
-                
-                // Try multiple selector strategies
-                if (window.testApi.find('#login-button')) {
-                    loginButton = window.testApi.find('#login-button');
-                    log('✓ Found login button: #login-button', 'info');
-                } else if (window.testApi.find('button[type="submit"]')) {
-                    loginButton = window.testApi.find('button[type="submit"]');
-                    log('✓ Found login button: button[type="submit"]', 'info');
-                } else {
-                    const allButtons = window.testApi.get('button');
-                    if (allButtons.length > 0) {
-                        loginButton = allButtons[0];
-                        log('✓ Found login button: first button on page', 'info');
-                    }
-                }
-                
-                if (!loginButton) {
-                    log('❌ No login button found', 'error');
-                    return;
-                }
-                
-                // Simulate click with proper events
-                loginButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-                loginButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-                loginButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                
-                // Also try direct click method
-                loginButton.click();
-                
-                // Try to trigger form submit if button is in a form
-                if (loginButton.form) {
-                    loginButton.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                    log('✓ Form submit triggered', 'info');
-                }
-                
-                log('✓ Login button clicked, waiting for navigation...', 'success');
-                
-                // Check result after 3 seconds
-                setTimeout(() => {
-                    const url = window.testApi.url();
-                    const title = window.testApi.title();
-                    
-                    if (url.includes('inventory') || title.includes('Swag')) {
-                        log('✨ Login successful! Welcome to ' + title, 'success');
-                    } else {
-                        log('⚠️  Navigation happened. Current URL: ' + url, 'info');
-                    }
-                }, 3000);
-                
-            } catch (error) {
-                log('❌ Error: ' + error.message, 'error');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                if (data.error) throw new Error(data.error);
+                renderTestResults(data.tests);
+                log('Server: ' + data.passed + ' passed, ' + data.failed + ' failed (' + data.duration + 'ms)', data.failed === 0 ? 'success' : 'error');
+            } catch (e) {
+                log('Server error: ' + e.message, 'error');
             }
         }
-        
-        // Debug function to show page elements
-        function debugPageElements() {
-            try {
-                log('🔍 Scanning page elements...', 'info');
-                
-                // Find all inputs
-                const inputs = window.testApi.get('input');
-                log('Found ' + inputs.length + ' input fields', 'info');
-                
-                inputs.forEach((input, idx) => {
-                    const id = input.getAttribute('id') || 'N/A';
-                    const name = input.getAttribute('name') || 'N/A';
-                    const type = input.getAttribute('type') || 'N/A';
-                    const dataTest = input.getAttribute('data-test') || 'N/A';
-                    log('  [' + idx + '] id="' + id + '" name="' + name + '" type="' + type + '" data-test="' + dataTest + '"', 'info');
-                });
-                
-                // Find all buttons
-                const buttons = window.testApi.get('button');
-                log('Found ' + buttons.length + ' buttons', 'info');
-                
-                buttons.forEach((btn, idx) => {
-                    const id = btn.getAttribute('id') || 'N/A';
-                    const text = btn.textContent.trim() || 'N/A';
-                    const dataTest = btn.getAttribute('data-test') || 'N/A';
-                    log('  [' + idx + '] id="' + id + '" text="' + text + '" data-test="' + dataTest + '"', 'info');
-                });                
-            } catch (error) {
-                log('❌ Error: ' + error.message, 'error');
-            }
-        }
-        
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             log('Control Panel loaded', 'success');
