@@ -32,6 +32,7 @@ export class TxWrapper {
       watchBaseDir?: string;
       viewport?: { width: number; height: number };
       reporters?: Reporter[];
+      testMode?: boolean;
     } = {}
   ) {
     config.proxyHost = config.proxyHost || 'localhost';
@@ -104,18 +105,28 @@ export class TxWrapper {
       this.testApi = new TestApi(this.injector);
 
       // Start control panel server (on localhost:3000)
-      this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters);
+      this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters, this.config.testMode);
       await this.server.start(this.proxyUrl, this.config.viewport);
 
       console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);
       console.log(`✅ Control Panel via proxy at ${this.controlPanelProxyUrl}`);
       console.log(`📦 Proxy URL: ${this.proxyUrl}`);
 
+      if (this.config.testFiles?.length) {
+        // In test mode, await initial bundling so all sources are ready before the browser opens
+        await startWatcher(
+          this.config.testFiles,
+          this.config.testPatterns ?? [],
+          this.config.watchBaseDir ?? process.cwd(),
+          this.server,
+        );
+      }
+
       if (!this.config.headless) {
         // Open in browser via proxy to bypass CSP
         const { exec } = require('child_process');
         console.log(`\n🌐 Opening browser...`);
-        
+
         exec(`open "${this.controlPanelProxyUrl}"`, (err: Error | null) => {
           if (err) {
             console.error('Failed to open browser:', err.message);
@@ -130,15 +141,6 @@ export class TxWrapper {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      if (this.config.testFiles?.length) {
-        startWatcher(
-          this.config.testFiles,
-          this.config.testPatterns ?? [],
-          this.config.watchBaseDir ?? process.cwd(),
-          this.server,
-        );
-      }
-
       console.log(`\n✨ Control Panel ready for use`);
       console.log(`\n💡 Open via proxy: ${this.controlPanelProxyUrl}`);
       console.log(`💡 Or locally: http://localhost:${this.config.controlPanelPort}\n`);
@@ -149,6 +151,14 @@ export class TxWrapper {
       await this.stop();
       throw error;
     }
+  }
+
+  /**
+   * Wait for the browser to finish running all tests (only meaningful in testMode).
+   */
+  async waitForTests(): Promise<{ passed: number; failed: number }> {
+    if (!this.server) throw new Error('Wrapper not started. Call start() first.');
+    return this.server.waitForDone();
   }
 
   /**

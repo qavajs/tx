@@ -30,6 +30,9 @@ export interface TxConfig {
 
   /** Iframe viewport dimensions */
   viewport?: { width: number; height: number };
+
+  /** Run all tests automatically, then close — exit code 0 = all passed, 1 = any failed */
+  testMode?: boolean;
 }
 
 export interface WaitOptions {

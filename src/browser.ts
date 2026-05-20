@@ -2,7 +2,7 @@
 
 declare global {
   interface Window {
-    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number } };
+    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number }; autorun?: boolean };
   }
 }
 

@@ -18,8 +18,11 @@ export class TestServer {
   private _version = 0;
   private reporters: Reporter[];
   private emitter: ReporterEmitter;
+  private testMode: boolean;
+  private _doneResolve: ((r: { passed: number; failed: number }) => void) | null = null;
+  private _donePromise: Promise<{ passed: number; failed: number }>;
 
-  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[]) {
+  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean) {
     this.port = port;
     this.reporters = reporters ?? [new ConsoleReporter()];
     this.emitter = new ReporterEmitter();
@@ -30,6 +33,12 @@ export class TestServer {
         this.testFileMap.set(path.basename(f), f);
       }
     }
+    this.testMode = testMode ?? false;
+    this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
+  }
+
+  waitForDone(): Promise<{ passed: number; failed: number }> {
+    return this._donePromise;
   }
 
   updateFile(basename: string, bundledCode: string, parsed: ParsedFile): void {
@@ -53,7 +62,7 @@ export class TestServer {
         }
 
         if (req.url === '/' && req.method === 'GET') {
-          const html = generateControlPanelHTML(proxyUrl, this.port, viewport);
+          const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(html);
           return;
@@ -129,6 +138,21 @@ export class TestServer {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: err.message }));
             }
+          });
+          return;
+        }
+
+        // POST /api/done — browser signals that autorun completed
+        if (req.url === '/api/done' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: Buffer) => (body += chunk));
+          req.on('end', () => {
+            try {
+              const { passed, failed } = JSON.parse(body) as { passed: number; failed: number };
+              this._doneResolve?.({ passed, failed });
+            } catch { this._doneResolve?.({ passed: 0, failed: 1 }); }
+            res.writeHead(204);
+            res.end();
           });
           return;
         }

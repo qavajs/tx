@@ -11,7 +11,7 @@
     "build:watch": "node build.mjs --watch",
     "start": "node dist/index.js --config test/tx.config.js",
     "dev": "node build.mjs && node dist/index.js --config test/tx.config.js",
-    "test": "node build.mjs && node dist/index.js --config test/tx.config.js --headless",
+    "test": "node build.mjs && node dist/index.js --config test/tx.config.js --test",
     "example:show": "cat examples/sampleTest.js"
   },
   "dependencies": {

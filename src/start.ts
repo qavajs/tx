@@ -69,6 +69,9 @@ function setConfigField(config: TxConfig, key: string, value: string): void {
         case 'headless':
             config.headless = value === 'true' || value === '1';
             break;
+        case 'test':
+            config.testMode = value === 'true' || value === '1';
+            break;
         default:
             console.warn(`Unknown CLI option: --${key}`);
     }
@@ -196,6 +199,7 @@ async function main() {
         controlPanelPort: cliConfig.controlPanelPort ?? fileConfig.controlPanelPort ?? 3000,
         headless:         cliConfig.headless         ?? fileConfig.headless         ?? (process.env.HEADLESS === 'true'),
         viewport:         fileConfig.viewport,
+        testMode:         cliConfig.testMode         ?? fileConfig.testMode         ?? false,
     };
 
     // Resolve testFiles / testMatch into absolute paths
@@ -222,15 +226,23 @@ async function main() {
     try {
         await wrapper.start();
 
-        console.log('🎯 Virtual browser is now running!');
-        console.log('📍 Use the control panel to interact with the site');
-        console.log('⌨️  Press Ctrl+C to stop\n');
-
-        process.on('SIGINT', async () => {
-            console.log('\n\n🛑 Shutting down...');
+        if (mergedConfig.testMode) {
+            console.log('🧪 Test mode: running all specs…\n');
+            const { passed, failed } = await wrapper.waitForTests();
+            console.log(`\n✅ ${passed} passed, ❌ ${failed} failed`);
             await wrapper.stop();
-            process.exit(0);
-        });
+            process.exit(failed > 0 ? 1 : 0);
+        } else {
+            console.log('🎯 Virtual browser is now running!');
+            console.log('📍 Use the control panel to interact with the site');
+            console.log('⌨️  Press Ctrl+C to stop\n');
+
+            process.on('SIGINT', async () => {
+                console.log('\n\n🛑 Shutting down...');
+                await wrapper.stop();
+                process.exit(0);
+            });
+        }
     } catch (error) {
         console.error('Error:', error);
         await wrapper.stop();

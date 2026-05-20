@@ -9,7 +9,7 @@ declare global {
     runTest:          (filename: string, fullName: string) => void;
     toggleCard:       (filename: string) => void;
     runTestByFilename:(filename: string) => void;
-    runAll:           () => void;
+    runAll:           () => Promise<{ passed: number; failed: number }>;
   }
 }
 
@@ -321,7 +321,7 @@ window.runTest = async (filename: string, fullName: string) => {
   }
 };
 
-window.runAll = async () => {
+window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   const btn = document.getElementById('runAllBtn') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   setTopbarStatus('running', 'Running…');
@@ -347,6 +347,7 @@ window.runAll = async () => {
   }
   setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
   if (btn) btn.disabled = false;
+  return { passed: totalPass, failed: totalFail };
 };
 
 window.runTestInBrowser = async () => {
@@ -442,11 +443,19 @@ function renderTabBar() {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   log('tx ready', 'info');
   setOnTabsChanged(renderTabBar);
   initIframe();
   renderTabBar();
-  loadTestList();
+  await loadTestList();
   pollUpdates();
+  if (window.__CONFIG__.autorun) {
+    const { passed, failed } = await window.runAll();
+    fetch(API_BASE + '/api/done', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed, failed }),
+    }).catch(() => {});
+  }
 });

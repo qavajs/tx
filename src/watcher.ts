@@ -48,18 +48,17 @@ async function processFile(filePath: string, server: TestServer): Promise<void> 
   }
 }
 
-export function startWatcher(
+export async function startWatcher(
   testFiles: string[],
   patterns: string[],
   baseDir: string,
   server: TestServer,
-): void {
+): Promise<void> {
   if (testFiles.length === 0) return;
 
-  // Bundle all files immediately on startup
-  Promise.all(testFiles.map(f => processFile(f, server)))
-    .then(() => console.log(`👀 Watching ${testFiles.length} test file(s) for changes...`))
-    .catch(() => {});
+  // Bundle all files immediately on startup, await so callers can wait before opening browser
+  await Promise.all(testFiles.map(f => processFile(f, server)));
+  console.log(`👀 Watching ${testFiles.length} test file(s) for changes...`);
 
   // Resolve which directories to watch
   const watchDirs = new Set<string>();
