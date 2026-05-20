@@ -226,9 +226,12 @@ async function main() {
         console.log(`📂 Test files resolved: ${resolvedFiles.length} file(s)`);
     }
 
-    const testPatterns = fileConfig.testMatch
-        ? (Array.isArray(fileConfig.testMatch) ? fileConfig.testMatch : [fileConfig.testMatch])
+    const normalizePattern = (p: string) => p.startsWith('./') ? p.slice(2) : p;
+    const testFileGlobs = (fileConfig.testFiles ?? []).filter(isGlobPattern).map(normalizePattern);
+    const testMatchPatterns = fileConfig.testMatch
+        ? (Array.isArray(fileConfig.testMatch) ? fileConfig.testMatch : [fileConfig.testMatch]).map(normalizePattern)
         : [];
+    const testPatterns = [...testFileGlobs, ...testMatchPatterns];
 
     const reporters: Reporter[] = (fileConfig.reporters ?? []).map(entry => loadReporter(entry, configDir));
 
