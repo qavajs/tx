@@ -33,6 +33,9 @@ export interface TxConfig {
 
   /** Run all tests automatically, then close — exit code 0 = all passed, 1 = any failed */
   testMode?: boolean;
+
+  /** Capture DOM snapshots after each command (default: false) */
+  snapshot?: boolean;
 }
 
 export interface WaitOptions {

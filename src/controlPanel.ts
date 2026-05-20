@@ -2,7 +2,7 @@
  * Control Panel - Tx HTML UI
  */
 
-export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: number = 3000, viewport?: { width: number; height: number }, testMode?: boolean): string {
+export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: number = 3000, viewport?: { width: number; height: number }, testMode?: boolean, snapshot?: boolean): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -547,6 +547,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             font-size: 10px;
             color: var(--text-muted);
             flex-shrink: 0;
+            width: 10%;
         }
 
         .tx-cmd-stack {
@@ -594,6 +595,25 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
         }
+
+        .tx-browser-tabs {
+            display: flex;
+            gap: 4px;
+            margin-left: auto;
+        }
+
+        .tx-browser-tab {
+            padding: 6px 10px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border-s);
+            background: var(--bg-card);
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.1s;
+        }
+        .tx-browser-tab:hover { background: var(--bg-hover); color: var(--text); }
+        .tx-browser-tab.active { background: var(--jade-bg); color: var(--jade); border-color: var(--jade); }
 
         .tx-nav-btn {
             width: 28px;
@@ -721,7 +741,111 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
         .tx-new-tab-btn:hover { background: var(--bg-hover); color: var(--text); border-color: var(--jade); }
 
+        .tx-snapshot-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+        }
+        .tx-snapshot-header-meta {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            overflow: hidden;
+        }
+        .tx-snapshot-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tx-snapshot-url {
+            font-size: 11px;
+            color: var(--text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tx-snapshot-close-btn {
+            border: 1px solid var(--border-s);
+            background: transparent;
+            color: var(--text);
+            border-radius: var(--radius);
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .tx-snapshot-close-btn:hover {
+            background: var(--bg-hover);
+        }
+        #snapshotViewportWrapper {
+            flex: 1;
+            overflow: hidden;
+            background: var(--bg-app);
+            position: relative;
+        }
+        #snapshotFrame {
+            background: #fff;
+            width: 100%;
+            height: 100%;
+        }
+        .tx-cmd.has-snapshot {
+            cursor: pointer;
+        }
+        .tx-cmd.has-snapshot:hover {
+            background: var(--bg-hover);
+        }
+        .tx-cmd-snapshot-badge {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--jade);
+            flex-shrink: 0;
+        }
+
+        .tx-browser-main {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+        .tx-browser-pane {
+            flex: 1;
+            min-width: 0;
+            background: var(--bg-app);
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        .tx-browser-pane--hidden { display: none; }
         #iframe-container { flex: 1; overflow: hidden; background: var(--bg-app); position: relative; }
+        .tx-time-travel-summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 0;
+        }
+        .tx-time-travel-open {
+            border: 1px solid var(--border-s);
+            background: transparent;
+            color: var(--text-dim);
+            border-radius: var(--radius);
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.1s;
+        }
+        .tx-time-travel-open:hover { background: var(--bg-hover); color: var(--text); }
+        .tx-time-travel-open:disabled { opacity: 0.5; cursor: not-allowed; }
         iframe { width: 100%; height: 100%; border: none; display: block; }
 
         .tx-empty {
@@ -769,11 +893,11 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
 
         <div class="tx-resize-handle" id="specsResizer"></div>
 
-        <!-- ── Command Log ────────────────────────────────────────── -->
+        <!-- ── Command Log ──────────────────────────────────────────────── -->
         <aside class="tx-log-panel">
             <div class="tx-log-hdr">
                 <span class="tx-log-title">Command Log</span>
-                <button class="tx-log-clear" onclick="document.getElementById('console').innerHTML=''">Clear</button>
+                <button class="tx-log-clear" onclick="document.getElementById('console').innerHTML='';window.clearSnapshots&&window.clearSnapshots()">Clear</button>
             </div>
             <div id="console"></div>
         </aside>
@@ -791,7 +915,24 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                 <span class="tx-viewport-tag" id="viewportTag">—</span>
             </div>
             <div class="tx-tab-bar" id="tabBar"></div>
-            <div id="iframe-container"></div>
+            <div class="tx-browser-main">
+                <div class="tx-browser-pane" id="liveBrowserPane">
+                    <div id="iframe-container"></div>
+                </div>
+                <div class="tx-browser-pane tx-browser-pane--hidden" id="snapshotPane">
+                    <div class="tx-snapshot-header">
+                        <div class="tx-snapshot-header-meta">
+                            <div class="tx-snapshot-title" id="snapshotTitle">Snapshot</div>
+                            <div class="tx-snapshot-url" id="snapshotUrl"></div>
+                        </div>
+                        <span class="tx-viewport-tag" id="snapshotViewportTag">—</span>
+                        <button class="tx-snapshot-close-btn" onclick="window.setBrowserView && window.setBrowserView('browser')" title="Return to browser">Close</button>
+                    </div>
+                    <div id="snapshotViewportWrapper">
+                        <iframe id="snapshotFrame" sandbox="allow-same-origin"></iframe>
+                    </div>
+                </div>
+            </div>
         </main>
 
     </div>
@@ -799,7 +940,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
     <script>
         window.__CONFIG__ = {
             proxyUrl: "${proxyUrl}",
-            port: ${controlPanelPort}${viewport ? `,\n            viewport: { width: ${viewport.width}, height: ${viewport.height} }` : ''}${testMode ? `,\n            autorun: true` : ''}
+            port: ${controlPanelPort}${viewport ? `,\n            viewport: { width: ${viewport.width}, height: ${viewport.height} }` : ''}${testMode ? `,\n            autorun: true` : ''}${snapshot ? `,\n            snapshot: true` : ''}
         };
     </script>
     <script src="/panel.js"></script>

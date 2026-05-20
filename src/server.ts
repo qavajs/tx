@@ -19,10 +19,11 @@ export class TestServer {
   private reporters: Reporter[];
   private emitter: ReporterEmitter;
   private testMode: boolean;
+  private snapshot: boolean;
   private _doneResolve: ((r: { passed: number; failed: number }) => void) | null = null;
   private _donePromise: Promise<{ passed: number; failed: number }>;
 
-  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean) {
+  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean) {
     this.port = port;
     this.reporters = reporters ?? [];
     this.emitter = new ReporterEmitter();
@@ -34,6 +35,7 @@ export class TestServer {
       }
     }
     this.testMode = testMode ?? false;
+    this.snapshot = snapshot ?? false;
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 
@@ -62,7 +64,7 @@ export class TestServer {
         }
 
         if (req.url === '/' && req.method === 'GET') {
-          const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode);
+          const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode, this.snapshot);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(html);
           return;

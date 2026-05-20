@@ -1,4 +1,4 @@
-import { log, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser } from './browser';
+import { log, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots } from './browser';
 
 declare global {
   interface Window {
@@ -522,6 +522,89 @@ function renderTabBar() {
   bar.appendChild(newBtn);
 }
 
+let _selectedSnapshotId: number | null = null;
+let _activeBrowserView: 'browser' | 'snapshot' = 'browser';
+
+function formatSnapshotTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function setBrowserView(view: 'browser' | 'snapshot') {
+  _activeBrowserView = view;
+  renderBrowserView();
+}
+
+function applySnapshotViewport() {
+  const frame = document.getElementById('snapshotFrame') as HTMLIFrameElement | null;
+  const wrapper = document.getElementById('snapshotViewportWrapper') as HTMLElement | null;
+  const tag = document.getElementById('snapshotViewportTag') as HTMLElement | null;
+  if (!frame || !wrapper) return;
+
+  const snapshot = _selectedSnapshotId != null
+    ? getSnapshots().find(s => s.id === _selectedSnapshotId)
+    : undefined;
+  const vp = snapshot?.viewport ?? (window as any).__CONFIG__?.viewport;
+
+  if (!vp?.width || !vp?.height) {
+    frame.style.position = '';
+    frame.style.width = '100%';
+    frame.style.height = '100%';
+    frame.style.transform = '';
+    frame.style.transformOrigin = '';
+    if (tag) tag.textContent = '—';
+    return;
+  }
+
+  const cw = wrapper.clientWidth;
+  const ch = wrapper.clientHeight;
+  if (!cw || !ch) return;
+
+  const scale = Math.min(cw / vp.width, ch / vp.height);
+  const ox = (cw - vp.width * scale) / 2;
+  const oy = (ch - vp.height * scale) / 2;
+
+  frame.style.position = 'absolute';
+  frame.style.top = '0';
+  frame.style.left = '0';
+  frame.style.width = vp.width + 'px';
+  frame.style.height = vp.height + 'px';
+  frame.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`;
+  frame.style.transformOrigin = 'top left';
+  if (tag) tag.textContent = `${vp.width} × ${vp.height} @ ${Math.round(scale * 100)}%`;
+}
+
+function renderBrowserView() {
+  const livePane = document.getElementById('liveBrowserPane');
+  const snapshotPane = document.getElementById('snapshotPane');
+  if (livePane && snapshotPane) {
+    livePane.classList.toggle('tx-browser-pane--hidden', _activeBrowserView !== 'browser');
+    snapshotPane.classList.toggle('tx-browser-pane--hidden', _activeBrowserView !== 'snapshot');
+  }
+  if (_activeBrowserView === 'snapshot') applySnapshotViewport();
+}
+
+function openSnapshot(id: number) {
+  const snapshot = getSnapshots().find(item => item.id === id);
+  const frame = document.getElementById('snapshotFrame') as HTMLIFrameElement | null;
+  if (!snapshot || !frame) return;
+  const titleEl = document.getElementById('snapshotTitle');
+  const urlEl = document.getElementById('snapshotUrl');
+  if (titleEl) titleEl.textContent = snapshot.label || snapshot.title || 'Snapshot';
+  if (urlEl) urlEl.textContent = `${snapshot.url} · ${formatSnapshotTime(snapshot.timestamp)}`;
+  frame.srcdoc = snapshot.html;
+  _selectedSnapshotId = id;
+  setBrowserView('snapshot');
+  applySnapshotViewport();
+}
+
+(window as any).clearSnapshots = () => {
+  clearSnapshots();
+  _selectedSnapshotId = null;
+  setBrowserView('browser');
+};
+
+(window as any).setBrowserView = setBrowserView;
+
 // ── Filter ────────────────────────────────────────────────────────────────────
 
 window.applyFilter = (query: string) => {
@@ -647,7 +730,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   setOnTabsChanged(renderTabBar);
   initIframe();
   renderTabBar();
+  renderBrowserView();
+  const consoleEl = document.getElementById('console');
+  if (consoleEl) {
+    consoleEl.addEventListener('click', (event: MouseEvent) => {
+      let el = event.target as HTMLElement | null;
+      while (el && !el.classList.contains('tx-cmd')) el = el.parentElement;
+      const id = el?.dataset.snapshotId ? Number(el.dataset.snapshotId) : null;
+      if (id) openSnapshot(id);
+    });
+  }
   initResizers();
+  const snapshotWrapper = document.getElementById('snapshotViewportWrapper');
+  if (snapshotWrapper) {
+    new ResizeObserver(() => { if (_activeBrowserView === 'snapshot') applySnapshotViewport(); })
+      .observe(snapshotWrapper);
+  }
   await loadTestList();
   pollUpdates();
   if (window.__CONFIG__.autorun) {

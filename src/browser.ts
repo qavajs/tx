@@ -2,7 +2,7 @@
 
 declare global {
   interface Window {
-    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number }; autorun?: boolean };
+    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number }; autorun?: boolean; snapshot?: boolean };
   }
 }
 
@@ -67,6 +67,93 @@ export const API_BASE = 'http://localhost:' + window.__CONFIG__.port;
 // Derive proxy prefix by stripping the trailing page URL (e.g. "about:blank") from the session URL
 // e.g. "http://host/proxy/SESSION/about:blank" → "http://host/proxy/SESSION/"
 const _proxyPrefix = window.__CONFIG__.proxyUrl.replace(/[^/]+$/, '');
+
+export interface SnapshotEntry {
+  id: number;
+  label: string;
+  timestamp: number;
+  url: string;
+  title: string;
+  html: string;
+  viewport?: { width: number; height: number };
+}
+
+const _snapshots: SnapshotEntry[] = [];
+let _snapshotCounter = 0;
+const MAX_SNAPSHOTS = 40;
+const _snapshotListeners = new Set<() => void>();
+
+function _notifySnapshotListeners(): void {
+  for (const fn of _snapshotListeners) {
+    try { fn(); } catch { /* ignore */ }
+  }
+}
+
+function _captureSnapshot(label: string): number {
+  const doc = iframeDoc();
+  const win = iframeWin();
+  if (!doc || !win) return -1;
+  const url = page.url();
+  const title = doc.title || '';
+
+  const cloneRoot = doc.documentElement.cloneNode(true) as HTMLElement;
+
+  const origEls  = [doc.documentElement as Element, ...Array.from(doc.documentElement.querySelectorAll('*'))];
+  const cloneEls = [cloneRoot            as Element, ...Array.from(cloneRoot.querySelectorAll('*'))];
+  for (let i = 0; i < origEls.length; i++) {
+    const orig = origEls[i] as HTMLElement;
+    const el   = cloneEls[i] as HTMLElement;
+    if (!orig || !el) continue;
+    try {
+      const cs = (win as any).getComputedStyle(orig);
+      const parts: string[] = [];
+      for (let j = 0; j < cs.length; j++) {
+        const prop = cs[j];
+        const val  = cs.getPropertyValue(prop);
+        if (val) parts.push(`${prop}:${val}`);
+      }
+      if (parts.length) el.setAttribute('style', parts.join(';'));
+    } catch { /* ignore */ }
+  }
+
+  for (const el of Array.from(cloneRoot.querySelectorAll('script, link[rel="stylesheet"]'))) {
+    el.remove();
+  }
+
+  let html = cloneRoot.outerHTML;
+  if (!/<base\b/i.test(html)) {
+    html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${url}">`);
+  }
+
+  const snapshotId = ++_snapshotCounter;
+  _snapshots.push({
+    id: snapshotId,
+    label: label || 'snapshot',
+    timestamp: Date.now(),
+    url,
+    title,
+    html,
+    viewport: viewportW && viewportH ? { width: viewportW, height: viewportH } : undefined,
+  });
+  if (_snapshots.length > MAX_SNAPSHOTS) _snapshots.shift();
+  _notifySnapshotListeners();
+  return snapshotId;
+}
+
+export function getSnapshots(): SnapshotEntry[] {
+  return [..._snapshots];
+}
+
+export function clearSnapshots(): void {
+  _snapshots.length = 0;
+  _snapshotCounter = 0;
+  _notifySnapshotListeners();
+}
+
+export function onSnapshotsChanged(fn: () => void): () => void {
+  _snapshotListeners.add(fn);
+  return () => { _snapshotListeners.delete(fn); };
+}
 
 export function toProxiedUrl(url: string): string {
   if (!_proxyPrefix) return url;
@@ -143,6 +230,7 @@ export function createTab(url?: string) {
     reapplyViewport();
     _emitPage('domcontentloaded');
     _emitPage('load');
+    if (window.__CONFIG__.snapshot) _captureSnapshot('load');
     _emitPage('framenavigated', { url: () => page.url(), name: () => '', isMainFrame: () => true });
     _onTabsChanged?.();
   });
@@ -233,6 +321,10 @@ function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail', durat
   }
 }
 
+const _snapshotCommands = new Set([
+  'click', 'dblclick', 'fill', 'type', 'press', 'select', 'check', 'uncheck', 'focus', 'hover', 'scroll', 'goto', 'reload', 'waitForURL'
+]);
+
 export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string, duration?: number) {
   const state = type === 'success' ? 'pass' : type === 'error' ? 'fail' : 'info';
   createLogEntry(message, state, cmd, duration);
@@ -244,6 +336,24 @@ export function logCommand(message: string, cmd: string) {
   return {
     success(duration?: number) {
       updateLogEntry(entry, 'pass', duration ?? Math.max(0, Date.now() - startedAt));
+      if (window.__CONFIG__.snapshot && _snapshotCommands.has(cmd)) {
+        try {
+          const snapshotId = _captureSnapshot(message || cmd);
+          if (snapshotId > 0 && entry) {
+            entry.dataset.snapshotId = String(snapshotId);
+            entry.title = 'Click to open snapshot';
+            entry.classList.add('has-snapshot');
+            if (!entry.querySelector('.tx-cmd-snapshot-badge')) {
+              const badge = document.createElement('span');
+              badge.className = 'tx-cmd-snapshot-badge';
+              badge.textContent = '';
+              badge.title = 'Snapshot available';
+              const durEl = entry.querySelector<HTMLElement>('.tx-cmd-dur');
+              entry.insertBefore(badge, durEl || null);
+            }
+          }
+        } catch { /* ignore */ }
+      }
     },
     fail(error?: string) {
       if (error && entry) {
@@ -1611,7 +1721,7 @@ export const testApi = {
   visit(url: string) {
     const tab = _activeTab();
     if (!tab) { log('iframe not ready', 'error'); return; }
-    tab.iframe.src = url;
+    tab.iframe.src = toProxiedUrl(url);
     const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
     if (navInput) navInput.value = url;
     log(url, 'info', 'visit');

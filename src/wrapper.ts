@@ -105,7 +105,7 @@ export class TxWrapper {
       this.testApi = new TestApi(this.injector);
 
       // Start control panel server (on localhost:3000)
-      this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters, this.config.testMode);
+      this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters, this.config.testMode, this.config.snapshot);
       await this.server.start(this.proxyUrl, this.config.viewport);
 
       console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);
