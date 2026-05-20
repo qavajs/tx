@@ -1,6 +1,6 @@
 import { theAnswer } from './testData.js';
 
-describe('Math utilities', () => {
+describe('Utilities', () => {
   beforeAll(() => {
     console.log('Before all tests');
   });
@@ -24,5 +24,10 @@ describe('Math utilities', () => {
     const items = ['apple', 'banana', 'cherry'];
     expect(items).toContain('banana');
     expect(items.length).toBe(3);
+  });
+
+  it('task', async () => {
+    const file = await browser.task<string>('readFile', { path: './test/serverFile.json' });
+    expect(JSON.parse(file)).toEqual({ data: 42 });
   });
 });

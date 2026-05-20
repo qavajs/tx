@@ -1787,8 +1787,28 @@ export const browser = {
   async newPage(): Promise<PopupPage> {
     return createTab();
   },
+
   /** Return Page-like objects for all currently open tabs */
   pages(): PopupPage[] {
     return _tabs.map(t => _makePopupPage(t.id));
+  },
+
+  /** Execute a named task in the Node.js context and return its result */
+  async task<T = unknown>(name: string, payload?: unknown): Promise<T> {
+    const entry = logCommand(name, 'task');
+    try {
+      const resp = await fetch(API_BASE + '/api/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, payload: payload ?? null }),
+      });
+      const data = await resp.json() as { result?: T; error?: string };
+      if (!resp.ok || data.error) throw new Error(data.error ?? `task "${name}" failed`);
+      entry.success();
+      return data.result as T;
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   },
 };

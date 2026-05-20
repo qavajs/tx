@@ -8,6 +8,9 @@ module.exports = {
   viewport: { width: 1600, height: 900 },
   reporters: [
     ['./ConsoleReporter.ts', {}],
-    ['./HtmlReporter.ts', { outputPath: 'report.html' }],
+    ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
   ],
+  tasks: {
+    readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
+  },
 };

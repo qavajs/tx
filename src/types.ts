@@ -7,9 +7,15 @@ import type { Reporter } from './reporter';
 /** A reporter entry: [path-to-module, config-object] */
 export type ReporterEntry = [path: string, config: Record<string, unknown>];
 
+/** A task handler executed in the Node.js context */
+export type TaskHandler = (payload: unknown) => unknown | Promise<unknown>;
+
 export interface TxConfig {
   /** Reporter entries — each is a [modulePath, configObject] tuple. */
   reporters?: ReporterEntry[];
+
+  /** Named task handlers executed in Node.js context, callable via browser.task() */
+  tasks?: Record<string, TaskHandler>;
   /** Proxy hostname (default: localhost) */
   proxyHost?: string;
 

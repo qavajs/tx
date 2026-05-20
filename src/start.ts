@@ -238,6 +238,7 @@ async function main() {
         testPatterns,
         watchBaseDir: configDir,
         reporters,
+        tasks: fileConfig.tasks,
     });
 
     try {

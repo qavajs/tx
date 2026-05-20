@@ -8,6 +8,7 @@ import * as path from 'path';
 import { generateControlPanelHTML } from './controlPanel';
 import { TestRunner, parseTestFile, ParsedFile } from './testRunner';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from './reporter';
+import type { TaskHandler } from './types';
 
 export class TestServer {
   private server: http.Server | null = null;
@@ -20,10 +21,11 @@ export class TestServer {
   private emitter: ReporterEmitter;
   private testMode: boolean;
   private snapshot: boolean;
+  private tasks: Record<string, TaskHandler>;
   private _doneResolve: ((r: { passed: number; failed: number }) => void) | null = null;
   private _donePromise: Promise<{ passed: number; failed: number }>;
 
-  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean) {
+  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean, tasks?: Record<string, TaskHandler>) {
     this.port = port;
     this.reporters = reporters ?? [];
     this.emitter = new ReporterEmitter();
@@ -36,6 +38,7 @@ export class TestServer {
     }
     this.testMode = testMode ?? false;
     this.snapshot = snapshot ?? false;
+    this.tasks = tasks ?? {};
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 
@@ -178,6 +181,30 @@ export class TestServer {
             } catch (err: any) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
+        // POST /api/task — execute a named Node.js task handler and return the result
+        if (req.url === '/api/task' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: Buffer) => (body += chunk));
+          req.on('end', async () => {
+            try {
+              const { name, payload } = JSON.parse(body) as { name: string; payload?: unknown };
+              const handler = this.tasks[name];
+              if (!handler) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: `Task not found: "${name}"` }));
+                return;
+              }
+              const result = await Promise.resolve(handler(payload));
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ result: result ?? null }));
+            } catch (err: any) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message ?? String(err) }));
             }
           });
           return;

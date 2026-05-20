@@ -303,8 +303,32 @@ interface Page {
 interface Browser {
   /** Open a new tab and return a page object for it. */
   newPage(): Promise<PopupPage>;
+
   /** Return page objects for all currently open tabs. */
   pages(): PopupPage[];
+
+  /**
+   * Execute a named task in the Node.js context and return its result.
+   *
+   * Tasks are defined in `tx.config.js` under the `tasks` key.
+   * The handler receives `payload` as its sole argument and may be async.
+   * The return value must be JSON-serializable.
+   *
+   * Throws if the task name is not registered or if the handler throws.
+   *
+   * @param name    - The task name as registered in `tx.config.js`
+   * @param payload - Optional JSON-serializable argument passed to the handler
+   *
+   * @example
+   * // tx.config.js
+   * tasks: {
+   *   readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
+   * }
+   *
+   * // test file
+   * const content = await browser.task('readFile', { path: '/tmp/data.json' });
+   */
+  task<T = unknown>(name: string, payload?: unknown): Promise<T>;
 }
 
 // ── Globals injected by the test runner ───────────────────────────────────────

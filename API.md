@@ -10,6 +10,9 @@
 - [Writing Tests](#writing-tests)
 - [page](#page)
 - [browser](#browser)
+  - [browser.newPage](#browsernewpage)
+  - [browser.pages](#browserpages)
+  - [browser.task](#browsertask)
 - [Locator](#locator)
 - [expect](#expect)
 - [page Events](#page-events)
@@ -36,16 +39,45 @@
 }
 ```
 
-| Field              | Type                    | Default       | Description                                      |
-|--------------------|-------------------------|---------------|--------------------------------------------------|
-| `proxyHost`        | `string`                | `"localhost"` | Hostname for the Hammerhead proxy                |
-| `port1`            | `number`                | `1337`        | Proxy port 1                                     |
-| `port2`            | `number`                | `1338`        | Proxy port 2                                     |
-| `controlPanelPort` | `number`                | `3000`        | HTTP server port for the control panel           |
-| `headless`         | `boolean`               | `false`       | Skip opening a browser window                    |
-| `testFiles`        | `string[]`              | —             | Explicit list of test file paths (relative to config) |
-| `testMatch`        | `string \| string[]`    | —             | Glob pattern(s) for test file discovery          |
-| `viewport`         | `{ width, height }`     | —             | Fixed iframe viewport size; scales to fit panel  |
+| Field              | Type                          | Default       | Description                                      |
+|--------------------|-------------------------------|---------------|--------------------------------------------------|
+| `proxyHost`        | `string`                      | `"localhost"` | Hostname for the Hammerhead proxy                |
+| `port1`            | `number`                      | `1337`        | Proxy port 1                                     |
+| `port2`            | `number`                      | `1338`        | Proxy port 2                                     |
+| `controlPanelPort` | `number`                      | `3000`        | HTTP server port for the control panel           |
+| `headless`         | `boolean`                     | `false`       | Skip opening a browser window                    |
+| `testFiles`        | `string[]`                    | —             | Explicit list of test file paths (relative to config) |
+| `testMatch`        | `string \| string[]`          | —             | Glob pattern(s) for test file discovery          |
+| `viewport`         | `{ width, height }`           | —             | Fixed iframe viewport size; scales to fit panel  |
+| `reporters`        | `[path, config][]`            | —             | Reporter modules — see [Reporters](#reporters)   |
+| `tasks`            | `Record<string, TaskHandler>` | —             | Named Node.js task handlers — see [browser.task](#browsertask) |
+
+### Reporters
+
+Reporters are specified as `[modulePath, configObject]` tuples. The module path is resolved relative to the config file and may be a `.ts` source file (compiled on demand).
+
+```js
+// tx.config.js
+module.exports = {
+  reporters: [
+    ['./ConsoleReporter.ts', {}],
+    ['./HtmlReporter.ts', { outputPath: 'report.html' }],
+  ],
+};
+```
+
+Each module must export a class implementing the `Reporter` interface:
+
+```ts
+interface Reporter {
+  onBegin?(config: FullConfig, suite: Suite): void;
+  onTestBegin?(test: TestCase, result: TestResult): void;
+  onTestEnd?(test: TestCase, result: TestResult): void;
+  onEnd?(result: FullResult): void;
+}
+```
+
+The constructor receives the config object from the tuple as its sole argument.
 
 ---
 
@@ -371,15 +403,83 @@ Close this tab and emit the `close` event. If other tabs are open the most recen
 
 Multi-tab manager available as the `browser` global in test files.
 
+### browser.newPage
+
 ```js
 const newPage = await browser.newPage(): Promise<Page>
 ```
 Open a new blank tab and return a `Page`-like object for it. The new tab becomes the active tab immediately. Navigating via `page.goto()` still operates on whichever tab is currently active; use the returned object (or `page.bringToFront()`) to control specific tabs.
 
+### browser.pages
+
 ```js
 const pages = browser.pages(): Page[]
 ```
 Return an array of `Page`-like objects for every currently open tab, in creation order.
+
+### browser.task
+
+```js
+await browser.task<T = unknown>(name: string, payload?: unknown): Promise<T>
+```
+
+Execute a named task handler in the **Node.js process** and return its result to the test. This is the primary way to access Node.js APIs (file system, databases, environment variables, etc.) from within browser-side test code.
+
+**Parameters:**
+
+| Parameter | Type      | Description                                                   |
+|-----------|-----------|---------------------------------------------------------------|
+| `name`    | `string`  | The task name as registered in `tx.config.js` under `tasks`  |
+| `payload` | `unknown` | Optional JSON-serializable argument passed to the handler     |
+
+**Returns:** A `Promise` that resolves to the handler's return value (must be JSON-serializable). Throws if the task name is not registered or the handler throws.
+
+**Defining tasks in `tx.config.js`:**
+
+```js
+const fs = require('fs');
+
+module.exports = {
+  // ...
+  tasks: {
+    // Simple value
+    getEnv: (name) => process.env[name] ?? null,
+
+    // File system
+    readFile: ({ path }) => fs.readFileSync(path, 'utf-8'),
+    writeFile: ({ path, content }) => { fs.writeFileSync(path, content); return null; },
+
+    // Async — database seed, API call, etc.
+    seedDatabase: async (records) => {
+      await db.insertMany(records);
+      return records.length;
+    },
+  },
+};
+```
+
+**Using tasks in tests:**
+
+```js
+it('reads a fixture from disk', async () => {
+  const json = await browser.task('readFile', { path: './fixtures/user.json' });
+  const user = JSON.parse(json);
+  expect(user.name).toBe('Alice');
+});
+
+it('seeds the database before testing', async () => {
+  const inserted = await browser.task('seedDatabase', [{ id: 1, role: 'admin' }]);
+  expect(inserted).toBe(1);
+
+  await page.goto('https://app.example.com/users');
+  await expect(page.locator('[data-testid="user-row"]')).toHaveCount(1);
+});
+
+it('reads an environment variable', async () => {
+  const apiKey = await browser.task('getEnv', 'API_KEY');
+  // use apiKey in test…
+});
+```
 
 **Example — multi-tab flow:**
 
@@ -674,15 +774,16 @@ Assert.less(actual, threshold, message?)    // actual < threshold
 
 The control panel server (`http://localhost:3000` by default) exposes these endpoints:
 
-| Method | Path                          | Description                                                      |
-|--------|-------------------------------|------------------------------------------------------------------|
-| `GET`  | `/`                           | Control panel HTML                                               |
-| `GET`  | `/panel.js`                   | Bundled browser-side JS (page, Locator, expect, testApi)         |
-| `GET`  | `/api/tests`                  | `ParsedFile[]` — list of all loaded test files with their tests  |
-| `GET`  | `/api/test-source?file=<name>` | Raw bundled JS source for a test file (by basename)             |
-| `GET`  | `/api/version`                | `{ version: number }` — increments on each file-change          |
-| `POST` | `/api/run-test`               | Run test code server-side. Body: `{ code: string }`. Returns `RunResults` |
-| `GET`  | `/mock`                       | Placeholder HTML page                                            |
+| Method | Path                           | Description                                                      |
+|--------|--------------------------------|------------------------------------------------------------------|
+| `GET`  | `/`                            | Control panel HTML                                               |
+| `GET`  | `/panel.js`                    | Bundled browser-side JS (page, Locator, expect, testApi)         |
+| `GET`  | `/api/tests`                   | `ParsedFile[]` — list of all loaded test files with their tests  |
+| `GET`  | `/api/test-source?file=<name>` | Raw bundled JS source for a test file (by basename)              |
+| `GET`  | `/api/version`                 | `{ version: number }` — increments on each file-change           |
+| `POST` | `/api/run-test`                | Run test code server-side. Body: `{ code: string }`. Returns `RunResults` |
+| `POST` | `/api/task`                    | Execute a named Node.js task. Body: `{ name, payload? }`. Returns `{ result }` or `{ error }` |
+| `GET`  | `/mock`                        | Placeholder HTML page                                            |
 
 All endpoints respond with `Access-Control-Allow-Origin: *`.
 
