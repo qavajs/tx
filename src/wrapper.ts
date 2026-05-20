@@ -1,5 +1,5 @@
 /**
- * Cypress Safari Wrapper - Main orchestrator
+ * Tx Wrapper - Main orchestrator
  */
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -8,7 +8,7 @@ import { IframeInjector, IframeConfig } from './iframeInjector';
 import { TestApi } from './testApi';
 import { TestServer } from './server';
 
-export class CypressSafariWrapper {
+export class TxWrapper {
   private proxy: any;
   private session: any;
   private controlPanelSession: any;
@@ -81,7 +81,7 @@ export class CypressSafariWrapper {
    * Start the wrapper
    */
   async start(): Promise<TestApi> {
-    console.log('\n🚀 Starting Cypress Safari Wrapper...');
+    console.log('\n🚀 Starting Tx Wrapper...');
 
     try {
       // Initialize proxy
@@ -144,7 +144,7 @@ export class CypressSafariWrapper {
    * Stop the wrapper
    */
   async stop(): Promise<void> {
-    console.log('\n🛑 Stopping Cypress Safari Wrapper...');
+    console.log('\n🛑 Stopping Tx Wrapper...');
 
     if (this.injector) {
       this.injector.remove();

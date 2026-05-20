@@ -1,5 +1,5 @@
 /**
- * Test API - Cypress-like API for browser automation
+ * Test API - Tx API for browser automation
  */
 
 import { IframeInjector } from './iframeInjector';
@@ -30,7 +30,7 @@ export class TestApi {
   }
 
   /**
-   * Get elements (cy.get equivalent)
+   * Get elements (tx.get equivalent)
    */
   get(selector: string): Element[] {
     if (!this.doc) {

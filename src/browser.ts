@@ -1015,7 +1015,7 @@ export function pwExpect(target: any) {
   return { ...matchers, not };
 }
 
-// ── Legacy cy API (backward compat) ──────────────────────────────────────────
+// ── Legacy tx API (backward compat) ──────────────────────────────────────────
 
 export const testApi = {
   visit(url: string) {

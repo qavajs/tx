@@ -1,5 +1,5 @@
 /**
- * Control Panel - Cypress-inspired HTML UI
+ * Control Panel - Tx HTML UI
  */
 
 export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, controlPanelPort: number = 3000): string {
@@ -8,7 +8,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>cypress-safari</title>
+    <title>tx</title>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 

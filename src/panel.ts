@@ -209,7 +209,7 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
   try {
     // eslint-disable-next-line no-new-func
     const fn = new Function(
-      'describe','it','test','expect','cy','page',
+      'describe','it','test','expect','tx','page',
       'beforeEach','afterEach',
       'setTimeout','clearTimeout','Promise','console',
       code
@@ -370,7 +370,7 @@ function jsq(s: string) {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  log('cypress-safari ready', 'info');
+  log('tx ready', 'info');
   initIframe();
   loadTestList();
 });

@@ -154,7 +154,7 @@ const ROLE_SELECTORS: Record<string, string> = {
 async function fetchPage(url: string, init: RequestInit = {}): Promise<{ url: string; html: string }> {
   const res = await fetch(url, {
     redirect: 'follow',
-    headers: { 'User-Agent': 'cypress-safari/1.0', 'Accept': 'text/html,*/*' },
+    headers: { 'User-Agent': 'tx/1.0', 'Accept': 'text/html,*/*' },
     ...init,
   });
   return { url: res.url, html: await res.text() };
@@ -655,7 +655,7 @@ export class TestRunner {
       try { fn(); } finally { suiteStack.pop(); hookStack.pop(); }
     };
 
-    const cypressStub: any = new Proxy({}, {
+    const txStub: any = new Proxy({}, {
       get: (_t, prop) => (..._args: any[]) => {
         if (prop === 'url' || prop === 'title' || prop === 'text' || prop === 'attr') return '';
         if (prop === 'get') return [];
@@ -672,7 +672,7 @@ export class TestRunner {
       beforeEach, afterEach,
       expect: createExpect,
       console, setTimeout, clearTimeout, setInterval, clearInterval, Promise,
-      tx: cypressStub,
+      tx: txStub,
       page,
       ...extraContext,
     });

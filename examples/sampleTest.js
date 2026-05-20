@@ -1,6 +1,6 @@
 /**
- * Sample test file — compatible with both the browser runner (cy = window.testApi)
- * and the server-side runner (cy is a no-op stub, useful for pure-logic tests).
+ * Sample test file — compatible with both the browser runner (tx = window.testApi)
+ * and the server-side runner (tx is a no-op stub, useful for pure-logic tests).
  *
  * Upload this file via the "Test Runner" panel in the Control Panel, then click
  * "Run in Browser" or "Run on Server".
@@ -27,12 +27,12 @@ describe('Math utilities', () => {
 
 describe('Browser smoke tests', () => {
   test('page URL is a non-empty string', () => {
-    const url = cy.url ? cy.url() : '';
+    const url = tx.url ? tx.url() : '';
     expect(typeof url).toBe('string');
   });
 
   test('page title is accessible', () => {
-    const title = cy.title ? cy.title() : '';
+    const title = tx.title ? tx.title() : '';
     expect(typeof title).toBe('string');
   });
 });

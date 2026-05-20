@@ -1,20 +1,84 @@
 /**
- * Cypress Safari - Test Script Entry Point
+ * Tx - Test Script Entry Point
  */
 
-import { CypressSafariWrapper } from './wrapper';
+import { TxWrapper } from './wrapper';
+import { TxConfig } from './types';
+
+function parseArgs(argv: string[]): TxConfig {
+    const args = argv.slice(2);
+    const config: TxConfig = {};
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+
+        // --key=value form
+        const eqMatch = arg.match(/^--([a-zA-Z0-9]+)=(.+)$/);
+        if (eqMatch) {
+            setConfigField(config, eqMatch[1], eqMatch[2]);
+            continue;
+        }
+
+        // --flag (boolean)
+        const flagMatch = arg.match(/^--([a-zA-Z0-9]+)$/);
+        if (flagMatch) {
+            const next = args[i + 1];
+            if (next && !next.startsWith('--')) {
+                setConfigField(config, flagMatch[1], next);
+                i++;
+            } else {
+                setConfigField(config, flagMatch[1], 'true');
+            }
+            continue;
+        }
+
+        // Positional: first bare arg is the URL (backward compat)
+        if (!arg.startsWith('--') && !config.targetUrl) {
+            config.targetUrl = arg;
+        }
+    }
+
+    return config;
+}
+
+function setConfigField(config: TxConfig, key: string, value: string): void {
+    switch (key) {
+        case 'url':
+        case 'targetUrl':
+            config.targetUrl = value;
+            break;
+        case 'proxyHost':
+            config.proxyHost = value;
+            break;
+        case 'port1':
+            config.port1 = parseInt(value, 10);
+            break;
+        case 'port2':
+            config.port2 = parseInt(value, 10);
+            break;
+        case 'controlPanelPort':
+        case 'port':
+            config.controlPanelPort = parseInt(value, 10);
+            break;
+        case 'headless':
+            config.headless = value === 'true' || value === '1';
+            break;
+        default:
+            console.warn(`Unknown CLI option: --${key}`);
+    }
+}
 
 async function main() {
-    const targetUrl = process.argv[2] || 'about:blank';
+    const cliConfig = parseArgs(process.argv);
 
-    // Initialize the wrapper
-    const wrapper = new CypressSafariWrapper({
-        targetUrl,
-        proxyHost: 'localhost',
-        port1: 1337,
-        port2: 1338,
-        controlPanelPort: 3000,
-        headless: process.env.HEADLESS === 'true',
+    // Initialize the wrapper with defaults, overridden by CLI args
+    const wrapper = new TxWrapper({
+        targetUrl: cliConfig.targetUrl ?? 'about:blank',
+        proxyHost: cliConfig.proxyHost ?? 'localhost',
+        port1: cliConfig.port1 ?? 1337,
+        port2: cliConfig.port2 ?? 1338,
+        controlPanelPort: cliConfig.controlPanelPort ?? 3000,
+        headless: cliConfig.headless ?? (process.env.HEADLESS === 'true'),
     });
 
     try {

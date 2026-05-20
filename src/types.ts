@@ -1,8 +1,8 @@
 /**
- * Type Definitions for Cypress Safari
+ * Type Definitions for Tx
  */
 
-export interface CypressSafariConfig {
+export interface TxConfig {
   /** Target URL to test (default: https://www.saucedemo.com/) */
   targetUrl?: string;
 
@@ -81,7 +81,7 @@ export interface ITestApi {
 /**
  * Wrapper Type Definitions
  */
-export interface ICypressSafariWrapper {
+export interface ITxWrapper {
   start(): Promise<ITestApi>;
   stop(): Promise<void>;
   getTestApi(): ITestApi;
