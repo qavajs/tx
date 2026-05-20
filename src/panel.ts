@@ -15,6 +15,14 @@ declare global {
 
 window.testApi = testApi;
 
+// ── Globals for test code — importable via `import { page, expect } from 'tx'`
+// or accessible directly as globals (page, expect, browser, tx) ───────────────
+
+(window as any).page    = page;
+(window as any).expect  = pwExpect;
+(window as any).browser = browser;
+(window as any).tx      = { page, expect: pwExpect, browser, ...testApi };
+
 // ── Command Log (panel UI) ────────────────────────────────────────────────────
 
 function logSection(title: string) {
@@ -204,15 +212,17 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     try { fn(); } finally { stack.pop(); hookStack.pop(); }
   };
 
+  // Expose execution-scoped helpers on window so the bundled IIFE can resolve them
+  // without needing Function-parameter injection.
+  (window as any).describe   = describe;
+  (window as any).it         = it;
+  (window as any).test       = it;
+  (window as any).beforeEach = beforeEach;
+  (window as any).afterEach  = afterEach;
+
   try {
     // eslint-disable-next-line no-new-func
-    const fn = new Function(
-      'describe','it','test','expect','tx','page','browser',
-      'beforeEach','afterEach',
-      'setTimeout','clearTimeout','Promise','console','log',
-      code
-    );
-    fn(describe, it, it, pwExpect, testApi, page, browser, beforeEach, afterEach, setTimeout, clearTimeout, Promise, console, log);
+    new Function(code)();
   } catch (e: any) {
     return [{ name: '(parse/compile error)', passed: false, error: e.message, duration: 0 }];
   }

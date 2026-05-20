@@ -4,6 +4,6 @@
   "port2": 1338,
   "controlPanelPort": 3000,
   "headless": false,
-  "testFiles": ["./specs/**/*.js"],
+  "testFiles": ["./specs/**/*.spec.[js,ts]"],
   "viewport": { "width": 1920, "height": 1080 }
 }

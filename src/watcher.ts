@@ -30,6 +30,8 @@ async function bundleFile(filePath: string): Promise<string> {
     format: 'iife',
     write: false,
     logLevel: 'silent',
+    // 'tx' is provided at runtime via window.tx — test files can import from it
+    external: ['tx'],
   });
   return result.outputFiles[0].text;
 }

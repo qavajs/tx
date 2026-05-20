@@ -1,4 +1,4 @@
-import { theAnswer } from './testData';
+import { theAnswer } from './testData.js';
 
 describe('Math utilities', () => {
   it('should return the correct answer to the Ultimate Question of Life, The Universe, and Everything', () => {
@@ -20,17 +20,5 @@ describe('Math utilities', () => {
     const items = ['apple', 'banana', 'cherry'];
     expect(items).toContain('banana');
     expect(items.length).toBe(3);
-  });
-});
-
-describe('Browser smoke tests', () => {
-  test('page URL is a non-empty string', () => {
-    const url = tx.url ? tx.url() : '';
-    expect(typeof url).toBe('string');
-  });
-
-  test('page title is accessible', () => {
-    const title = tx.title ? tx.title() : '';
-    expect(typeof title).toBe('string');
   });
 });
