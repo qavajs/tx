@@ -98,6 +98,16 @@ class Locator {
   _els(): Element[]        { return this._query(); }
   _el():  Element | null   { return this._els()[0] ?? null; }
 
+  async _waitForEl(timeout = 5000): Promise<HTMLElement> {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeout) {
+      const el = this._el() as HTMLElement | null;
+      if (el) return el;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    throw new Error(`Locator timed out after ${timeout}ms — element not found`);
+  }
+
   // ── Chaining ──────────────────────────────────────────────────────────────
 
   nth(n: number): Locator {
@@ -122,40 +132,36 @@ class Locator {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  async click(opts?: { force?: boolean }): Promise<void> {
-    const el = this._el() as HTMLElement | null;
-    if (!el) throw new Error(`Locator.click(): no element found`);
+  async click(opts?: { force?: boolean; timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout);
     el.click();
     log(`click`, 'success');
   }
 
-  async dblclick(): Promise<void> {
-    const el = this._el() as HTMLElement | null;
-    if (!el) throw new Error(`Locator.dblclick(): no element found`);
+  async dblclick(opts?: { timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout);
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   }
 
-  async fill(value: string): Promise<void> {
-    const el = this._el() as HTMLInputElement | HTMLTextAreaElement | null;
-    if (!el) throw new Error(`Locator.fill(): no element found`);
+  async fill(value: string, opts?: { timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout) as HTMLInputElement | HTMLTextAreaElement;
     const win = iframeWin() as any;
     const tag  = el.tagName;
     const proto = tag === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
     const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
     el.focus();
     el.dispatchEvent(new Event('focus',  { bubbles: true }));
-    if (setter) setter.call(el, value); else el.value = value;
+    if (setter) setter.call(el, value); else (el as any).value = value;
     el.dispatchEvent(new Event('input',  { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('blur',   { bubbles: true }));
     log(`fill  "${value}"`, 'success');
   }
 
-  async clear(): Promise<void> { await this.fill(''); }
+  async clear(opts?: { timeout?: number }): Promise<void> { await this.fill('', opts); }
 
-  async type(text: string, opts?: { delay?: number }): Promise<void> {
-    const el = this._el() as HTMLInputElement | null;
-    if (!el) throw new Error(`Locator.type(): no element found`);
+  async type(text: string, opts?: { delay?: number; timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     el.focus();
     for (const ch of text) {
       if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
@@ -165,9 +171,8 @@ class Locator {
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  async press(key: string): Promise<void> {
-    const el = this._el() as HTMLElement | null;
-    if (!el) throw new Error(`Locator.press(): no element found`);
+  async press(key: string, opts?: { timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout);
     const kOpts = { key, bubbles: true, cancelable: true };
     el.dispatchEvent(new KeyboardEvent('keydown',  kOpts));
     el.dispatchEvent(new KeyboardEvent('keypress', kOpts));
@@ -178,9 +183,8 @@ class Locator {
     }
   }
 
-  async selectOption(value: string | string[]): Promise<void> {
-    const el = this._el() as HTMLSelectElement | null;
-    if (!el) throw new Error(`Locator.selectOption(): no element found`);
+  async selectOption(value: string | string[], opts?: { timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout) as HTMLSelectElement;
     const vals = Array.isArray(value) ? value : [value];
     for (const opt of Array.from(el.options)) {
       opt.selected = vals.includes(opt.value) || vals.includes(opt.text);
@@ -188,30 +192,28 @@ class Locator {
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  async check(): Promise<void> {
-    const el = this._el() as HTMLInputElement | null;
-    if (!el) throw new Error(`Locator.check(): no element found`);
+  async check(opts?: { timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
   }
 
-  async uncheck(): Promise<void> {
-    const el = this._el() as HTMLInputElement | null;
-    if (!el) throw new Error(`Locator.uncheck(): no element found`);
+  async uncheck(opts?: { timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
   }
 
-  async focus(): Promise<void> {
-    (this._el() as HTMLElement | null)?.focus();
+  async focus(opts?: { timeout?: number }): Promise<void> {
+    (await this._waitForEl(opts?.timeout)).focus();
   }
 
-  async hover(): Promise<void> {
-    const el = this._el() as HTMLElement | null;
-    el?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-    el?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+  async hover(opts?: { timeout?: number }): Promise<void> {
+    const el = await this._waitForEl(opts?.timeout);
+    el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
   }
 
-  async scrollIntoViewIfNeeded(): Promise<void> {
-    (this._el() as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
+  async scrollIntoViewIfNeeded(opts?: { timeout?: number }): Promise<void> {
+    (await this._waitForEl(opts?.timeout)).scrollIntoView({ block: 'nearest' });
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
