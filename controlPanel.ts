@@ -279,6 +279,8 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): s
                 <div class="control-section">
                     <div class="section-title">Actions</div>
                     <div class="control-group">
+                        <button class="primary" onclick="runDemoLogin()" style="background: #4caf50;">🔐 Demo Login</button>
+                        <button onclick="debugPageElements()">🔍 Debug Elements</button>
                         <button onclick="performClick()">Click Selected</button>
                         <button onclick="performType()">Type Text</button>
                         <input type="text" id="typeInput" placeholder="Text to type...">
@@ -484,6 +486,210 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string): s
                 log('Inspector mode: ON', 'success');
             } else {
                 log('Inspector mode: OFF', 'info');
+            }
+        }
+        
+        // Demo login script
+        function runDemoLogin() {
+            try {
+                log('🔐 Starting demo login...', 'info');
+                
+                // First, let's see what inputs we have
+                const inputs = window.testApi.get('input');
+                log('Found ' + inputs.length + ' input fields on page', 'info');
+                
+                if (inputs.length === 0) {
+                    log('❌ No input fields found! Try clicking Debug Elements to see page structure', 'error');
+                    return;
+                }
+                
+                // Log all inputs
+                inputs.forEach((input, idx) => {
+                    const id = input.getAttribute('id') || '(none)';
+                    const type = input.getAttribute('type') || 'text';
+                    log('  Input ' + idx + ': id="' + id + '" type="' + type + '"', 'info');
+                });
+                
+                // Try to find username field - try different selectors
+                let usernameInput = null;
+                let usernameSelector = null;
+                
+                // Method 1: Look for text input
+                const textInputs = window.testApi.get('input[type="text"]');
+                if (textInputs.length > 0) {
+                    usernameInput = textInputs[0];
+                    usernameSelector = 'input[type="text"]';
+                    log('✓ Found username field: input[type="text"]', 'success');
+                } else {
+                    log('❌ No text input found', 'error');
+                    return;
+                }
+                
+                // Fill username
+                if (usernameInput) {
+                    // Focus first
+                    usernameInput.focus();
+                    
+                    // Clear any existing value
+                    usernameInput.value = '';
+                    usernameInput.dispatchEvent(new Event('focus', { bubbles: true }));
+                    
+                    // Simulate typing with keyboard events
+                    const username = 'standard_user';
+                    for (let i = 0; i < username.length; i++) {
+                        const char = username[i];
+                        usernameInput.value += char;
+                        usernameInput.dispatchEvent(new KeyboardEvent('keydown', { 
+                            key: char, 
+                            code: char, 
+                            bubbles: true 
+                        }));
+                        usernameInput.dispatchEvent(new KeyboardEvent('keypress', { 
+                            key: char, 
+                            code: char, 
+                            bubbles: true 
+                        }));
+                        usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        usernameInput.dispatchEvent(new KeyboardEvent('keyup', { 
+                            key: char, 
+                            code: char, 
+                            bubbles: true 
+                        }));
+                    }
+                    
+                    usernameInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    usernameInput.dispatchEvent(new Event('blur', { bubbles: true }));
+                    log('✓ Username entered: standard_user', 'success');
+                }
+                
+                // Find password field
+                const passwordInputs = window.testApi.get('input[type="password"]');
+                if (passwordInputs.length > 0) {
+                    const passwordInput = passwordInputs[0];
+                    
+                    // Focus first
+                    passwordInput.focus();
+                    
+                    // Clear any existing value
+                    passwordInput.value = '';
+                    passwordInput.dispatchEvent(new Event('focus', { bubbles: true }));
+                    
+                    // Simulate typing with keyboard events
+                    const password = 'secret_sauce';
+                    for (let i = 0; i < password.length; i++) {
+                        const char = password[i];
+                        passwordInput.value += char;
+                        passwordInput.dispatchEvent(new KeyboardEvent('keydown', { 
+                            key: char, 
+                            code: char, 
+                            bubbles: true 
+                        }));
+                        passwordInput.dispatchEvent(new KeyboardEvent('keypress', { 
+                            key: char, 
+                            code: char, 
+                            bubbles: true 
+                        }));
+                        passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        passwordInput.dispatchEvent(new KeyboardEvent('keyup', { 
+                            key: char, 
+                            code: char, 
+                            bubbles: true 
+                        }));
+                    }
+                    
+                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    passwordInput.dispatchEvent(new Event('blur', { bubbles: true }));
+                    log('✓ Password entered', 'success');
+                } else {
+                    log('❌ No password field found', 'error');
+                    return;
+                }
+                
+                // Find and click login button
+                let loginButton = null;
+                
+                // Try multiple selector strategies
+                if (window.testApi.find('#login-button')) {
+                    loginButton = window.testApi.find('#login-button');
+                    log('✓ Found login button: #login-button', 'info');
+                } else if (window.testApi.find('button[type="submit"]')) {
+                    loginButton = window.testApi.find('button[type="submit"]');
+                    log('✓ Found login button: button[type="submit"]', 'info');
+                } else {
+                    const allButtons = window.testApi.get('button');
+                    if (allButtons.length > 0) {
+                        loginButton = allButtons[0];
+                        log('✓ Found login button: first button on page', 'info');
+                    }
+                }
+                
+                if (!loginButton) {
+                    log('❌ No login button found', 'error');
+                    return;
+                }
+                
+                // Simulate click with proper events
+                loginButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                loginButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+                loginButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                
+                // Also try direct click method
+                loginButton.click();
+                
+                // Try to trigger form submit if button is in a form
+                if (loginButton.form) {
+                    loginButton.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                    log('✓ Form submit triggered', 'info');
+                }
+                
+                log('✓ Login button clicked, waiting for navigation...', 'success');
+                
+                // Check result after 3 seconds
+                setTimeout(() => {
+                    const url = window.testApi.url();
+                    const title = window.testApi.title();
+                    
+                    if (url.includes('inventory') || title.includes('Swag')) {
+                        log('✨ Login successful! Welcome to ' + title, 'success');
+                    } else {
+                        log('⚠️  Navigation happened. Current URL: ' + url, 'info');
+                    }
+                }, 3000);
+                
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'error');
+            }
+        }
+        
+        // Debug function to show page elements
+        function debugPageElements() {
+            try {
+                log('🔍 Scanning page elements...', 'info');
+                
+                // Find all inputs
+                const inputs = window.testApi.get('input');
+                log('Found ' + inputs.length + ' input fields', 'info');
+                
+                inputs.forEach((input, idx) => {
+                    const id = input.getAttribute('id') || 'N/A';
+                    const name = input.getAttribute('name') || 'N/A';
+                    const type = input.getAttribute('type') || 'N/A';
+                    const dataTest = input.getAttribute('data-test') || 'N/A';
+                    log('  [' + idx + '] id="' + id + '" name="' + name + '" type="' + type + '" data-test="' + dataTest + '"', 'info');
+                });
+                
+                // Find all buttons
+                const buttons = window.testApi.get('button');
+                log('Found ' + buttons.length + ' buttons', 'info');
+                
+                buttons.forEach((btn, idx) => {
+                    const id = btn.getAttribute('id') || 'N/A';
+                    const text = btn.textContent.trim() || 'N/A';
+                    const dataTest = btn.getAttribute('data-test') || 'N/A';
+                    log('  [' + idx + '] id="' + id + '" text="' + text + '" data-test="' + dataTest + '"', 'info');
+                });                
+            } catch (error) {
+                log('❌ Error: ' + error.message, 'error');
             }
         }
         

@@ -11,7 +11,9 @@ import { TestServer } from './server';
 export class CypressSafariWrapper {
   private proxy: any;
   private session: any;
+  private controlPanelSession: any;
   private proxyUrl: string = '';
+  private controlPanelProxyUrl: string = '';
   private targetUrl: string = '';
   private testApi: TestApi | null = null;
   private server: TestServer | null = null;
@@ -35,7 +37,7 @@ export class CypressSafariWrapper {
   }
 
   /**
-   * Initialize the proxy and create a session
+   * Initialize the proxy and create sessions
    */
   private initializeProxy(): void {
     class ProxySession extends hammerhead.Session {
@@ -66,6 +68,13 @@ export class CypressSafariWrapper {
     // @ts-ignore
     this.session = new ProxySession([], {});
     this.proxyUrl = this.proxy.openSession(this.targetUrl, this.session);
+
+    // Create a second session for the control panel server (localhost:3000)
+    // This bypasses CSP and allows the control panel to access the iframe
+    // @ts-ignore
+    this.controlPanelSession = new ProxySession([], {});
+    const controlPanelLocalUrl = `http://localhost:${this.config.controlPanelPort}`;
+    this.controlPanelProxyUrl = this.proxy.openSession(controlPanelLocalUrl, this.controlPanelSession);
   }
 
   /**
@@ -91,25 +100,25 @@ export class CypressSafariWrapper {
       // Create test API
       this.testApi = new TestApi(this.injector);
 
-      // Start control panel server
+      // Start control panel server (on localhost:3000)
       this.server = new TestServer(this.config.controlPanelPort);
       await this.server.start(this.proxyUrl, this.targetUrl);
 
-      const controlPanelUrl = `http://localhost:${this.config.controlPanelPort}`;
-
-      console.log(`✅ Control Panel server started at ${controlPanelUrl}`);
-      console.log(`📦 Proxy URL: ${this.proxyUrl}`);
+      console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);
+      console.log(`✅ Control Panel via proxy at ${this.controlPanelProxyUrl}`);
+      console.log(`📦 Target proxy URL: ${this.proxyUrl}`);
       console.log(`🎯 Target URL: ${this.targetUrl}`);
 
       if (!this.config.headless) {
-        // Open in browser
+        // Open in browser via proxy to bypass CSP
         const { exec } = require('child_process');
         console.log(`\n🌐 Opening browser...`);
         
-        exec(`open "${controlPanelUrl}"`, (err: Error | null) => {
+        exec(`open "${this.controlPanelProxyUrl}"`, (err: Error | null) => {
           if (err) {
             console.error('Failed to open browser:', err.message);
-            console.log(`\n📍 Visit manually: ${controlPanelUrl}`);
+            console.log(`\n📍 Visit via proxy: ${this.controlPanelProxyUrl}`);
+            console.log(`📍 Or visit locally: http://localhost:${this.config.controlPanelPort}`);
           } else {
             console.log(`✅ Browser opened successfully`);
           }
@@ -120,7 +129,8 @@ export class CypressSafariWrapper {
       }
 
       console.log(`\n✨ Control Panel ready for use`);
-      console.log(`\n💡 Open: ${controlPanelUrl}\n`);
+      console.log(`\n💡 Open via proxy: ${this.controlPanelProxyUrl}`);
+      console.log(`💡 Or locally: http://localhost:${this.config.controlPanelPort}\n`);
 
       return this.testApi;
     } catch (error) {

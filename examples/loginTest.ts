@@ -96,11 +96,4 @@ What this test does:
    window.testApi.url()
    window.testApi.title()
 `);
-    } catch (error) {
-        console.error('❌ Test failed:', error);
-        await wrapper.stop();
-        process.exit(1);
-    }
-}
 
-testLoginFlow();

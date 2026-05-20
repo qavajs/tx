@@ -83,11 +83,4 @@ What this test does:
 
 The test runs completely in the iframe context and can interact with the site!
 `);
-    } catch (error) {
-        console.error('❌ Test failed:', error);
-        await wrapper.stop();
-        process.exit(1);
-    }
-}
 
-testShoppingFlow();
