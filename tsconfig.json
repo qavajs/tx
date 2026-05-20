@@ -13,5 +13,11 @@
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
     "allowJs": true
-  }
+  },
+  "exclude": [
+    "build.mjs",
+    "dist",
+    "node_modules",
+    "examples"
+  ]
 }

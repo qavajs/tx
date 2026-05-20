@@ -1,5 +1,6 @@
 import * as esbuild from 'esbuild';
-import { cpSync, mkdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const watch = process.argv.includes('--watch');
 
@@ -25,8 +26,21 @@ await esbuild.build({
   minify: !watch,
 });
 
-// Package test files alongside the server bundle
-mkdirSync('dist/examples', { recursive: true });
-cpSync('examples', 'dist/examples', { recursive: true, force: true });
+// Bundle test files from examples/ so they support TypeScript and ES imports
+const testFiles = readdirSync('examples')
+  .filter(f => /\.(js|ts)$/.test(f))
+  .map(f => join('examples', f));
+
+if (testFiles.length > 0) {
+  await esbuild.build({
+    ...sharedOpts,
+    entryPoints: testFiles,
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    outdir: 'dist/examples',
+    minify: !watch,
+  });
+}
 
 console.log('✅  Build complete → dist/');

@@ -588,8 +588,8 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
 
     <header class="tx-topbar">
         <div class="tx-logo">
-            <div class="tx-logo-mark">CS</div>
-            <span class="tx-logo-name">cypress‑safari</span>
+            <div class="tx-logo-mark">TX</div>
+            <span class="tx-logo-name">Test Expert</span>
         </div>
         <div class="tx-topbar-div"></div>
         <button class="tx-run-all-btn" id="runAllBtn" onclick="window.runAll && window.runAll()">
