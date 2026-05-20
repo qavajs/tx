@@ -509,6 +509,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
 
         .tx-cmd.pass { border-left-color: var(--pass); }
         .tx-cmd.fail { border-left-color: var(--fail); }
+        .tx-cmd.pending { border-left-color: var(--warn); }
         .tx-cmd.info { border-left-color: transparent; }
 
         .tx-cmd-icon {
@@ -519,6 +520,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
         .tx-cmd-icon.pass { color: var(--pass); }
         .tx-cmd-icon.fail { color: var(--fail); }
+        .tx-cmd-icon.pending { color: var(--warn); }
         .tx-cmd-icon.info { color: var(--text-muted); }
 
         .tx-cmd-label {
@@ -530,6 +532,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
         .tx-cmd-label.pass { color: var(--pass); }
         .tx-cmd-label.fail { color: var(--fail); }
+        .tx-cmd-label.pending { color: var(--warn); }
         .tx-cmd-label.info { color: var(--text-muted); }
 
         .tx-cmd-msg {
@@ -537,6 +540,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             color: var(--text);
             word-break: break-word;
         }
+        .tx-cmd.pending .tx-cmd-msg { color: var(--text-dim); }
         .tx-cmd.info .tx-cmd-msg { color: var(--text-dim); }
 
         .tx-cmd-dur {

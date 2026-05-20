@@ -179,20 +179,80 @@ export function closeExtraTabs() {
 
 // ── Command Log ───────────────────────────────────────────────────────────────
 
-export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string) {
+type LogState = 'pending' | 'info' | 'pass' | 'fail';
+
+const LOG_STATE: Record<LogState, { icon: string }> = {
+  pending: { icon: '…' },
+  info:    { icon: '›' },
+  pass:    { icon: '✓' },
+  fail:    { icon: '✗' },
+};
+
+function createLogEntry(message: string, state: LogState, cmd?: string, duration?: number) {
   const container = document.getElementById('console');
-  if (!container) return;
-  const cls   = type === 'success' ? 'pass' : type === 'error' ? 'fail' : 'info';
-  const icon  = type === 'success' ? '✓'   : type === 'error'  ? '✗'    : '›';
-  const label = cmd ?? (type === 'success' ? 'ok' : type === 'error' ? 'err' : 'log');
+  if (!container) return null;
+  const cls   = state;
+  const icon  = LOG_STATE[state].icon;
+  const label = cmd ?? (state === 'pass' ? 'ok' : state === 'fail' ? 'err' : state === 'pending' ? 'pending' : 'log');
   const entry = document.createElement('div');
   entry.className = `tx-cmd ${cls}`;
   const iconEl  = document.createElement('span'); iconEl.className  = `tx-cmd-icon ${cls}`;  iconEl.textContent  = icon;
   const labelEl = document.createElement('span'); labelEl.className = `tx-cmd-label ${cls}`; labelEl.textContent = label;
   const msgEl   = document.createElement('span'); msgEl.className   = 'tx-cmd-msg';          msgEl.textContent   = message;
   entry.appendChild(iconEl); entry.appendChild(labelEl); entry.appendChild(msgEl);
+  if (duration != null) {
+    const durEl = document.createElement('span'); durEl.className = 'tx-cmd-dur'; durEl.textContent = duration + 'ms';
+    entry.appendChild(durEl);
+  }
   container.appendChild(entry);
   container.scrollTop = container.scrollHeight;
+  return entry;
+}
+
+function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail', duration?: number) {
+  if (!entry) return;
+  entry.classList.remove('pending', 'info', 'pass', 'fail');
+  entry.classList.add(state);
+  const iconEl  = entry.querySelector<HTMLElement>('.tx-cmd-icon');
+  const labelEl = entry.querySelector<HTMLElement>('.tx-cmd-label');
+  if (iconEl) {
+    iconEl.className = `tx-cmd-icon ${state}`;
+    iconEl.textContent = state === 'pass' ? '✓' : '✗';
+  }
+  if (labelEl) {
+    labelEl.className = `tx-cmd-label ${state}`;
+  }
+  if (duration != null) {
+    let durEl = entry.querySelector<HTMLElement>('.tx-cmd-dur');
+    if (!durEl) {
+      durEl = document.createElement('span');
+      durEl.className = 'tx-cmd-dur';
+      entry.appendChild(durEl);
+    }
+    durEl.textContent = duration + 'ms';
+  }
+}
+
+export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string, duration?: number) {
+  const state = type === 'success' ? 'pass' : type === 'error' ? 'fail' : 'info';
+  createLogEntry(message, state, cmd, duration);
+}
+
+export function logCommand(message: string, cmd: string) {
+  const entry = createLogEntry(message, 'pending', cmd);
+  const startedAt = Date.now();
+  return {
+    success(duration?: number) {
+      updateLogEntry(entry, 'pass', duration ?? Math.max(0, Date.now() - startedAt));
+    },
+    fail(error?: string) {
+      if (error && entry) {
+        const msgEl = entry.querySelector<HTMLElement>('.tx-cmd-msg');
+        if (msgEl) msgEl.textContent += ` — ${error}`;
+      }
+      updateLogEntry(entry, 'fail', Math.max(0, Date.now() - startedAt));
+    },
+  };
 }
 
 // ── Playwright-style Locator ──────────────────────────────────────────────────
@@ -270,147 +330,213 @@ export class Locator {
   // ── Actions ───────────────────────────────────────────────────────────────
 
   async click(opts?: { force?: boolean; timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el = await this._waitForEl(opts?.timeout);
-    el.click();
-    log(this._desc, 'success', 'click');
+    const entry = logCommand(this._desc, 'click');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForEl(opts?.timeout);
+      el.click();
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   }
 
   async dblclick(opts?: { timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el = await this._waitForEl(opts?.timeout);
-    el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    log(this._desc, 'success', 'dblclick');
+    const entry = logCommand(this._desc, 'dblclick');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForEl(opts?.timeout);
+      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   }
 
   async fill(value: string, opts?: { timeout?: number; delay?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el    = await this._waitForEl(opts?.timeout) as HTMLInputElement | HTMLTextAreaElement;
-    const win   = iframeWin() as any;
-    const delay = opts?.delay ?? 30;
+    const entry = logCommand(this._desc ? `${this._desc}  "${value}"` : `"${value}"`, 'fill');
+    try {
+      await _checkLocatorHandlers();
+      const el    = await this._waitForEl(opts?.timeout) as HTMLInputElement | HTMLTextAreaElement;
+      const win   = iframeWin() as any;
+      const delay = opts?.delay ?? 30;
 
-    // Use the iframe's own constructors so events are trusted by page scripts
-    const KE = win.KeyboardEvent as typeof KeyboardEvent;
-    const E  = win.Event        as typeof Event;
+      // Use the iframe's own constructors so events are trusted by page scripts
+      const KE = win.KeyboardEvent as typeof KeyboardEvent;
+      const E  = win.Event        as typeof Event;
 
-    // Native value setter — required for React/Vue controlled inputs
-    const tag    = el.tagName;
-    const proto  = tag === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
-    const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
-    const setVal = (v: string) => { if (setter) setter.call(el, v); else (el as any).value = v; };
+      // Native value setter — required for React/Vue controlled inputs
+      const tag    = el.tagName;
+      const proto  = tag === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
+      const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
+      const setVal = (v: string) => { if (setter) setter.call(el, v); else (el as any).value = v; };
 
-    // Helper: build keyboard event init for a single character
-    const kInit = (ch: string) => {
-      const code    = ch === ' ' ? 32 : ch.charCodeAt(0);
-      const isAlpha = /[a-zA-Z]/.test(ch);
-      return {
-        key:        ch,
-        code:       ch === ' ' ? 'Space' : isAlpha ? 'Key' + ch.toUpperCase() : 'Unidentified',
-        keyCode:    isAlpha ? ch.toUpperCase().charCodeAt(0) : code,
-        charCode:   code,
-        which:      isAlpha ? ch.toUpperCase().charCodeAt(0) : code,
-        bubbles:    true,
-        cancelable: true,
+      // Helper: build keyboard event init for a single character
+      const kInit = (ch: string) => {
+        const code    = ch === ' ' ? 32 : ch.charCodeAt(0);
+        const isAlpha = /[a-zA-Z]/.test(ch);
+        return {
+          key:        ch,
+          code:       ch === ' ' ? 'Space' : isAlpha ? 'Key' + ch.toUpperCase() : 'Unidentified',
+          keyCode:    isAlpha ? ch.toUpperCase().charCodeAt(0) : code,
+          charCode:   code,
+          which:      isAlpha ? ch.toUpperCase().charCodeAt(0) : code,
+          bubbles:    true,
+          cancelable: true,
+        };
       };
-    };
 
-    el.focus();
-    el.dispatchEvent(new E('focus', { bubbles: true }));
+      el.focus();
+      el.dispatchEvent(new E('focus', { bubbles: true }));
 
-    // Clear existing value with a select-all + delete sequence
-    setVal('');
-    el.dispatchEvent(new E('input', { bubbles: true }));
-
-    // Type character by character
-    let current = '';
-    for (const ch of value) {
-      const ki = kInit(ch);
-      el.dispatchEvent(new KE('keydown',  ki));
-      el.dispatchEvent(new KE('keypress', ki));
-      current += ch;
-      setVal(current);
+      // Clear existing value with a select-all + delete sequence
+      setVal('');
       el.dispatchEvent(new E('input', { bubbles: true }));
-      el.dispatchEvent(new KE('keyup', ki));
-      if (delay > 0) await new Promise(r => setTimeout(r, delay));
-    }
 
-    el.dispatchEvent(new E('change', { bubbles: true }));
-    el.dispatchEvent(new E('blur',   { bubbles: true }));
-    log(this._desc ? `${this._desc}  "${value}"` : `"${value}"`, 'success', 'fill');
+      // Type character by character
+      let current = '';
+      for (const ch of value) {
+        const ki = kInit(ch);
+        el.dispatchEvent(new KE('keydown',  ki));
+        el.dispatchEvent(new KE('keypress', ki));
+        current += ch;
+        setVal(current);
+        el.dispatchEvent(new E('input', { bubbles: true }));
+        el.dispatchEvent(new KE('keyup', ki));
+        if (delay > 0) await new Promise(r => setTimeout(r, delay));
+      }
+
+      el.dispatchEvent(new E('change', { bubbles: true }));
+      el.dispatchEvent(new E('blur',   { bubbles: true }));
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   }
 
   async clear(opts?: { timeout?: number }): Promise<void> { await this.fill('', opts); }
 
   async type(text: string, opts?: { delay?: number; timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
-    el.focus();
-    for (const ch of text) {
-      if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
-      el.value += ch;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
+    const entry = logCommand(this._desc ? `${this._desc}  "${text}"` : `"${text}"`, 'type');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
+      el.focus();
+      for (const ch of text) {
+        if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
+        el.value += ch;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
     }
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    log(this._desc ? `${this._desc}  "${text}"` : `"${text}"`, 'success', 'type');
   }
 
   async press(key: string, opts?: { timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el = await this._waitForEl(opts?.timeout);
-    const kOpts = { key, bubbles: true, cancelable: true };
-    el.dispatchEvent(new KeyboardEvent('keydown',  kOpts));
-    el.dispatchEvent(new KeyboardEvent('keypress', kOpts));
-    el.dispatchEvent(new KeyboardEvent('keyup',    kOpts));
-    if (key === 'Enter') {
-      const form = (el as HTMLInputElement).form;
-      if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    const entry = logCommand(this._desc ? `${this._desc}  ${key}` : key, 'press');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForEl(opts?.timeout);
+      const kOpts = { key, bubbles: true, cancelable: true };
+      el.dispatchEvent(new KeyboardEvent('keydown',  kOpts));
+      el.dispatchEvent(new KeyboardEvent('keypress', kOpts));
+      el.dispatchEvent(new KeyboardEvent('keyup',    kOpts));
+      if (key === 'Enter') {
+        const form = (el as HTMLInputElement).form;
+        if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
     }
-    log(this._desc ? `${this._desc}  ${key}` : key, 'success', 'press');
   }
 
   async selectOption(value: string | string[], opts?: { timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el = await this._waitForEl(opts?.timeout) as HTMLSelectElement;
-    const vals = Array.isArray(value) ? value : [value];
-    for (const opt of Array.from(el.options)) {
-      opt.selected = vals.includes(opt.value) || vals.includes(opt.text);
+    const entry = logCommand(this._desc ? `${this._desc}  ${Array.isArray(value) ? value.join(', ') : value}` : Array.isArray(value) ? value.join(', ') : value, 'select');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForEl(opts?.timeout) as HTMLSelectElement;
+      const vals = Array.isArray(value) ? value : [value];
+      for (const opt of Array.from(el.options)) {
+        opt.selected = vals.includes(opt.value) || vals.includes(opt.text);
+      }
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
     }
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    log(this._desc ? `${this._desc}  ${vals.join(', ')}` : vals.join(', '), 'success', 'select');
   }
 
   async check(opts?: { timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
-    if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
-    log(this._desc, 'success', 'check');
+    const entry = logCommand(this._desc, 'check');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
+      if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   }
 
   async uncheck(opts?: { timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
-    if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
-    log(this._desc, 'success', 'uncheck');
+    const entry = logCommand(this._desc, 'uncheck');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
+      if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   }
 
   async focus(opts?: { timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    (await this._waitForEl(opts?.timeout)).focus();
-    log(this._desc, 'info', 'focus');
+    const entry = logCommand(this._desc, 'focus');
+    try {
+      await _checkLocatorHandlers();
+      (await this._waitForEl(opts?.timeout)).focus();
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   }
 
   async hover(opts?: { timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    const el = await this._waitForEl(opts?.timeout);
-    el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
-    el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-    log(this._desc, 'info', 'hover');
+    const entry = logCommand(this._desc, 'hover');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForEl(opts?.timeout);
+      el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
+      el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   }
 
   async scrollIntoViewIfNeeded(opts?: { timeout?: number }): Promise<void> {
-    await _checkLocatorHandlers();
-    (await this._waitForEl(opts?.timeout)).scrollIntoView({ block: 'nearest' });
-    log(this._desc, 'info', 'scroll');
+    const entry = logCommand(this._desc, 'scroll');
+    try {
+      await _checkLocatorHandlers();
+      (await this._waitForEl(opts?.timeout)).scrollIntoView({ block: 'nearest' });
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -453,17 +579,22 @@ export class Locator {
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
     const state   = opts?.state   ?? 'visible';
     const timeout = opts?.timeout ?? 5000;
-    log(this._desc ? `${this._desc}  ${state}` : state, 'info', 'waitFor');
+    const entry = logCommand(this._desc ? `${this._desc}  ${state}` : state, 'waitFor');
     const t0 = Date.now();
-    while (Date.now() - t0 < timeout) {
-      const el = this._el();
-      if (state === 'attached'  && el)                        return;
-      if (state === 'detached'  && !el)                       return;
-      if (state === 'visible'   && await this.isVisible())    return;
-      if (state === 'hidden'    && !(await this.isVisible())) return;
-      await new Promise(r => setTimeout(r, 50));
+    try {
+      while (Date.now() - t0 < timeout) {
+        const el = this._el();
+        if (state === 'attached'  && el)                        { entry.success(); return; }
+        if (state === 'detached'  && !el)                       { entry.success(); return; }
+        if (state === 'visible'   && await this.isVisible())    { entry.success(); return; }
+        if (state === 'hidden'    && !(await this.isVisible())) { entry.success(); return; }
+        await new Promise(r => setTimeout(r, 50));
+      }
+      throw new Error(`waitFor(state="${state}") timed out after ${timeout}ms`);
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
     }
-    throw new Error(`waitFor(state="${state}") timed out after ${timeout}ms`);
   }
 }
 
@@ -775,24 +906,27 @@ export const page = {
 
   goto(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      const entry = logCommand(url, 'goto');
       const tab = _activeTab();
-      if (!tab) { reject(new Error('no active tab')); return; }
+      if (!tab) { entry.fail('no active tab'); reject(new Error('no active tab')); return; }
       const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
       if (navInput) navInput.value = url;
-      const timer = setTimeout(() => reject(new Error(`goto("${url}") timed out`)), 30_000);
-      tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+      const timer = setTimeout(() => {
+        entry.fail(`timed out`);
+        reject(new Error(`goto("${url}") timed out`));
+      }, 30_000);
+      tab.iframe.addEventListener('load', () => { clearTimeout(timer); entry.success(); resolve(); }, { once: true });
       tab.iframe.src = toProxiedUrl(url);
-      log(url, 'info', 'goto');
     });
   },
 
   reload(): Promise<void> {
     return new Promise((resolve, reject) => {
+      const entry = logCommand('', 'reload');
       const win = iframeWin();
       const tab = _activeTab();
-      if (!win || !tab) { reject(new Error('no active tab')); return; }
-      log('', 'info', 'reload');
-      tab.iframe.addEventListener('load', () => resolve(), { once: true });
+      if (!win || !tab) { entry.fail('no active tab'); reject(new Error('no active tab')); return; }
+      tab.iframe.addEventListener('load', () => { entry.success(); resolve(); }, { once: true });
       win.location.reload();
     });
   },
@@ -940,15 +1074,23 @@ export const page = {
   // ── Waits ──────────────────────────────────────────────────────────────────
 
   async waitForURL(url: string | RegExp, opts?: { timeout?: number }): Promise<void> {
-    log(String(url), 'info', 'waitForURL');
+    const entry = logCommand(String(url), 'waitForURL');
     const timeout = opts?.timeout ?? 5000;
     const re = typeof url === 'string' ? new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : url;
     const t0 = Date.now();
-    while (Date.now() - t0 < timeout) {
-      if (re.test(page.url())) return;
-      await new Promise(r => setTimeout(r, 50));
+    try {
+      while (Date.now() - t0 < timeout) {
+        if (re.test(page.url())) {
+          entry.success();
+          return;
+        }
+        await new Promise(r => setTimeout(r, 50));
+      }
+      throw new Error(`waitForURL(${url}) timed out — current: ${page.url()}`);
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
     }
-    throw new Error(`waitForURL(${url}) timed out — current: ${page.url()}`);
   },
 
   async waitForSelector(selector: string, opts?: { state?: 'visible'|'attached'; timeout?: number }): Promise<Locator> {
@@ -958,28 +1100,56 @@ export const page = {
   },
 
   async waitForTimeout(ms: number): Promise<void> {
-    log(`${ms}ms`, 'info', 'wait');
-    await new Promise(r => setTimeout(r, ms));
+    const entry = logCommand(`${ms}ms`, 'wait');
+    try {
+      await new Promise(r => setTimeout(r, ms));
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   },
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
 
   keyboard: {
     async press(key: string, _silent = false): Promise<void> {
-      const el = iframeDoc()?.activeElement as HTMLElement | null;
-      if (el) {
-        const o = { key, bubbles: true };
-        el.dispatchEvent(new KeyboardEvent('keydown',  o));
-        el.dispatchEvent(new KeyboardEvent('keypress', o));
-        el.dispatchEvent(new KeyboardEvent('keyup',    o));
+      if (!_silent) {
+        const entry = logCommand(key, 'key.press');
+        try {
+          const el = iframeDoc()?.activeElement as HTMLElement | null;
+          if (el) {
+            const o = { key, bubbles: true };
+            el.dispatchEvent(new KeyboardEvent('keydown',  o));
+            el.dispatchEvent(new KeyboardEvent('keypress', o));
+            el.dispatchEvent(new KeyboardEvent('keyup',    o));
+          }
+          entry.success();
+        } catch (error: any) {
+          entry.fail(error?.message ?? String(error));
+          throw error;
+        }
+      } else {
+        const el = iframeDoc()?.activeElement as HTMLElement | null;
+        if (el) {
+          const o = { key, bubbles: true };
+          el.dispatchEvent(new KeyboardEvent('keydown',  o));
+          el.dispatchEvent(new KeyboardEvent('keypress', o));
+          el.dispatchEvent(new KeyboardEvent('keyup',    o));
+        }
       }
-      if (!_silent) log(key, 'info', 'key.press');
     },
     async type(text: string, opts?: { delay?: number }): Promise<void> {
-      log(`"${text}"`, 'info', 'key.type');
-      for (const ch of text) {
-        if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
-        await page.keyboard.press(ch, true);
+      const entry = logCommand(`"${text}"`, 'key.type');
+      try {
+        for (const ch of text) {
+          if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
+          await page.keyboard.press(ch, true);
+        }
+        entry.success();
+      } catch (error: any) {
+        entry.fail(error?.message ?? String(error));
+        throw error;
       }
     },
   },
@@ -987,8 +1157,14 @@ export const page = {
   // ── Viewport ───────────────────────────────────────────────────────────────
 
   setViewportSize(size: { width: number; height: number }): void {
-    applyViewport(size.width, size.height);
-    log(`${size.width} × ${size.height}`, 'info', 'viewport');
+    const entry = logCommand(`${size.width} × ${size.height}`, 'viewport');
+    try {
+      applyViewport(size.width, size.height);
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   },
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -1027,9 +1203,15 @@ export const page = {
         ? `(${pageFunction.toString()})(${JSON.stringify(arg)})`
         : `(${pageFunction.toString()})()`
       : String(pageFunction);
-    const result = await Promise.resolve(win.eval(code));
-    log(code.slice(0, 50).replace(/\s+/g, ' '), 'info', 'evaluate');
-    return result;
+    const entry = logCommand(code.slice(0, 50).replace(/\s+/g, ' '), 'evaluate');
+    try {
+      const result = await Promise.resolve(win.eval(code));
+      entry.success();
+      return result;
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
   },
 
   addInitScript(script: string | ((...args: any[]) => any), arg?: any): { dispose: () => void } {
@@ -1042,7 +1224,8 @@ export const page = {
       code = script;
     }
     _initScripts.push(code);
-    log(code.slice(0, 50).replace(/\s+/g, ' '), 'info', 'initScript');
+    const entry = logCommand(code.slice(0, 50).replace(/\s+/g, ' '), 'initScript');
+    entry.success();
     return {
       dispose() {
         const i = _initScripts.indexOf(code);
