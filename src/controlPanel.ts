@@ -366,48 +366,6 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
         }
 
         /* upload footer */
-        .cy-upload-footer {
-            flex-shrink: 0;
-            border-top: 1px solid var(--border);
-            padding: 10px 12px 12px;
-        }
-        .cy-upload-footer-label {
-            font-size: 9.5px;
-            font-weight: 700;
-            letter-spacing: 0.6px;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 7px;
-        }
-        input[type="file"] {
-            font-size: 10px;
-            color: var(--text-dim);
-            background: transparent;
-            border: none;
-            width: 100%;
-            margin-bottom: 6px;
-        }
-        .cy-upload-btns { display: flex; gap: 5px; }
-        .cy-upload-btn {
-            flex: 1;
-            padding: 5px 6px;
-            font-size: 11px;
-            font-weight: 600;
-            background: var(--bg-card);
-            color: var(--text-dim);
-            border: 1px solid var(--border-s);
-            border-radius: var(--radius);
-            cursor: pointer;
-            transition: all 0.1s;
-            text-align: center;
-        }
-        .cy-upload-btn:hover { background: var(--bg-hover); color: var(--text); }
-        .cy-upload-btn.primary {
-            background: var(--jade-bg);
-            color: var(--jade);
-            border-color: rgba(0,208,132,0.3);
-        }
-        .cy-upload-btn.primary:hover { background: var(--jade); color: #000; }
 
         #testRunnerStatus {
             font-size: 10px;
@@ -653,15 +611,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             <div class="cy-specs-scroll" id="testList">
                 <div class="cy-empty">Loading specs…</div>
             </div>
-            <div class="cy-upload-footer">
-                <div class="cy-upload-footer-label">Custom file</div>
-                <input type="file" id="testFileInput" accept=".js">
-                <div class="cy-upload-btns">
-                    <button class="cy-upload-btn primary" onclick="window.runTestInBrowser && window.runTestInBrowser()">&#9654; Browser</button>
-                    <button class="cy-upload-btn"         onclick="window.runTestOnServer  && window.runTestOnServer()">&#8679; Server</button>
-                </div>
-                <div id="testRunnerStatus"></div>
-            </div>
+            <div id="testRunnerStatus"></div>
         </nav>
 
         <!-- ── Command Log ────────────────────────────────────────── -->

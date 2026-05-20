@@ -606,6 +606,7 @@ export function parseTestCode(code: string): ParsedTest[] {
   const pageProxy: any = new Proxy({}, { get: () => noop });
   const sandbox = vm.createContext({
     describe, it, test: it,
+    beforeEach: noop, afterEach: noop,
     expect: () => noop,
     cy: new Proxy({}, { get: () => noop }),
     page: pageProxy,
@@ -631,16 +632,27 @@ export function parseTestFile(filePath: string): ParsedFile {
 
 export class TestRunner {
   async runCode(code: string, extraContext: Record<string, any> = {}): Promise<RunResults> {
-    const queue: Array<{ name: string; fn: () => any }> = [];
+    const queue: Array<{ name: string; fn: () => any; beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
     const suiteStack: string[] = [];
+    const hookStack: Array<{ beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
+
+    const beforeEach = (fn: () => any) => {
+      if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push(fn);
+    };
+    const afterEach = (fn: () => any) => {
+      if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push(fn);
+    };
 
     const it = (name: string, fn: () => any) => {
       const full = suiteStack.length ? `${suiteStack.join(' > ')} > ${name}` : name;
-      queue.push({ name: full, fn });
+      const beforeEachs = hookStack.flatMap(s => s.beforeEachs);
+      const afterEachs = hookStack.flatMap(s => s.afterEachs).reverse();
+      queue.push({ name: full, fn, beforeEachs, afterEachs });
     };
     const describe = (name: string, fn: () => void) => {
       suiteStack.push(name);
-      try { fn(); } finally { suiteStack.pop(); }
+      hookStack.push({ beforeEachs: [], afterEachs: [] });
+      try { fn(); } finally { suiteStack.pop(); hookStack.pop(); }
     };
 
     const cypressStub: any = new Proxy({}, {
@@ -657,6 +669,7 @@ export class TestRunner {
 
     const sandbox = vm.createContext({
       describe, it, test: it,
+      beforeEach, afterEach,
       expect: createExpect,
       console, setTimeout, clearTimeout, setInterval, clearInterval, Promise,
       cy: cypressStub,
@@ -679,7 +692,9 @@ export class TestRunner {
     for (const t of queue) {
       const start = Date.now();
       try {
+        for (const hook of t.beforeEachs) await Promise.resolve(hook());
         await Promise.resolve(t.fn());
+        for (const hook of t.afterEachs) await Promise.resolve(hook());
         results.push({ name: t.name, passed: true, duration: Date.now() - start });
       } catch (err: any) {
         results.push({ name: t.name, passed: false, error: err.message, duration: Date.now() - start });

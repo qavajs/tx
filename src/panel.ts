@@ -180,25 +180,41 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
   const filterSuite = opts?.filterSuite;
   const filterTest  = opts?.filterTest;
   const filename    = opts?.filename;
-  const queue: Array<{ name: string; fn: () => any }> = [];
+  const queue: Array<{ name: string; fn: () => any; beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
   const stack: string[] = [];
+  const hookStack: Array<{ beforeEachs: Array<() => any>; afterEachs: Array<() => any> }> = [];
+
+  const beforeEach = (fn: () => any) => {
+    if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push(fn);
+  };
+  const afterEach = (fn: () => any) => {
+    if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push(fn);
+  };
+
   const it = (name: string, fn: () => any) => {
     const suite    = stack.join(' > ');
     const fullName = stack.length ? suite + ' > ' + name : name;
     if (filterSuite && suite !== filterSuite) return;
     if (filterTest && fullName !== filterTest) return;
-    queue.push({ name: fullName, fn });
+    const beforeEachs = hookStack.flatMap(s => s.beforeEachs);
+    const afterEachs  = hookStack.flatMap(s => s.afterEachs).reverse();
+    queue.push({ name: fullName, fn, beforeEachs, afterEachs });
   };
-  const describe = (name: string, fn: () => void) => { stack.push(name); fn(); stack.pop(); };
+  const describe = (name: string, fn: () => void) => {
+    stack.push(name);
+    hookStack.push({ beforeEachs: [], afterEachs: [] });
+    try { fn(); } finally { stack.pop(); hookStack.pop(); }
+  };
 
   try {
     // eslint-disable-next-line no-new-func
     const fn = new Function(
       'describe','it','test','expect','cy','page',
+      'beforeEach','afterEach',
       'setTimeout','clearTimeout','Promise','console',
       code
     );
-    fn(describe, it, it, pwExpect, testApi, page, setTimeout, clearTimeout, Promise, console);
+    fn(describe, it, it, pwExpect, testApi, page, beforeEach, afterEach, setTimeout, clearTimeout, Promise, console);
   } catch (e: any) {
     return [{ name: '(parse/compile error)', passed: false, error: e.message, duration: 0 }];
   }
@@ -208,7 +224,9 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     if (filename) setTestItemStatus(filename, t.name, 'running');
     const t0 = Date.now();
     try {
+      for (const hook of t.beforeEachs) await Promise.resolve(hook());
       await Promise.resolve(t.fn());
+      for (const hook of t.afterEachs) await Promise.resolve(hook());
       const dur = Date.now() - t0;
       results.push({ name: t.name, passed: true, duration: dur });
       if (filename) setTestItemStatus(filename, t.name, 'pass', dur);

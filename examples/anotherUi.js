@@ -1,4 +1,8 @@
 describe('testauto.app', () => {
+    beforeEach(async () => {
+        await page.setViewportSize({ width: 1280, height: 800 });
+    });
+
     it('create task', async () => {
         await page.goto('https://testauto.app/task-manager');
         const addTaskButton = page.locator('.btn-add-task');
@@ -44,6 +48,9 @@ describe('testauto.app', () => {
         const searchInput = page.locator('[aria-label="Search tasks"]');
         await searchInput.fill(name);
         await expect(page.locator(`tr:has-text("${name}")`)).toBeVisible();
+        await page.on('dialog', async dialog => {
+            await dialog.accept();
+        });
         const deleteButton = page.locator(`tr:nth-child(1) [aria-label="Delete task"]`);
         await deleteButton.click();
         await expect(page.locator(`tr:has-text("${name}")`)).not.toBeVisible();

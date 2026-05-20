@@ -344,6 +344,227 @@ export class Locator {
   }
 }
 
+// ── Page event system ─────────────────────────────────────────────────────────
+
+const _pageListeners = new Map<string, Set<(...args: any[]) => any>>();
+
+function _emitPage(event: string, ...args: any[]): void {
+  for (const fn of _pageListeners.get(event) ?? []) {
+    try { fn(...args); } catch (e) { console.error(`page.on('${event}') handler error:`, e); }
+  }
+}
+
+function _addPageListener(event: string, fn: (...args: any[]) => any): void {
+  if (!_pageListeners.has(event)) _pageListeners.set(event, new Set());
+  _pageListeners.get(event)!.add(fn);
+}
+
+function _removePageListener(event: string, fn: (...args: any[]) => any): void {
+  _pageListeners.get(event)?.delete(fn);
+}
+
+let _frameObserver: MutationObserver | null = null;
+
+function _installEventBridges(): void {
+  const win = iframeWin() as any;
+  const doc = iframeDoc();
+  if (!win || !doc) return;
+
+  // ── Window-level patches: guard against re-installing on same window ────────
+  if (!win.__cyEventBridges) {
+    win.__cyEventBridges = true;
+
+    // ── console ───────────────────────────────────────────────────────────────
+    const consoleMethods = ['log', 'debug', 'info', 'warn', 'error', 'trace'] as const;
+    for (const m of consoleMethods) {
+      const orig = (win.console[m] as (...a: any[]) => void).bind(win.console);
+      win.console[m] = (...args: any[]) => {
+        orig(...args);
+        const text = args.map((a: any) => {
+          try { return typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a); }
+          catch { return String(a); }
+        }).join(' ');
+        _emitPage('console', {
+          type:     () => (m === 'warn' ? 'warning' : m),
+          text:     () => text,
+          args:     () => args,
+          location: () => ({ url: win.location?.href ?? '', lineNumber: 0, columnNumber: 0 }),
+        });
+      };
+    }
+
+    // ── pageerror ─────────────────────────────────────────────────────────────
+    win.addEventListener('error', (e: ErrorEvent) => {
+      _emitPage('pageerror', e.error instanceof Error ? e.error : new Error(e.message || String(e)));
+    });
+    win.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+      const err = e.reason instanceof Error ? e.reason : new Error(String(e.reason ?? 'Unhandled promise rejection'));
+      _emitPage('pageerror', err);
+    });
+
+    // ── dialog ────────────────────────────────────────────────────────────────
+    const _makeDialog = (type: string, message: string, defaultValue = '') => {
+      let _accepted = type === 'alert';
+      let _promptText = defaultValue;
+      return {
+        type:         () => type,
+        message:      () => message,
+        defaultValue: () => defaultValue,
+        accept: (text?: string) => { _accepted = true; if (text !== undefined) _promptText = text; },
+        dismiss: () => { _accepted = false; },
+        _result: () => {
+          if (type === 'confirm') return _accepted;
+          if (type === 'prompt')  return _accepted ? _promptText : null;
+          return undefined;
+        },
+      };
+    };
+    win.alert   = (message = '') => { _emitPage('dialog', _makeDialog('alert',   String(message))); };
+    win.confirm = (message = '') => { const d = _makeDialog('confirm', String(message)); _emitPage('dialog', d); return Boolean(d._result()); };
+    win.prompt  = (message = '', def = '') => { const d = _makeDialog('prompt', String(message), String(def)); _emitPage('dialog', d); return d._result() as string | null; };
+
+    // ── popup ─────────────────────────────────────────────────────────────────
+    const _origOpen = (win.open as Function | undefined)?.bind(win);
+    win.open = (url?: string, target?: string, features?: string) => {
+      const popupWin = _origOpen?.(url, target, features) ?? null;
+      _emitPage('popup', { url: () => url ?? '', close: async () => { try { popupWin?.close(); } catch {} } });
+      return popupWin;
+    };
+
+    // ── fetch interception ────────────────────────────────────────────────────
+    if (typeof win.fetch === 'function') {
+      const _origFetch = (win.fetch as typeof fetch).bind(win);
+      win.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url    = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
+        const method = ((init?.method) ?? (typeof input === 'object' && !(input instanceof URL) ? (input as Request).method : undefined) ?? 'GET').toUpperCase();
+        const reqObj = { url: () => url, method: () => method, headers: () => init?.headers ?? {}, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
+        _emitPage('request', reqObj);
+        try {
+          const resp = await _origFetch(input, init);
+          _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, request: () => reqObj });
+          _emitPage('requestfinished', reqObj);
+          return resp;
+        } catch (err) {
+          _emitPage('requestfailed', { ...reqObj, failure: () => ({ errorText: String(err) }) });
+          throw err;
+        }
+      };
+    }
+
+    // ── XHR interception ──────────────────────────────────────────────────────
+    if (win.XMLHttpRequest) {
+      const _proto = win.XMLHttpRequest.prototype as any;
+      const _origXHROpen = _proto.open as Function;
+      const _origXHRSend = _proto.send as Function;
+      _proto.open = function (method: string, url: string | URL, ...rest: any[]) {
+        (this as any)._xMethod = method;
+        (this as any)._xUrl    = String(url);
+        return _origXHROpen.call(this, method, url, ...rest);
+      };
+      _proto.send = function (body?: XMLHttpRequestBodyInit | Document | null) {
+        const self = this as any;
+        const reqObj = { url: () => self._xUrl ?? '', method: () => (self._xMethod ?? 'GET').toUpperCase(), headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
+        _emitPage('request', reqObj);
+        this.addEventListener('load',  () => { _emitPage('response', { url: () => self._xUrl, status: () => self.status, statusText: () => self.statusText, ok: () => self.status >= 200 && self.status < 300, request: () => reqObj }); _emitPage('requestfinished', reqObj); });
+        this.addEventListener('error', () => _emitPage('requestfailed', { ...reqObj, failure: () => ({ errorText: 'Network error' }) }));
+        this.addEventListener('abort', () => _emitPage('requestfailed', { ...reqObj, failure: () => ({ errorText: 'Request aborted' }) }));
+        return _origXHRSend.call(this, body);
+      };
+    }
+
+    // ── WebSocket interception ────────────────────────────────────────────────
+    if (win.WebSocket) {
+      const _OrigWS: typeof WebSocket = win.WebSocket;
+      win.WebSocket = class extends _OrigWS {
+        constructor(url: string | URL, protocols?: string | string[]) {
+          super(url as string, protocols);
+          _emitPage('websocket', this);
+        }
+      };
+      win.WebSocket.CONNECTING = _OrigWS.CONNECTING;
+      win.WebSocket.OPEN       = _OrigWS.OPEN;
+      win.WebSocket.CLOSING    = _OrigWS.CLOSING;
+      win.WebSocket.CLOSED     = _OrigWS.CLOSED;
+    }
+
+    // ── Worker interception ───────────────────────────────────────────────────
+    if (win.Worker) {
+      const _OrigWorker: typeof Worker = win.Worker;
+      win.Worker = class extends _OrigWorker {
+        constructor(scriptURL: string | URL, options?: WorkerOptions) {
+          super(scriptURL, options);
+          _emitPage('worker', this);
+        }
+      };
+    }
+  }
+
+  // ── Document-level listeners (re-install after each navigation) ─────────────
+
+  // download
+  doc.addEventListener('click', (e: MouseEvent) => {
+    const a = (e.target as Element)?.closest?.('a') as HTMLAnchorElement | null;
+    if (!a) return;
+    const href = a.href || '';
+    if (a.hasAttribute('download') || /\.(pdf|zip|tar\.gz|gz|docx?|xlsx?|pptx?|csv|txt|png|jpe?g|gif|mp[34]|exe|dmg|pkg|deb|rpm)(\?|#|$)/i.test(href)) {
+      _emitPage('download', {
+        url:               () => href,
+        suggestedFilename: () => a.download || href.split('/').pop()?.split('?')[0] || 'download',
+      });
+    }
+  }, true);
+
+  // filechooser
+  doc.addEventListener('click', (e: MouseEvent) => {
+    const el    = e.target as HTMLElement;
+    const input = (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'file')
+      ? el as HTMLInputElement
+      : (el.closest?.('input[type="file"]') as HTMLInputElement | null);
+    if (!input) return;
+    _emitPage('filechooser', {
+      element:    () => input,
+      isMultiple: () => input.multiple,
+      accept:     () => input.accept,
+      setFiles:   (files: File[]) => {
+        try {
+          const dt = new DataTransfer();
+          for (const f of files) dt.items.add(f);
+          Object.defineProperty(input, 'files', { value: dt.files, configurable: true, writable: false });
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch { /* ignore */ }
+      },
+    });
+  }, true);
+
+  // frameattached / framedetached / framenavigated (sub-frames inside the page)
+  _frameObserver?.disconnect();
+  _frameObserver = new MutationObserver((mutations: MutationRecord[]) => {
+    for (const m of mutations) {
+      for (const node of Array.from(m.addedNodes)) {
+        const el = node as HTMLElement;
+        if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+          const frame = { url: () => (el as HTMLIFrameElement).src, name: () => (el as any).name ?? '', isMainFrame: () => false };
+          _emitPage('frameattached', frame);
+          el.addEventListener('load', () => {
+            try {
+              const url = (el as HTMLIFrameElement).contentWindow?.location.href ?? (el as HTMLIFrameElement).src;
+              _emitPage('framenavigated', { url: () => url, name: () => (el as any).name ?? '', isMainFrame: () => false });
+            } catch { /* cross-origin sub-frame */ }
+          });
+        }
+      }
+      for (const node of Array.from(m.removedNodes)) {
+        const el = node as HTMLElement;
+        if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+          _emitPage('framedetached', { url: () => (el as HTMLIFrameElement).src, name: () => (el as any).name ?? '', isMainFrame: () => false });
+        }
+      }
+    }
+  });
+  const docRoot = doc.documentElement ?? doc.body;
+  if (docRoot) _frameObserver.observe(docRoot, { subtree: true, childList: true });
+}
+
 // ── Playwright-style page ─────────────────────────────────────────────────────
 
 const ROLE_SELECTORS: Record<string, string> = {
@@ -571,6 +792,36 @@ export const page = {
   setViewportSize(size: { width: number; height: number }): void {
     applyViewport(size.width, size.height);
     log(`viewport  ${size.width} × ${size.height}`, 'info');
+  },
+
+  // ── Events ─────────────────────────────────────────────────────────────────
+  //
+  // Supported events:
+  //   close · console · crash · dialog · domcontentloaded · download
+  //   filechooser · frameattached · framedetached · framenavigated · load
+  //   pageerror · popup · request · requestfailed · requestfinished
+  //   response · websocket · worker
+
+  on(event: string, fn: (...args: any[]) => any) {
+    _addPageListener(event, fn);
+    return page;
+  },
+
+  off(event: string, fn: (...args: any[]) => any) {
+    _removePageListener(event, fn);
+    return page;
+  },
+
+  once(event: string, fn: (...args: any[]) => any) {
+    const wrapper = (...args: any[]) => { _removePageListener(event, wrapper); fn(...args); };
+    _addPageListener(event, wrapper);
+    return page;
+  },
+
+  async close(): Promise<void> {
+    _emitPage('close');
+    if (iframe) { iframe.remove(); iframe = null; }
+    log('page closed', 'info');
   },
 };
 
@@ -857,12 +1108,29 @@ export function initIframe() {
   iframe.sandbox.add('allow-popups');
   iframe.sandbox.add('allow-modals');
   iframe.sandbox.add('allow-top-navigation-by-user-activation');
-  iframe.onload = () => {
+  iframe.addEventListener('load', () => {
     log('iframe ready', 'success');
     reapplyViewport();
-  };
-  iframe.onerror = () => log('iframe load error', 'error');
+    _emitPage('domcontentloaded');
+    _emitPage('load');
+    _emitPage('framenavigated', { url: () => page.url(), name: () => '', isMainFrame: () => true });
+    _installEventBridges();
+  });
+  iframe.addEventListener('error', () => {
+    log('iframe load error', 'error');
+    _emitPage('crash');
+  });
   container.appendChild(iframe);
+
+  // close event: fire when the iframe element is removed from its container
+  const _closeObserver = new MutationObserver(() => {
+    if (iframe && !container.contains(iframe)) {
+      _closeObserver.disconnect();
+      _emitPage('close');
+    }
+  });
+  _closeObserver.observe(container, { childList: true });
+
   iframe.src = API_BASE + '/mock';
   log(`iframe → mock page`, 'info');
 
