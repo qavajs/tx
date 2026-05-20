@@ -21,6 +21,33 @@ export { Page, Locator, createExpect };
 export type { Reporter, FullConfig, Suite, TestCase, ReporterTestResult as ReporterTestResult, FullResult };
 export { ReporterEmitter } from './reporter';
 
+// ── Fixture types ─────────────────────────────────────────────────────────────
+
+export type UseCallback<T> = (value: T) => Promise<void>;
+export type FixtureFn<T, F extends Record<string, any> = Record<string, any>> =
+  (fixtures: F, use: UseCallback<T>) => Promise<void>;
+export type FixtureDefs<F extends Record<string, any> = Record<string, any>> = {
+  [K in keyof F]: FixtureFn<F[K], any>;
+};
+
+async function runWithFixtures(
+  fixtureDefs: FixtureDefs,
+  builtins: Record<string, any>,
+  testFn: (fixtures: Record<string, any>) => any,
+): Promise<void> {
+  const resolved: Record<string, any> = { ...builtins };
+  const run = Object.entries(fixtureDefs).reduceRight(
+    (inner: () => Promise<void>, [name, fixtureFn]) => async () => {
+      await fixtureFn(resolved, async (value) => {
+        resolved[name] = value;
+        await inner();
+      });
+    },
+    async () => { await testFn(resolved); },
+  );
+  await run();
+}
+
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
 export interface TestResult {
@@ -46,7 +73,13 @@ export interface ParsedFile { filename: string; relPath?: string; tests: ParsedT
 export function parseTestCode(code: string): ParsedTest[] {
   const tests: ParsedTest[] = [];
   const stack: string[] = [];
-  const it = (name: string) => tests.push({ suite: stack.join(' > '), name: String(name) });
+  const pushTest = (name: string) => tests.push({ suite: stack.join(' > '), name: String(name) });
+  const makeParserTestFn = (push: (name: string) => void): any => {
+    const fn: any = (name: string) => push(name);
+    fn.extend = (_defs: any) => makeParserTestFn(push);
+    return fn;
+  };
+  const it = makeParserTestFn(pushTest);
   const describe = (name: string, fn: () => void) => {
     stack.push(String(name));
     try { fn(); } catch { /* ignore body errors during parse */ }
@@ -91,7 +124,8 @@ export class TestRunner {
 
   async runCode(code: string, extraContext: Record<string, any> = {}, _lifecycle = true): Promise<RunResults> {
     type QueueItem = {
-      name: string; fn: () => any;
+      name: string; fn: (fixtures?: any) => any;
+      fixtureDefs: FixtureDefs; expectsFixtures: boolean;
       beforeEachs: Array<() => any>; afterEachs: Array<() => any>;
       setupBeforeAlls: Array<() => any>; teardownAfterAlls: Array<() => any>;
     };
@@ -112,12 +146,28 @@ export class TestRunner {
       if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn);
     };
 
-    const it = (name: string, fn: () => any) => {
-      const full = suiteStack.length ? `${suiteStack.join(' > ')} > ${name}` : name;
-      const beforeEachs = hookStack.flatMap(s => s.beforeEachs);
-      const afterEachs = hookStack.flatMap(s => s.afterEachs).reverse();
-      queue.push({ name: full, fn, beforeEachs, afterEachs, setupBeforeAlls: [], teardownAfterAlls: [] });
+    // Browser-control API and expect are available via require('tx')
+    const _page = new Page();
+
+    const defaultFixtureDefs: FixtureDefs = {
+      page:    async (_f, use) => { await use(_page); },
+      browser: async (_f, use) => { await use(extraContext.browser); },
+      expect:  async (_f, use) => { await use(createExpect); },
     };
+
+    const makeTestFn = (fixtureDefs: FixtureDefs): any => {
+      const testFn = (name: string, fn: (fixtures?: any) => any) => {
+        const full = suiteStack.length ? `${suiteStack.join(' > ')} > ${name}` : name;
+        const beforeEachs = hookStack.flatMap(s => s.beforeEachs);
+        const afterEachs = hookStack.flatMap(s => s.afterEachs).reverse();
+        queue.push({ name: full, fn, fixtureDefs, expectsFixtures: fn.length > 0, beforeEachs, afterEachs, setupBeforeAlls: [], teardownAfterAlls: [] });
+      };
+      testFn.extend = (newDefs: FixtureDefs) => makeTestFn({ ...fixtureDefs, ...newDefs });
+      return testFn;
+    };
+    const baseTest = makeTestFn(defaultFixtureDefs);
+    const it = (name: string, fn: (fixtures?: any) => any) => baseTest(name, fn);
+
     const describe = (name: string, fn: () => void) => {
       suiteStack.push(name);
       hookStack.push({ beforeEachs: [], afterEachs: [], beforeAlls: [], afterAlls: [] });
@@ -143,16 +193,13 @@ export class TestRunner {
         return undefined;
       },
     });
-
-    // Browser-control API and expect are available via require('tx')
-    const _page = new Page();
     const _require = (id: string) => {
       if (id === 'tx') return { page: _page, expect: createExpect, Locator };
       throw new Error(`Cannot find module '${id}'`);
     };
 
     const sandbox = vm.createContext({
-      describe, it, test: it,
+      describe, it, test: baseTest,
       beforeEach, afterEach, beforeAll, afterAll,
       require: _require,
       expect: createExpect,
@@ -188,11 +235,17 @@ export class TestRunner {
       const liveResult: ReporterTestResult = { status: 'passed', duration: 0 };
       this.emitter.emitTestBegin(testCase, liveResult);
 
+      const fixtureBuiltins: Record<string, any> = {};
+
       const start = Date.now();
       try {
         for (const hook of t.setupBeforeAlls) await Promise.resolve(hook());
         for (const hook of t.beforeEachs) await Promise.resolve(hook());
-        await Promise.resolve(t.fn());
+        if (t.expectsFixtures) {
+          await runWithFixtures(t.fixtureDefs, fixtureBuiltins, t.fn);
+        } else {
+          await Promise.resolve(t.fn());
+        }
         for (const hook of t.afterEachs) await Promise.resolve(hook());
         for (const hook of t.teardownAfterAlls) await Promise.resolve(hook());
         liveResult.duration = Date.now() - start;

@@ -331,6 +331,23 @@ interface Browser {
   task<T = unknown>(name: string, payload?: unknown): Promise<T>;
 }
 
+// ── Fixture types ─────────────────────────────────────────────────────────────
+
+type TxUseCallback<T> = (value: T) => Promise<void>;
+type TxFixtureFn<T, F extends Record<string, any>> = (fixtures: F, use: TxUseCallback<T>) => Promise<void>;
+type TxFixtureDefs<F extends Record<string, any>> = { [K in keyof F]: TxFixtureFn<F[K], any> };
+
+interface TxBaseFixtures {
+  page: Page;
+  browser: Browser;
+  expect: { (actual: Locator): LocatorAssertions; (actual: any): ValueAssertions };
+}
+
+interface TestFactory<F extends Record<string, any> = TxBaseFixtures> {
+  (name: string, fn: (fixtures: F) => void | Promise<void>): void;
+  extend<NewF extends Record<string, any>>(defs: TxFixtureDefs<NewF>): TestFactory<F & NewF>;
+}
+
 // ── Globals injected by the test runner ───────────────────────────────────────
 
 declare const page: Page;
@@ -340,8 +357,8 @@ declare function expect(actual: Locator): LocatorAssertions;
 declare function expect(actual: any): ValueAssertions;
 
 declare function describe(name: string, fn: () => void): void;
-declare function it(name: string, fn: () => void | Promise<void>): void;
-declare const test: typeof it;
+declare function it(name: string, fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
+declare const test: TestFactory<TxBaseFixtures>;
 declare function beforeAll(fn: () => void | Promise<void>): void;
 declare function afterAll(fn: () => void | Promise<void>): void;
 declare function beforeEach(fn: () => void | Promise<void>): void;
@@ -354,9 +371,11 @@ declare module 'tx' {
   export { LocatorAssertions, ValueAssertions };
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions };
+  export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory };
 
   export const page: Page;
   export const browser: Browser;
+  export const test: TestFactory<TxBaseFixtures>;
 
   export function expect(actual: Locator): LocatorAssertions;
   export function expect(actual: any): ValueAssertions;
