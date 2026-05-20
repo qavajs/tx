@@ -85,10 +85,10 @@ export function log(message: string, type: 'info' | 'success' | 'error' = 'info'
   const icon  = type === 'success' ? '✓'   : type === 'error'  ? '✗'    : '›';
   const label = type === 'success' ? 'ok'  : type === 'error'  ? 'err'   : 'log';
   const entry = document.createElement('div');
-  entry.className = `cy-cmd ${cls}`;
-  const iconEl  = document.createElement('span'); iconEl.className  = `cy-cmd-icon ${cls}`;  iconEl.textContent  = icon;
-  const labelEl = document.createElement('span'); labelEl.className = `cy-cmd-label ${cls}`; labelEl.textContent = label;
-  const msgEl   = document.createElement('span'); msgEl.className   = 'cy-cmd-msg';          msgEl.textContent   = message;
+  entry.className = `tx-cmd ${cls}`;
+  const iconEl  = document.createElement('span'); iconEl.className  = `tx-cmd-icon ${cls}`;  iconEl.textContent  = icon;
+  const labelEl = document.createElement('span'); labelEl.className = `tx-cmd-label ${cls}`; labelEl.textContent = label;
+  const msgEl   = document.createElement('span'); msgEl.className   = 'tx-cmd-msg';          msgEl.textContent   = message;
   entry.appendChild(iconEl); entry.appendChild(labelEl); entry.appendChild(msgEl);
   container.appendChild(entry);
   container.scrollTop = container.scrollHeight;
@@ -1101,7 +1101,7 @@ export function initIframe() {
   const container = document.getElementById('iframe-container')!;
   container.innerHTML = '';
   iframe = document.createElement('iframe');
-  iframe.id = 'cy-virtual-browser';
+  iframe.id = 'tx-virtual-browser';
   iframe.sandbox.add('allow-same-origin');
   iframe.sandbox.add('allow-scripts');
   iframe.sandbox.add('allow-forms');

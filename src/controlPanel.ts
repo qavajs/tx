@@ -50,7 +50,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
 
         /* ══ Topbar ════════════════════════════════════════════════════════ */
 
-        .cy-topbar {
+        .tx-topbar {
             height: 44px;
             background: var(--bg-topbar);
             border-bottom: 1px solid var(--border);
@@ -61,13 +61,13 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             flex-shrink: 0;
         }
 
-        .cy-logo {
+        .tx-logo {
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        .cy-logo-mark {
+        .tx-logo-mark {
             width: 24px;
             height: 24px;
             border-radius: 5px;
@@ -82,21 +82,21 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             flex-shrink: 0;
         }
 
-        .cy-logo-name {
+        .tx-logo-name {
             font-size: 13px;
             font-weight: 600;
             color: var(--text);
             letter-spacing: 0.1px;
         }
 
-        .cy-topbar-div {
+        .tx-topbar-div {
             width: 1px;
             height: 20px;
             background: var(--border-s);
             flex-shrink: 0;
         }
 
-        .cy-run-all-btn {
+        .tx-run-all-btn {
             display: flex;
             align-items: center;
             gap: 6px;
@@ -112,23 +112,23 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             letter-spacing: 0.1px;
         }
 
-        .cy-run-all-btn:hover  { background: #00c07a; box-shadow: 0 0 12px var(--jade-glow); }
-        .cy-run-all-btn:active { background: #00a96c; }
-        .cy-run-all-btn:disabled {
+        .tx-run-all-btn:hover  { background: #00c07a; box-shadow: 0 0 12px var(--jade-glow); }
+        .tx-run-all-btn:active { background: #00a96c; }
+        .tx-run-all-btn:disabled {
             background: var(--bg-card);
             color: var(--text-muted);
             cursor: not-allowed;
             box-shadow: none;
         }
 
-        .cy-topbar-right {
+        .tx-topbar-right {
             margin-left: auto;
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        .cy-status-pill {
+        .tx-status-pill {
             display: flex;
             align-items: center;
             gap: 7px;
@@ -140,7 +140,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             color: var(--text-dim);
         }
 
-        .cy-status-dot {
+        .tx-status-dot {
             width: 7px;
             height: 7px;
             border-radius: 50%;
@@ -148,16 +148,16 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             flex-shrink: 0;
             transition: background 0.3s;
         }
-        .cy-status-dot.ready   { background: var(--jade); box-shadow: 0 0 5px var(--jade); }
-        .cy-status-dot.running { background: var(--warn); animation: cy-pulse 0.9s ease-in-out infinite; }
-        .cy-status-dot.passed  { background: var(--pass); }
-        .cy-status-dot.failed  { background: var(--fail); }
+        .tx-status-dot.ready   { background: var(--jade); box-shadow: 0 0 5px var(--jade); }
+        .tx-status-dot.running { background: var(--warn); animation: tx-pulse 0.9s ease-in-out infinite; }
+        .tx-status-dot.passed  { background: var(--pass); }
+        .tx-status-dot.failed  { background: var(--fail); }
 
-        @keyframes cy-pulse { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
+        @keyframes tx-pulse { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
 
         /* ══ 3-column body ════════════════════════════════════════════════ */
 
-        .cy-body {
+        .tx-body {
             flex: 1;
             display: flex;
             overflow: hidden;
@@ -165,7 +165,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
 
         /* ══ Specs panel ══════════════════════════════════════════════════ */
 
-        .cy-specs {
+        .tx-specs {
             width: 252px;
             flex-shrink: 0;
             background: var(--bg-panel);
@@ -175,7 +175,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             overflow: hidden;
         }
 
-        .cy-panel-hdr {
+        .tx-panel-hdr {
             padding: 9px 14px 8px;
             font-size: 10px;
             font-weight: 700;
@@ -189,18 +189,18 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             justify-content: space-between;
         }
 
-        .cy-specs-scroll {
+        .tx-specs-scroll {
             flex: 1;
             overflow-y: auto;
             padding: 4px 0;
         }
-        .cy-specs-scroll::-webkit-scrollbar { width: 3px; }
-        .cy-specs-scroll::-webkit-scrollbar-thumb { background: var(--border-s); border-radius: 2px; }
+        .tx-specs-scroll::-webkit-scrollbar { width: 3px; }
+        .tx-specs-scroll::-webkit-scrollbar-thumb { background: var(--border-s); border-radius: 2px; }
 
         /* spec card */
-        .cy-spec-card { }
+        .tx-spec-card { }
 
-        .cy-spec-hdr {
+        .tx-spec-hdr {
             display: flex;
             align-items: center;
             padding: 6px 10px 6px 8px;
@@ -209,10 +209,10 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             user-select: none;
             transition: background 0.1s;
         }
-        .cy-spec-hdr:hover { background: var(--bg-hover); }
-        .cy-spec-card.active .cy-spec-hdr { background: var(--bg-active); }
+        .tx-spec-hdr:hover { background: var(--bg-hover); }
+        .tx-spec-card.active .tx-spec-hdr { background: var(--bg-active); }
 
-        .cy-spec-chevron {
+        .tx-spec-chevron {
             width: 12px;
             font-size: 10px;
             color: var(--text-muted);
@@ -220,9 +220,9 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             flex-shrink: 0;
             text-align: center;
         }
-        .cy-spec-card.open .cy-spec-chevron { transform: rotate(90deg); }
+        .tx-spec-card.open .tx-spec-chevron { transform: rotate(90deg); }
 
-        .cy-spec-ext {
+        .tx-spec-ext {
             font-size: 9px;
             font-weight: 700;
             padding: 1px 4px;
@@ -233,7 +233,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             letter-spacing: 0.3px;
         }
 
-        .cy-spec-filename {
+        .tx-spec-filename {
             flex: 1;
             font-family: var(--font-mono);
             font-size: 11.5px;
@@ -243,20 +243,20 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             text-overflow: ellipsis;
         }
 
-        .cy-spec-badges { display: flex; gap: 4px; flex-shrink: 0; }
-        .cy-suite-badges { display: flex; gap: 3px; flex-shrink: 0; }
+        .tx-spec-badges { display: flex; gap: 4px; flex-shrink: 0; }
+        .tx-suite-badges { display: flex; gap: 3px; flex-shrink: 0; }
 
-        .cy-badge {
+        .tx-badge {
             font-size: 10px;
             font-weight: 700;
             padding: 1px 6px;
             border-radius: 10px;
             line-height: 1.5;
         }
-        .cy-badge--pass { background: var(--pass-bg); color: var(--pass); }
-        .cy-badge--fail { background: var(--fail-bg); color: var(--fail); }
+        .tx-badge--pass { background: var(--pass-bg); color: var(--pass); }
+        .tx-badge--fail { background: var(--fail-bg); color: var(--fail); }
 
-        .cy-spec-run-btn {
+        .tx-spec-run-btn {
             width: 20px;
             height: 20px;
             border-radius: 4px;
@@ -272,19 +272,19 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             opacity: 0;
             transition: opacity 0.1s, border-color 0.1s, color 0.1s;
         }
-        .cy-spec-hdr:hover .cy-spec-run-btn { opacity: 1; border-color: var(--jade); color: var(--jade); }
+        .tx-spec-hdr:hover .tx-spec-run-btn { opacity: 1; border-color: var(--jade); color: var(--jade); }
 
         /* spec body: suites + test items */
-        .cy-spec-body { display: none; padding: 0 0 4px; }
-        .cy-spec-card.open .cy-spec-body { display: block; }
+        .tx-spec-body { display: none; padding: 0 0 4px; }
+        .tx-spec-card.open .tx-spec-body { display: block; }
 
-        .cy-suite-row {
+        .tx-suite-row {
             display: flex;
             align-items: center;
             padding: 4px 10px 3px 24px;
             gap: 6px;
         }
-        .cy-suite-name {
+        .tx-suite-name {
             flex: 1;
             font-size: 11px;
             color: var(--text-dim);
@@ -293,7 +293,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .cy-suite-run-btn {
+        .tx-suite-run-btn {
             padding: 1px 6px;
             font-size: 9px;
             background: transparent;
@@ -305,10 +305,10 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             opacity: 0;
             transition: opacity 0.1s, color 0.1s, border-color 0.1s;
         }
-        .cy-suite-row:hover .cy-suite-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
+        .tx-suite-row:hover .tx-suite-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
 
-        .cy-test-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .cy-test-run-btn {
+        .tx-test-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tx-test-run-btn {
             padding: 0px 5px;
             font-size: 8px;
             background: transparent;
@@ -320,9 +320,9 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             opacity: 0;
             transition: opacity 0.1s, color 0.1s, border-color 0.1s;
         }
-        .cy-test-item:hover .cy-test-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
+        .tx-test-item:hover .tx-test-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
 
-        .cy-test-badge {
+        .tx-test-badge {
             font-size: 9px;
             font-weight: 600;
             padding: 1px 5px;
@@ -330,10 +330,10 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             flex-shrink: 0;
             letter-spacing: 0.02em;
         }
-        .cy-test-badge.pass { background: rgba(34,197,94,0.15); color: var(--pass); }
-        .cy-test-badge.fail { background: rgba(239,68,68,0.15);  color: var(--fail); }
+        .tx-test-badge.pass { background: rgba(34,197,94,0.15); color: var(--pass); }
+        .tx-test-badge.fail { background: rgba(239,68,68,0.15);  color: var(--fail); }
 
-        .cy-test-item {
+        .tx-test-item {
             padding: 2px 10px 2px 36px;
             font-size: 11px;
             color: var(--text-muted);
@@ -342,9 +342,9 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             gap: 6px;
             transition: color 0.15s;
         }
-        .cy-test-item.pass { color: var(--text-dim); }
-        .cy-test-item.fail { color: var(--fail); }
-        .cy-test-dot {
+        .tx-test-item.pass { color: var(--text-dim); }
+        .tx-test-item.fail { color: var(--fail); }
+        .tx-test-dot {
             width: 10px;
             font-size: 9px;
             line-height: 1;
@@ -353,14 +353,14 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             color: var(--text-muted);
             transition: color 0.15s;
         }
-        .cy-test-dot::before { content: '–'; }
-        .cy-test-dot.running { color: var(--warn); animation: cy-dot-pulse 0.7s ease-in-out infinite; }
-        .cy-test-dot.running::before { content: '●'; }
-        .cy-test-dot.pass { color: var(--pass); }
-        .cy-test-dot.pass::before { content: '✓'; }
-        .cy-test-dot.fail { color: var(--fail); }
-        .cy-test-dot.fail::before { content: '✕'; }
-        @keyframes cy-dot-pulse {
+        .tx-test-dot::before { content: '–'; }
+        .tx-test-dot.running { color: var(--warn); animation: tx-dot-pulse 0.7s ease-in-out infinite; }
+        .tx-test-dot.running::before { content: '●'; }
+        .tx-test-dot.pass { color: var(--pass); }
+        .tx-test-dot.pass::before { content: '✓'; }
+        .tx-test-dot.fail { color: var(--fail); }
+        .tx-test-dot.fail::before { content: '✕'; }
+        @keyframes tx-dot-pulse {
             0%, 100% { opacity: 1; }
             50%       { opacity: 0.2; }
         }
@@ -375,7 +375,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
 
         /* ══ Command log ══════════════════════════════════════════════════ */
 
-        .cy-log-panel {
+        .tx-log-panel {
             width: 310px;
             flex-shrink: 0;
             background: var(--bg-app);
@@ -385,7 +385,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             overflow: hidden;
         }
 
-        .cy-log-hdr {
+        .tx-log-hdr {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -393,14 +393,14 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
         }
-        .cy-log-title {
+        .tx-log-title {
             font-size: 10px;
             font-weight: 700;
             letter-spacing: 0.8px;
             text-transform: uppercase;
             color: var(--text-dim);
         }
-        .cy-log-clear {
+        .tx-log-clear {
             font-size: 10px;
             color: var(--text-muted);
             background: transparent;
@@ -410,7 +410,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             border-radius: 3px;
             transition: all 0.1s;
         }
-        .cy-log-clear:hover { background: var(--bg-card); color: var(--text); }
+        .tx-log-clear:hover { background: var(--bg-card); color: var(--text); }
 
         #console {
             flex: 1;
@@ -421,7 +421,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
         #console::-webkit-scrollbar-thumb { background: var(--border-s); border-radius: 2px; }
 
         /* log entries */
-        .cy-cmd {
+        .tx-cmd {
             display: flex;
             align-items: baseline;
             padding: 3px 14px 3px 10px;
@@ -431,47 +431,47 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             line-height: 1.55;
             border-left: 2px solid transparent;
         }
-        .cy-cmd:hover { background: var(--bg-card); }
+        .tx-cmd:hover { background: var(--bg-card); }
 
-        .cy-cmd.pass { border-left-color: var(--pass); }
-        .cy-cmd.fail { border-left-color: var(--fail); }
-        .cy-cmd.info { border-left-color: transparent; }
+        .tx-cmd.pass { border-left-color: var(--pass); }
+        .tx-cmd.fail { border-left-color: var(--fail); }
+        .tx-cmd.info { border-left-color: transparent; }
 
-        .cy-cmd-icon {
+        .tx-cmd-icon {
             font-size: 9px;
             width: 13px;
             text-align: center;
             flex-shrink: 0;
         }
-        .cy-cmd-icon.pass { color: var(--pass); }
-        .cy-cmd-icon.fail { color: var(--fail); }
-        .cy-cmd-icon.info { color: var(--text-muted); }
+        .tx-cmd-icon.pass { color: var(--pass); }
+        .tx-cmd-icon.fail { color: var(--fail); }
+        .tx-cmd-icon.info { color: var(--text-muted); }
 
-        .cy-cmd-label {
+        .tx-cmd-label {
             font-size: 9.5px;
             font-weight: 700;
             letter-spacing: 0.3px;
             flex-shrink: 0;
             min-width: 32px;
         }
-        .cy-cmd-label.pass { color: var(--pass); }
-        .cy-cmd-label.fail { color: var(--fail); }
-        .cy-cmd-label.info { color: var(--text-muted); }
+        .tx-cmd-label.pass { color: var(--pass); }
+        .tx-cmd-label.fail { color: var(--fail); }
+        .tx-cmd-label.info { color: var(--text-muted); }
 
-        .cy-cmd-msg {
+        .tx-cmd-msg {
             flex: 1;
             color: var(--text);
             word-break: break-word;
         }
-        .cy-cmd.info .cy-cmd-msg { color: var(--text-dim); }
+        .tx-cmd.info .tx-cmd-msg { color: var(--text-dim); }
 
-        .cy-cmd-dur {
+        .tx-cmd-dur {
             font-size: 10px;
             color: var(--text-muted);
             flex-shrink: 0;
         }
 
-        .cy-log-section {
+        .tx-log-section {
             padding: 7px 14px 3px;
             font-size: 10px;
             font-weight: 700;
@@ -484,7 +484,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
 
         /* ══ Browser panel ════════════════════════════════════════════════ */
 
-        .cy-browser {
+        .tx-browser {
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -493,7 +493,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             min-width: 0;
         }
 
-        .cy-browser-toolbar {
+        .tx-browser-toolbar {
             display: flex;
             align-items: center;
             gap: 8px;
@@ -503,7 +503,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             flex-shrink: 0;
         }
 
-        .cy-nav-btn {
+        .tx-nav-btn {
             width: 28px;
             height: 28px;
             border-radius: var(--radius);
@@ -519,9 +519,9 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             transition: all 0.1s;
             line-height: 1;
         }
-        .cy-nav-btn:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border-s); }
+        .tx-nav-btn:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border-s); }
 
-        .cy-url-bar {
+        .tx-url-bar {
             flex: 1;
             display: flex;
             align-items: center;
@@ -531,9 +531,9 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             overflow: hidden;
             transition: border-color 0.12s;
         }
-        .cy-url-bar:focus-within { border-color: var(--jade); }
+        .tx-url-bar:focus-within { border-color: var(--jade); }
 
-        .cy-url-input {
+        .tx-url-input {
             flex: 1;
             background: transparent;
             border: none;
@@ -543,9 +543,9 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             font-family: var(--font-mono);
             padding: 5px 10px;
         }
-        .cy-url-input::placeholder { color: var(--text-muted); }
+        .tx-url-input::placeholder { color: var(--text-muted); }
 
-        .cy-go-btn {
+        .tx-go-btn {
             padding: 5px 11px;
             background: transparent;
             border: none;
@@ -557,9 +557,9 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             transition: all 0.1s;
             white-space: nowrap;
         }
-        .cy-go-btn:hover { background: var(--jade-bg); color: var(--jade); }
+        .tx-go-btn:hover { background: var(--jade-bg); color: var(--jade); }
 
-        .cy-viewport-tag {
+        .tx-viewport-tag {
             font-size: 10px;
             color: var(--text-muted);
             font-family: var(--font-mono);
@@ -575,7 +575,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
         #iframe-container { flex: 1; overflow: hidden; background: #fff; position: relative; }
         iframe { width: 100%; height: 100%; border: none; display: block; }
 
-        .cy-empty {
+        .tx-empty {
             padding: 24px 14px;
             text-align: center;
             color: var(--text-muted);
@@ -586,52 +586,52 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
 </head>
 <body>
 
-    <header class="cy-topbar">
-        <div class="cy-logo">
-            <div class="cy-logo-mark">CS</div>
-            <span class="cy-logo-name">cypress‑safari</span>
+    <header class="tx-topbar">
+        <div class="tx-logo">
+            <div class="tx-logo-mark">CS</div>
+            <span class="tx-logo-name">cypress‑safari</span>
         </div>
-        <div class="cy-topbar-div"></div>
-        <button class="cy-run-all-btn" id="runAllBtn" onclick="window.runAll && window.runAll()">
+        <div class="tx-topbar-div"></div>
+        <button class="tx-run-all-btn" id="runAllBtn" onclick="window.runAll && window.runAll()">
             &#9654;&nbsp; Run all specs
         </button>
-        <div class="cy-topbar-right">
-            <div class="cy-status-pill">
-                <span class="cy-status-dot" id="statusIndicator"></span>
+        <div class="tx-topbar-right">
+            <div class="tx-status-pill">
+                <span class="tx-status-dot" id="statusIndicator"></span>
                 <span id="statusText">Initializing…</span>
             </div>
         </div>
     </header>
 
-    <div class="cy-body">
+    <div class="tx-body">
 
         <!-- ── Specs ──────────────────────────────────────────────── -->
-        <nav class="cy-specs">
-            <div class="cy-panel-hdr">Specs</div>
-            <div class="cy-specs-scroll" id="testList">
-                <div class="cy-empty">Loading specs…</div>
+        <nav class="tx-specs">
+            <div class="tx-panel-hdr">Specs</div>
+            <div class="tx-specs-scroll" id="testList">
+                <div class="tx-empty">Loading specs…</div>
             </div>
             <div id="testRunnerStatus"></div>
         </nav>
 
         <!-- ── Command Log ────────────────────────────────────────── -->
-        <aside class="cy-log-panel">
-            <div class="cy-log-hdr">
-                <span class="cy-log-title">Command Log</span>
-                <button class="cy-log-clear" onclick="document.getElementById('console').innerHTML=''">Clear</button>
+        <aside class="tx-log-panel">
+            <div class="tx-log-hdr">
+                <span class="tx-log-title">Command Log</span>
+                <button class="tx-log-clear" onclick="document.getElementById('console').innerHTML=''">Clear</button>
             </div>
             <div id="console"></div>
         </aside>
 
         <!-- ── Browser ───────────────────────────────────────────── -->
-        <main class="cy-browser">
-            <div class="cy-browser-toolbar">
-                <button class="cy-nav-btn" onclick="window.testApi && window.testApi.reload()" title="Reload">&#8635;</button>
-                <div class="cy-url-bar">
-                    <input type="text" id="navUrl" class="cy-url-input" placeholder="Enter URL…" value="">
-                    <button class="cy-go-btn" onclick="window.testApi && window.testApi.visit(document.getElementById('navUrl').value)">Go</button>
+        <main class="tx-browser">
+            <div class="tx-browser-toolbar">
+                <button class="tx-nav-btn" onclick="window.testApi && window.testApi.reload()" title="Reload">&#8635;</button>
+                <div class="tx-url-bar">
+                    <input type="text" id="navUrl" class="tx-url-input" placeholder="Enter URL…" value="">
+                    <button class="tx-go-btn" onclick="window.testApi && window.testApi.visit(document.getElementById('navUrl').value)">Go</button>
                 </div>
-                <span class="cy-viewport-tag" id="viewportTag">—</span>
+                <span class="tx-viewport-tag" id="viewportTag">—</span>
             </div>
             <div id="iframe-container"></div>
         </main>

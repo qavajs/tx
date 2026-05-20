@@ -608,7 +608,7 @@ export function parseTestCode(code: string): ParsedTest[] {
     describe, it, test: it,
     beforeEach: noop, afterEach: noop,
     expect: () => noop,
-    cy: new Proxy({}, { get: () => noop }),
+    tx: new Proxy({}, { get: () => noop }),
     page: pageProxy,
     console: { log: noop, error: noop, warn: noop },
     setTimeout: noop, clearTimeout: noop,
@@ -672,7 +672,7 @@ export class TestRunner {
       beforeEach, afterEach,
       expect: createExpect,
       console, setTimeout, clearTimeout, setInterval, clearInterval, Promise,
-      cy: cypressStub,
+      tx: cypressStub,
       page,
       ...extraContext,
     });

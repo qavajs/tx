@@ -120,7 +120,7 @@ export function test(name: string) {
  * Test suite class
  */
 export class TestSuite {
-  protected cy: any;
+  protected tx: any;
   protected wrapper: any;
 
   async beforeAll(): Promise<void> {}

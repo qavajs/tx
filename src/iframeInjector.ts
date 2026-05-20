@@ -27,7 +27,7 @@ export class IframeInjector {
 
     // Create iframe
     this.iframe = document.createElement('iframe');
-    this.iframe.id = 'cy-virtual-browser';
+    this.iframe.id = 'tx-virtual-browser';
     this.iframe.style.width = '100%';
     this.iframe.style.height = '100%';
     this.iframe.style.border = 'none';
