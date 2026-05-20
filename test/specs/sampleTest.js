@@ -1,12 +1,10 @@
-/**
- * Sample test file — compatible with both the browser runner (tx = window.testApi)
- * and the server-side runner (tx is a no-op stub, useful for pure-logic tests).
- *
- * Upload this file via the "Test Runner" panel in the Control Panel, then click
- * "Run in Browser" or "Run on Server".
- */
+import { theAnswer } from './testData';
 
 describe('Math utilities', () => {
+  it('should return the correct answer to the Ultimate Question of Life, The Universe, and Everything', () => {
+    expect(theAnswer).toBe(42);
+  });
+  
   it('adds numbers correctly', () => {
     expect(1 + 1).toBe(2);
     expect(10 - 3).toBe(7);

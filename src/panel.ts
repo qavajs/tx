@@ -1,4 +1,4 @@
-import { log, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab } from './browser';
+import { log, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser } from './browser';
 
 declare global {
   interface Window {
@@ -209,12 +209,12 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
   try {
     // eslint-disable-next-line no-new-func
     const fn = new Function(
-      'describe','it','test','expect','tx','page',
+      'describe','it','test','expect','tx','page','browser',
       'beforeEach','afterEach',
       'setTimeout','clearTimeout','Promise','console','log',
       code
     );
-    fn(describe, it, it, pwExpect, testApi, page, beforeEach, afterEach, setTimeout, clearTimeout, Promise, console, log);
+    fn(describe, it, it, pwExpect, testApi, page, browser, beforeEach, afterEach, setTimeout, clearTimeout, Promise, console, log);
   } catch (e: any) {
     return [{ name: '(parse/compile error)', passed: false, error: e.message, duration: 0 }];
   }
@@ -224,6 +224,7 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     if (filename) setTestItemStatus(filename, t.name, 'running');
     const t0 = Date.now();
     try {
+      closeExtraTabs();
       for (const hook of t.beforeEachs) await Promise.resolve(hook());
       await Promise.resolve(t.fn());
       for (const hook of t.afterEachs) await Promise.resolve(hook());

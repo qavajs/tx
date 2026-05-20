@@ -64,11 +64,22 @@ function _activeTab(): TabEntry | null { return _tabs.find(t => t.id === _active
 
 export const API_BASE = 'http://localhost:' + window.__CONFIG__.port;
 
-const _proxyPrefixMatch = window.__CONFIG__.proxyUrl.match(/^(https?:\/\/[^/]+\/[^/]+\/)/);
-const _proxyPrefix = _proxyPrefixMatch ? _proxyPrefixMatch[1] : '';
+// Derive proxy prefix by stripping the trailing page URL (e.g. "about:blank") from the session URL
+// e.g. "http://host/proxy/SESSION/about:blank" → "http://host/proxy/SESSION/"
+const _proxyPrefix = window.__CONFIG__.proxyUrl.replace(/[^/]+$/, '');
 
 export function toProxiedUrl(url: string): string {
-  if (!_proxyPrefix || url.startsWith(_proxyPrefix) || !/^https?:\/\//.test(url)) return url;
+  if (!_proxyPrefix) return url;
+  if (url.startsWith(_proxyPrefix)) return url;
+  if (!/^https?:\/\//.test(url)) {
+    // Relative URL — resolve against the current page URL so it routes through the proxy
+    const baseUrl = _activeTab()?.url;
+    if (baseUrl && /^https?:\/\//.test(baseUrl)) {
+      try { url = new URL(url, baseUrl).href; } catch { return url; }
+    } else {
+      return url;
+    }
+  }
   return _proxyPrefix + url;
 }
 
@@ -137,8 +148,9 @@ export function createTab(url?: string) {
   iframeEl.addEventListener('error', () => { _emitPage('crash'); });
   document.getElementById('iframe-container')!.appendChild(iframeEl);
   _tabs.push(tab);
-  setActiveTab(tabId);
+  // Resolve src BEFORE switching active tab so toProxiedUrl can use the origin tab's URL as base
   iframeEl.src = url ? toProxiedUrl(url) : API_BASE + '/mock';
+  setActiveTab(tabId);
   log('new tab', 'info');
   _onTabsChanged?.();
   return _makePopupPage(tabId);
@@ -157,6 +169,11 @@ export function closeTab(tabId: string) {
     }
   }
   _onTabsChanged?.();
+}
+
+export function closeExtraTabs() {
+  const extra = _tabs.slice(1).map(t => t.id);
+  for (const id of extra) closeTab(id);
 }
 
 // ── Command Log ───────────────────────────────────────────────────────────────
@@ -929,6 +946,10 @@ export const page = {
     return page;
   },
 
+  async bringToFront(): Promise<void> {
+    if (_activeTabId) setActiveTab(_activeTabId);
+  },
+
   async close(): Promise<void> {
     _emitPage('close');
     closeTab(_activeTabId ?? '');
@@ -1297,6 +1318,7 @@ function _makePopupPage(tabId: string) {
     waitForURL: (url: string | RegExp, opts?: any) => { _activate(); return page.waitForURL(url, opts); },
     waitForSelector: (sel: string, opts?: any) => { _activate(); return page.waitForSelector(sel, opts); },
     waitForTimeout: (ms: number) => page.waitForTimeout(ms),
+    async bringToFront() { _activate(); },
     on:   (event: string, fn: any) => { _addPageListener(event, fn); return popupPage; },
     off:  (event: string, fn: any) => { _removePageListener(event, fn); return popupPage; },
     once: (event: string, fn: any) => { page.once(event, fn); return popupPage; },
@@ -1321,3 +1343,16 @@ export function initIframe() {
   }
   createTab();
 }
+
+// ── Browser object ────────────────────────────────────────────────────────────
+
+export const browser = {
+  /** Open a new tab and return a Page-like object for it */
+  async newPage(): Promise<PopupPage> {
+    return createTab();
+  },
+  /** Return Page-like objects for all currently open tabs */
+  pages(): PopupPage[] {
+    return _tabs.map(t => _makePopupPage(t.id));
+  },
+};

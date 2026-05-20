@@ -9,6 +9,7 @@
 - [Configuration](#configuration)
 - [Writing Tests](#writing-tests)
 - [page](#page)
+- [browser](#browser)
 - [Locator](#locator)
 - [expect](#expect)
 - [page Events](#page-events)
@@ -81,6 +82,7 @@ describe('Suite name', () => {
 | `beforeEach`  | Hook run before each test in the nearest `describe`      |
 | `afterEach`   | Hook run after each test in the nearest `describe`       |
 | `page`        | Playwright-style page object (see [page](#page))         |
+| `browser`     | Multi-tab browser object (see [browser](#browser))       |
 | `expect`      | Assertion function (see [expect](#expect))               |
 | `log`         | `(message, type?) => void` — write to the panel console  |
 
@@ -201,9 +203,60 @@ See [page Events](#page-events) for available events.
 ### Lifecycle
 
 ```js
+await page.bringToFront(): Promise<void>
+```
+Switch the tab bar focus to this page (makes it the active/visible tab).
+
+```js
 await page.close(): Promise<void>
 ```
-Remove the iframe and emit the `close` event.
+Close this tab and emit the `close` event. If other tabs are open the most recent one becomes active.
+
+---
+
+## browser
+
+Multi-tab manager available as the `browser` global in test files.
+
+```js
+const newPage = await browser.newPage(): Promise<Page>
+```
+Open a new blank tab and return a `Page`-like object for it. The new tab becomes the active tab immediately. Navigating via `page.goto()` still operates on whichever tab is currently active; use the returned object (or `page.bringToFront()`) to control specific tabs.
+
+```js
+const pages = browser.pages(): Page[]
+```
+Return an array of `Page`-like objects for every currently open tab, in creation order.
+
+**Example — multi-tab flow:**
+
+```js
+it('opens a popup and reads its title', async () => {
+  await page.goto('https://example.com');
+
+  // intercept window.open / target="_blank"
+  page.on('popup', async popup => {
+    await popup.waitForURL(/popup-page/);
+    console.log(await popup.title());
+    await popup.close();
+  });
+
+  await page.locator('a[target="_blank"]').click();
+});
+
+it('manual multi-tab', async () => {
+  const tab1 = await browser.newPage();
+  await tab1.goto('https://example.com');
+
+  const tab2 = await browser.newPage();
+  await tab2.goto('https://example.org');
+
+  console.log(browser.pages().length); // 3  (initial tab + tab1 + tab2)
+
+  await tab1.bringToFront();           // switch UI to tab1
+  await tab2.close();
+});
+```
 
 ---
 
@@ -356,7 +409,7 @@ Subscribe via `page.on(event, handler)`. Events are emitted by bridges installed
 | `framenavigated`   | `(frame) => void`                              | A sub-frame navigated                    |
 | `load`             | `() => void`                                   | (reserved)                               |
 | `pageerror`        | `(err: Error) => void`                         | Uncaught error or unhandled rejection    |
-| `popup`            | `(popup) => void`                              | `window.open()` was called. `popup.url()`, `popup.close()` |
+| `popup`            | `(popup: Page) => void`                        | `window.open()` or `target="_blank"` click. Receives a full `Page`-like object — supports `goto`, `url`, `title`, `locator`, `getBy*`, `waitForURL`, `bringToFront`, `close`, etc. |
 | `request`          | `(req) => void`                                | fetch/XHR started. `req.url()`, `.method()`, `.headers()`, `.postData()`, `.resourceType()` |
 | `requestfailed`    | `(req) => void`                                | Request failed. `req.failure().errorText` |
 | `requestfinished`  | `(req) => void`                                | Request completed successfully           |
