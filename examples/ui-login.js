@@ -1,21 +1,39 @@
 /**
  * UI Tests: Login page — https://www.saucedemo.com/
  *
- * Upload via the Test Runner panel → "Run in Browser"
- * (the page must already be loaded in the iframe)
+ * Run in Browser via the Test Runner panel.
+ * The iframe must be pointing at https://www.saucedemo.com/ before running.
  */
 
 describe('Successful login', () => {
   it('navigates to inventory after valid credentials', async () => {
-    cy.type('[data-test="username"]', 'standard_user');
-    cy.type('[data-test="password"]', 'secret_sauce');
-    cy.click('[data-test="login-button"]');
-    await cy.waitForUrl('inventory', 5000);
-    expect(cy.url()).toContain('inventory');
+    await page.goto('https://www.saucedemo.com/');
+    await page.getByTestId('username').fill('standard_user');
+    await page.getByTestId('password').fill('secret_sauce');
+    await page.getByTestId('login-button').click();
+    await page.waitForURL(/inventory/, { timeout: 5000 });
+    expect(page.url()).toContain('inventory');
+    await expect(page.getByTestId('title')).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId('title')).toHaveText('Products');
+  });
+});
+
+describe('Failed login', () => {
+  it('shows error message for locked out user', async () => {
+    await page.goto('https://www.saucedemo.com/');
+    await page.getByTestId('username').fill('locked_out_user');
+    await page.getByTestId('password').fill('secret_sauce');
+    await page.getByTestId('login-button').click();
+    await expect(page.getByTestId('error')).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId('error')).toContainText('locked out');
   });
 
-  it('shows inventory title after login', async () => {
-    await cy.waitForElement('[data-test="title"]', 3000);
-    expect(cy.text('[data-test="title"]')).toBe('Products');
+  it('shows error for wrong password', async () => {
+    await page.goto('https://www.saucedemo.com/');
+    await page.getByTestId('username').fill('standard_user');
+    await page.getByTestId('password').fill('wrong_password');
+    await page.getByTestId('login-button').click();
+    await expect(page.getByTestId('error')).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId('error')).toContainText('Username and password do not match');
   });
 });

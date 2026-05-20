@@ -306,6 +306,32 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
         }
         .cy-suite-row:hover .cy-suite-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
 
+        .cy-test-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cy-test-run-btn {
+            padding: 0px 5px;
+            font-size: 8px;
+            background: transparent;
+            border: 1px solid var(--border-s);
+            border-radius: 3px;
+            color: var(--text-muted);
+            cursor: pointer;
+            flex-shrink: 0;
+            opacity: 0;
+            transition: opacity 0.1s, color 0.1s, border-color 0.1s;
+        }
+        .cy-test-item:hover .cy-test-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
+
+        .cy-test-badge {
+            font-size: 9px;
+            font-weight: 600;
+            padding: 1px 5px;
+            border-radius: 3px;
+            flex-shrink: 0;
+            letter-spacing: 0.02em;
+        }
+        .cy-test-badge.pass { background: rgba(34,197,94,0.15); color: var(--pass); }
+        .cy-test-badge.fail { background: rgba(239,68,68,0.15);  color: var(--fail); }
+
         .cy-test-item {
             padding: 2px 10px 2px 36px;
             font-size: 11px;
@@ -313,14 +339,29 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             display: flex;
             align-items: center;
             gap: 6px;
+            transition: color 0.15s;
         }
-        .cy-test-item::before {
-            content: '';
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background: var(--text-muted);
+        .cy-test-item.pass { color: var(--text-dim); }
+        .cy-test-item.fail { color: var(--fail); }
+        .cy-test-dot {
+            width: 10px;
+            font-size: 9px;
+            line-height: 1;
             flex-shrink: 0;
+            text-align: center;
+            color: var(--text-muted);
+            transition: color 0.15s;
+        }
+        .cy-test-dot::before { content: '–'; }
+        .cy-test-dot.running { color: var(--warn); animation: cy-dot-pulse 0.7s ease-in-out infinite; }
+        .cy-test-dot.running::before { content: '●'; }
+        .cy-test-dot.pass { color: var(--pass); }
+        .cy-test-dot.pass::before { content: '✓'; }
+        .cy-test-dot.fail { color: var(--fail); }
+        .cy-test-dot.fail::before { content: '✕'; }
+        @keyframes cy-dot-pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.2; }
         }
 
         /* upload footer */
