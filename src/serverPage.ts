@@ -415,10 +415,8 @@ export class Page {
     const method = (form.attrs['method'] ?? 'get').toLowerCase();
     const actionUrl = action ? (/^https?:\/\//.test(action) ? action : new URL(action, this._url).href) : this._url;
 
-    const nextFormOffset = (() => {
-      const idx = forms.indexOf(form);
-      return forms[idx + 1]?.offset ?? Infinity;
-    })();
+    const formIdx = forms.indexOf(form);
+    const nextFormOffset = forms[formIdx + 1]?.offset ?? Infinity;
 
     const params = new URLSearchParams();
     for (const inp of this._els) {
@@ -449,62 +447,63 @@ export class Page {
 
 // ── expect ────────────────────────────────────────────────────────────────────
 
-export function createExpect(actual: any) {
-  if (actual instanceof Locator) {
-    async function retry(fn: () => Promise<void>, timeout = 5000): Promise<void> {
-      const deadline = Date.now() + timeout;
-      let lastErr: any;
-      while (Date.now() < deadline) {
-        try { await fn(); return; } catch (e) { lastErr = e; }
-        await wait(50);
-      }
-      throw lastErr ?? new Error('Assertion timed out');
-    }
+async function retry(fn: () => Promise<void>, timeout = 5000): Promise<void> {
+  const deadline = Date.now() + timeout;
+  let lastErr: any;
+  while (Date.now() < deadline) {
+    try { await fn(); return; } catch (e) { lastErr = e; }
+    await wait(50);
+  }
+  throw lastErr ?? new Error('Assertion timed out');
+}
 
-    const matchers = {
-      toBeVisible:   async (opts?: { timeout?: number }) => retry(async () => { if (!await actual.isVisible())  throw new Error('Expected element to be visible'); },   opts?.timeout),
-      toBeHidden:    async (opts?: { timeout?: number }) => retry(async () => { if (!await actual.isHidden())   throw new Error('Expected element to be hidden'); },    opts?.timeout),
-      toBeEnabled:   async (opts?: { timeout?: number }) => retry(async () => { if (!await actual.isEnabled())  throw new Error('Expected element to be enabled'); },   opts?.timeout),
-      toBeDisabled:  async (opts?: { timeout?: number }) => retry(async () => { if (!await actual.isDisabled()) throw new Error('Expected element to be disabled'); },  opts?.timeout),
-      toBeChecked:   async (opts?: { timeout?: number }) => retry(async () => { if (!await actual.isChecked())  throw new Error('Expected element to be checked'); },   opts?.timeout),
-      toBeEditable:  async (opts?: { timeout?: number }) => retry(async () => { if (!await actual.isEditable()) throw new Error('Expected element to be editable'); },  opts?.timeout),
-      toHaveCount:   async (n: number, opts?: { timeout?: number }) => retry(async () => {
-        const c = await actual.count();
-        if (c !== n) throw new Error(`Expected count ${n}, got ${c}`);
-      }, opts?.timeout),
-      toHaveText:    async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
-        const t = (await actual.textContent()).trim();
-        const ok = expected instanceof RegExp ? expected.test(t) : t === String(expected);
-        if (!ok) throw new Error(`Expected text "${t}" to equal "${expected}"`);
-      }, opts?.timeout),
-      toContainText: async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
-        const t = await actual.textContent();
-        const ok = expected instanceof RegExp ? expected.test(t) : t.includes(String(expected));
-        if (!ok) throw new Error(`Expected "${t}" to contain "${expected}"`);
-      }, opts?.timeout),
-      toHaveValue:   async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
-        const v = await actual.inputValue();
-        const ok = expected instanceof RegExp ? expected.test(v) : v === String(expected);
-        if (!ok) throw new Error(`Expected value "${v}" to equal "${expected}"`);
-      }, opts?.timeout),
-      toHaveAttribute: async (name: string, value: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
-        const a = await actual.getAttribute(name) ?? '';
-        const ok = value instanceof RegExp ? value.test(a) : a === String(value);
-        if (!ok) throw new Error(`Expected [${name}]="${a}" to match "${value}"`);
-      }, opts?.timeout),
-      toHaveClass: async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
-        const cls = await actual.getAttribute('class') ?? '';
-        const ok = expected instanceof RegExp ? expected.test(cls) : cls.split(/\s+/).includes(String(expected));
-        if (!ok) throw new Error(`Expected class "${cls}" to include "${expected}"`);
-      }, opts?.timeout),
-      not: {} as any,
-    };
+function stateCheck(pred: () => Promise<boolean>, msg: string) {
+  return async (opts?: { timeout?: number }) =>
+    retry(async () => { if (!await pred()) throw new Error(msg); }, opts?.timeout);
+}
 
-    matchers.not = {
-      toBeVisible:   async (opts?: { timeout?: number }) => retry(async () => { if (await actual.isVisible())  throw new Error('Expected element not to be visible'); },  opts?.timeout),
-      toBeHidden:    async (opts?: { timeout?: number }) => retry(async () => { if (await actual.isHidden())   throw new Error('Expected element not to be hidden'); },   opts?.timeout),
-      toBeChecked:   async (opts?: { timeout?: number }) => retry(async () => { if (await actual.isChecked())  throw new Error('Expected element not to be checked'); },  opts?.timeout),
-      toHaveText:    async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
+function createLocatorMatchers(actual: Locator) {
+  return {
+    toBeVisible:   stateCheck(() => actual.isVisible(),  'Expected element to be visible'),
+    toBeHidden:    stateCheck(() => actual.isHidden(),   'Expected element to be hidden'),
+    toBeEnabled:   stateCheck(() => actual.isEnabled(),  'Expected element to be enabled'),
+    toBeDisabled:  stateCheck(() => actual.isDisabled(), 'Expected element to be disabled'),
+    toBeChecked:   stateCheck(() => actual.isChecked(),  'Expected element to be checked'),
+    toBeEditable:  stateCheck(() => actual.isEditable(), 'Expected element to be editable'),
+    toHaveCount: async (n: number, opts?: { timeout?: number }) => retry(async () => {
+      const c = await actual.count();
+      if (c !== n) throw new Error(`Expected count ${n}, got ${c}`);
+    }, opts?.timeout),
+    toHaveText: async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
+      const t = (await actual.textContent()).trim();
+      const ok = expected instanceof RegExp ? expected.test(t) : t === String(expected);
+      if (!ok) throw new Error(`Expected text "${t}" to equal "${expected}"`);
+    }, opts?.timeout),
+    toContainText: async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
+      const t = await actual.textContent();
+      const ok = expected instanceof RegExp ? expected.test(t) : t.includes(String(expected));
+      if (!ok) throw new Error(`Expected "${t}" to contain "${expected}"`);
+    }, opts?.timeout),
+    toHaveValue: async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
+      const v = await actual.inputValue();
+      const ok = expected instanceof RegExp ? expected.test(v) : v === String(expected);
+      if (!ok) throw new Error(`Expected value "${v}" to equal "${expected}"`);
+    }, opts?.timeout),
+    toHaveAttribute: async (name: string, value: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
+      const a = await actual.getAttribute(name) ?? '';
+      const ok = value instanceof RegExp ? value.test(a) : a === String(value);
+      if (!ok) throw new Error(`Expected [${name}]="${a}" to match "${value}"`);
+    }, opts?.timeout),
+    toHaveClass: async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
+      const cls = await actual.getAttribute('class') ?? '';
+      const ok = expected instanceof RegExp ? expected.test(cls) : cls.split(/\s+/).includes(String(expected));
+      if (!ok) throw new Error(`Expected class "${cls}" to include "${expected}"`);
+    }, opts?.timeout),
+    not: {
+      toBeVisible:   stateCheck(async () => !(await actual.isVisible()),  'Expected element not to be visible'),
+      toBeHidden:    stateCheck(async () => !(await actual.isHidden()),   'Expected element not to be hidden'),
+      toBeChecked:   stateCheck(async () => !(await actual.isChecked()),  'Expected element not to be checked'),
+      toHaveText: async (expected: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
         const t = (await actual.textContent()).trim();
         const ok = expected instanceof RegExp ? expected.test(t) : t === String(expected);
         if (ok) throw new Error(`Expected text not to be "${expected}"`);
@@ -514,44 +513,45 @@ export function createExpect(actual: any) {
         const ok = expected instanceof RegExp ? expected.test(t) : t.includes(String(expected));
         if (ok) throw new Error(`Expected text not to contain "${expected}"`);
       }, opts?.timeout),
-    };
+    },
+  };
+}
 
-    return matchers;
-  }
-
-  // ── Value matchers (non-Locator) ──────────────────────────────────────────
+function createValueMatchers(actual: any) {
   const assert = (ok: boolean, msg: string) => { if (!ok) throw new Error(msg); };
   const fmt = (v: any) => JSON.stringify(v);
 
-  const matchers = {
+  return {
     toBe:            (e: any) => assert(actual === e, `Expected ${fmt(e)}, got ${fmt(actual)}`),
     toEqual:         (e: any) => assert(JSON.stringify(actual) === JSON.stringify(e), `Expected ${fmt(e)}, got ${fmt(actual)}`),
     toContain:       (e: any) => Array.isArray(actual)
                                    ? assert(actual.includes(e), `Array does not contain ${fmt(e)}`)
                                    : assert(String(actual).includes(String(e)), `"${actual}" does not contain "${e}"`),
-    toBeTruthy:      ()       => assert(!!actual, `Expected truthy, got ${fmt(actual)}`),
-    toBeFalsy:       ()       => assert(!actual, `Expected falsy, got ${fmt(actual)}`),
-    toBeNull:        ()       => assert(actual === null, `Expected null, got ${fmt(actual)}`),
-    toBeUndefined:   ()       => assert(actual === undefined, `Expected undefined, got ${fmt(actual)}`),
+    toBeTruthy:      () => assert(!!actual, `Expected truthy, got ${fmt(actual)}`),
+    toBeFalsy:       () => assert(!actual, `Expected falsy, got ${fmt(actual)}`),
+    toBeNull:        () => assert(actual === null, `Expected null, got ${fmt(actual)}`),
+    toBeUndefined:   () => assert(actual === undefined, `Expected undefined, got ${fmt(actual)}`),
     toBeGreaterThan: (n: number) => assert(actual > n, `Expected ${fmt(actual)} > ${n}`),
     toBeLessThan:    (n: number) => assert(actual < n, `Expected ${fmt(actual)} < ${n}`),
     toMatch: (r: RegExp | string) => {
       const re = typeof r === 'string' ? new RegExp(r) : r;
       assert(re.test(String(actual)), `"${actual}" does not match ${re}`);
     },
-    not: {} as any,
+    not: {
+      toBe:       (e: any) => assert(actual !== e, `Expected not ${fmt(e)}`),
+      toEqual:    (e: any) => assert(JSON.stringify(actual) !== JSON.stringify(e), `Expected values not to be equal`),
+      toBeTruthy: ()       => assert(!actual, `Expected falsy, got ${fmt(actual)}`),
+      toBeFalsy:  ()       => assert(!!actual, `Expected truthy, got ${fmt(actual)}`),
+      toBeNull:   ()       => assert(actual !== null, `Expected not null`),
+      toContain:  (e: any) => Array.isArray(actual)
+                                ? assert(!actual.includes(e), `Array should not contain ${fmt(e)}`)
+                                : assert(!String(actual).includes(String(e)), `"${actual}" should not contain "${e}"`),
+    },
   };
+}
 
-  matchers.not = {
-    toBe:      (e: any) => assert(actual !== e, `Expected not ${fmt(e)}`),
-    toEqual:   (e: any) => assert(JSON.stringify(actual) !== JSON.stringify(e), `Expected values not to be equal`),
-    toBeTruthy: ()      => assert(!actual, `Expected falsy, got ${fmt(actual)}`),
-    toBeFalsy:  ()      => assert(!!actual, `Expected truthy, got ${fmt(actual)}`),
-    toBeNull:   ()      => assert(actual !== null, `Expected not null`),
-    toContain:  (e: any) => Array.isArray(actual)
-                              ? assert(!actual.includes(e), `Array should not contain ${fmt(e)}`)
-                              : assert(!String(actual).includes(String(e)), `"${actual}" should not contain "${e}"`),
-  };
-
-  return matchers;
+export function createExpect(actual: any) {
+  return actual instanceof Locator
+    ? createLocatorMatchers(actual)
+    : createValueMatchers(actual);
 }

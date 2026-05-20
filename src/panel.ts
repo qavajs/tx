@@ -150,6 +150,27 @@ async function loadTestList() {
   }
 }
 
+function renderTestItemHtml(filename: string, suite: string, name: string): string {
+  const fullName = suite === '(root)' ? name : suite + ' > ' + name;
+  return '<div class="tx-test-item"' +
+    ' data-testkey="' + escAttr(filename + '\x01' + fullName) + '"' +
+    ' data-suite="' + escHtml(suite) + '"' +
+    ' data-fullname="' + escHtml(fullName) + '">' +
+    '<span class="tx-test-dot"></span>' +
+    '<span class="tx-test-name">' + escHtml(name) + '</span>' +
+    '<span class="tx-test-badge"></span>' +
+    '<button class="tx-test-run-btn" onclick="event.stopPropagation();window.runTest(' + jsq(filename) + ',' + jsq(fullName) + ')">&#9654;</button>' +
+  '</div>';
+}
+
+function renderSuiteHtml(filename: string, suite: string, names: string[]): string {
+  return '<div class="tx-suite-row">' +
+    '<span class="tx-suite-name">' + escHtml(suite) + '</span>' +
+    '<span class="tx-suite-badges" id="sbadges-' + escAttr(filename + '\x01' + suite) + '"></span>' +
+    '<button class="tx-suite-run-btn" onclick="window.runSuite(' + jsq(filename) + ',' + jsq(suite) + ')">&#9654;</button>' +
+  '</div>' + names.map(n => renderTestItemHtml(filename, suite, n)).join('');
+}
+
 function renderTestFileCard(f: ParsedFile): string {
   const suites: Record<string, string[]> = Object.create(null);
   f.tests.forEach(t => {
@@ -157,21 +178,7 @@ function renderTestFileCard(f: ParsedFile): string {
     if (!suites[k]) suites[k] = [];
     suites[k].push(t.name);
   });
-  const suiteHtml = Object.entries(suites).map(([s, names]) =>
-    '<div class="tx-suite-row">' +
-      '<span class="tx-suite-name">' + escHtml(s) + '</span>' +
-      '<span class="tx-suite-badges" id="sbadges-' + escAttr(f.filename + '\x01' + s) + '"></span>' +
-      '<button class="tx-suite-run-btn" onclick="window.runSuite(' + jsq(f.filename) + ',' + jsq(s) + ')">&#9654;</button>' +
-    '</div>' + names.map(n => {
-      const fullName = s === '(root)' ? n : s + ' > ' + n;
-      return '<div class="tx-test-item" data-testkey="' + escAttr(f.filename + '\x01' + fullName) + '" data-suite="' + escHtml(s) + '" data-fullname="' + escHtml(fullName) + '">' +
-        '<span class="tx-test-dot"></span>' +
-        '<span class="tx-test-name">' + escHtml(n) + '</span>' +
-        '<span class="tx-test-badge"></span>' +
-        '<button class="tx-test-run-btn" onclick="event.stopPropagation();window.runTest(' + jsq(f.filename) + ',' + jsq(fullName) + ')">&#9654;</button>' +
-      '</div>';
-    }).join('')
-  ).join('');
+  const suiteHtml = Object.entries(suites).map(([s, names]) => renderSuiteHtml(f.filename, s, names)).join('');
   const ext  = f.filename.split('.').pop() ?? 'js';
   const stem = f.filename.slice(0, -(ext.length + 1));
   return '<div class="tx-spec-card" id="card-' + escAttr(f.filename) + '" data-filename="' + escHtml(f.filename) + '">' +
@@ -181,7 +188,7 @@ function renderTestFileCard(f: ParsedFile): string {
       '<button class="tx-spec-run-btn" onclick="event.stopPropagation();window.runTestByFilename(' + jsq(f.filename) + ')">&#9654;</button>' +
     '</div>' +
     (Object.keys(suites).length ? '<div class="tx-spec-body">' + suiteHtml + '</div>' : '') +
-    '</div>';
+  '</div>';
 }
 
 window.toggleCard = (filename: string) =>
@@ -191,63 +198,60 @@ window.toggleCard = (filename: string) =>
 
 interface TestResult { name: string; passed: boolean; error?: string; duration: number; }
 
-async function executeTests(code: string, opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string }): Promise<TestResult[]> {
-  const filterSuite  = opts?.filterSuite;
-  const filterTest   = opts?.filterTest;
-  const filterTests  = opts?.filterTests;
-  const filename     = opts?.filename;
-  type QueueItem = {
-    name: string; fn: () => any;
-    beforeEachs: Array<() => any>; afterEachs: Array<() => any>;
-    setupBeforeAlls: Array<() => any>; teardownAfterAlls: Array<() => any>;
-  };
+type HookFn = () => any;
+type HookScope = { beforeEachs: HookFn[]; afterEachs: HookFn[]; beforeAlls: HookFn[]; afterAlls: HookFn[] };
+type QueueItem = {
+  name: string; fn: HookFn;
+  beforeEachs: HookFn[]; afterEachs: HookFn[];
+  setupBeforeAlls: HookFn[]; teardownAfterAlls: HookFn[];
+};
+
+function buildTestQueue(
+  code: string,
+  filters: { filterSuite?: string; filterTest?: string; filterTests?: string[] }
+): QueueItem[] | { parseError: string } {
+  const { filterSuite, filterTest, filterTests } = filters;
   const queue: QueueItem[] = [];
   const stack: string[] = [];
-  const hookStack: Array<{ beforeEachs: Array<() => any>; afterEachs: Array<() => any>; beforeAlls: Array<() => any>; afterAlls: Array<() => any> }> = [];
+  const hookStack: HookScope[] = [];
 
-  const beforeEach = (fn: () => any) => {
-    if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push(fn);
-  };
-  const afterEach = (fn: () => any) => {
-    if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push(fn);
-  };
-  const beforeAll = (fn: () => any) => {
-    if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn);
-  };
-  const afterAll = (fn: () => any) => {
-    if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn);
-  };
+  const beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push(fn); };
+  const afterEach  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push(fn); };
+  const beforeAll  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
+  const afterAll   = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
 
-  const it = (name: string, fn: () => any) => {
+  const it = (name: string, fn: HookFn) => {
     const suite    = stack.join(' > ');
     const fullName = stack.length ? suite + ' > ' + name : name;
-    if (filterSuite && suite !== filterSuite) return;
-    if (filterTest && fullName !== filterTest) return;
-    if (filterTests && !filterTests.includes(fullName)) return;
-    const beforeEachs = hookStack.flatMap(s => s.beforeEachs);
-    const afterEachs  = hookStack.flatMap(s => s.afterEachs).reverse();
-    queue.push({ name: fullName, fn, beforeEachs, afterEachs, setupBeforeAlls: [], teardownAfterAlls: [] });
+    if (filterSuite  && suite    !== filterSuite)              return;
+    if (filterTest   && fullName !== filterTest)               return;
+    if (filterTests  && !filterTests.includes(fullName))       return;
+    queue.push({
+      name: fullName, fn,
+      beforeEachs: hookStack.flatMap(s => s.beforeEachs),
+      afterEachs:  hookStack.flatMap(s => s.afterEachs).reverse(),
+      setupBeforeAlls: [], teardownAfterAlls: [],
+    });
   };
+
   const describe = (name: string, fn: () => void) => {
     stack.push(name);
     hookStack.push({ beforeEachs: [], afterEachs: [], beforeAlls: [], afterAlls: [] });
     const lenBefore = queue.length;
     try { fn(); } finally {
-      const scope = hookStack[hookStack.length - 1];
+      const scope      = hookStack[hookStack.length - 1];
       const scopeTests = queue.slice(lenBefore);
       if (scopeTests.length > 0) {
         // Prepend so outer beforeAlls run before inner ones
         if (scope.beforeAlls.length) scopeTests[0].setupBeforeAlls = [...scope.beforeAlls, ...scopeTests[0].setupBeforeAlls];
         // Append so inner afterAlls run before outer ones
-        if (scope.afterAlls.length) scopeTests[scopeTests.length - 1].teardownAfterAlls = [...scopeTests[scopeTests.length - 1].teardownAfterAlls, ...scope.afterAlls];
+        if (scope.afterAlls.length)  scopeTests[scopeTests.length - 1].teardownAfterAlls = [...scopeTests[scopeTests.length - 1].teardownAfterAlls, ...scope.afterAlls];
       }
       stack.pop();
       hookStack.pop();
     }
   };
 
-  // Expose execution-scoped helpers on window so the bundled IIFE can resolve them
-  // without needing Function-parameter injection.
   (window as any).describe   = describe;
   (window as any).it         = it;
   (window as any).test       = it;
@@ -260,7 +264,20 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     // eslint-disable-next-line no-new-func
     new Function(code)();
   } catch (e: any) {
-    return [{ name: '(parse/compile error)', passed: false, error: e.stack || e.message, duration: 0 }];
+    return { parseError: e.stack || e.message };
+  }
+  return queue;
+}
+
+async function executeTests(
+  code: string,
+  opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string }
+): Promise<TestResult[]> {
+  const filename = opts?.filename;
+  const queue = buildTestQueue(code, opts ?? {});
+
+  if ('parseError' in queue) {
+    return [{ name: '(parse/compile error)', passed: false, error: queue.parseError, duration: 0 }];
   }
 
   const results: TestResult[] = [];
@@ -269,11 +286,11 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     const t0 = Date.now();
     try {
       closeExtraTabs();
-      for (const hook of t.setupBeforeAlls) await Promise.resolve(hook());
-      for (const hook of t.beforeEachs) await Promise.resolve(hook());
+      for (const hook of t.setupBeforeAlls)    await Promise.resolve(hook());
+      for (const hook of t.beforeEachs)         await Promise.resolve(hook());
       await Promise.resolve(t.fn());
-      for (const hook of t.afterEachs) await Promise.resolve(hook());
-      for (const hook of t.teardownAfterAlls) await Promise.resolve(hook());
+      for (const hook of t.afterEachs)          await Promise.resolve(hook());
+      for (const hook of t.teardownAfterAlls)   await Promise.resolve(hook());
       const dur = Date.now() - t0;
       results.push({ name: t.name, passed: true, duration: dur });
       if (filename) setTestItemStatus(filename, t.name, 'pass', dur);
@@ -286,12 +303,14 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
   return results;
 }
 
+// ── Server communication ──────────────────────────────────────────────────────
+
 function reportToServer(results: TestResult[], filename?: string): void {
   fetch(API_BASE + '/api/report', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ filename, tests: results }),
-  }).catch(() => { /* non-critical */ });
+  }).catch(() => {});
 }
 
 async function notifyRunBegin(specs: Array<{ file: string; tests: string[] | null }>): Promise<void> {
@@ -323,22 +342,41 @@ function renderTestResults(results: TestResult[], filename?: string) {
   if (filename) updateCardStatus(filename, passed, failed);
 }
 
-// ── Window actions ────────────────────────────────────────────────────────────
+// ── Run helpers ───────────────────────────────────────────────────────────────
 
-window.runTestByFilename = async (filename: string) => {
+function openAndResetCard(filename: string) {
   document.getElementById('card-' + escAttr(filename))?.classList.add('open');
   resetTestItems(filename);
   setCardRunning(filename);
+}
+
+function countResults(results: TestResult[]): { passed: number; failed: number; duration: number } {
+  let passed = 0, failed = 0, duration = 0;
+  for (const r of results) { r.passed ? passed++ : failed++; duration += r.duration; }
+  return { passed, failed, duration };
+}
+
+async function fetchAndRun(
+  filename: string,
+  opts?: Parameters<typeof executeTests>[1]
+): Promise<TestResult[]> {
+  const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  const results = await executeTests(await resp.text(), opts);
+  renderTestResults(results, filename);
+  reportToServer(results, filename);
+  return results;
+}
+
+// ── Window actions ────────────────────────────────────────────────────────────
+
+window.runTestByFilename = async (filename: string) => {
+  openAndResetCard(filename);
   log(`run  ${filename}`, 'info');
   await notifyRunBegin([{ file: filename, tests: null }]);
   try {
-    const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const results = await executeTests(await resp.text(), { filename });
-    renderTestResults(results, filename);
-    reportToServer(results, filename);
-    const passed = results.filter(r => r.passed).length;
-    notifyRunEnd(passed, results.length - passed, results.length, results.reduce((s, r) => s + r.duration, 0));
+    const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filename }));
+    notifyRunEnd(passed, failed, passed + failed, duration);
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     updateCardStatus(filename, 0, 1);
@@ -347,23 +385,16 @@ window.runTestByFilename = async (filename: string) => {
 };
 
 window.runSuite = async (filename: string, suiteName: string) => {
-  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
-  resetTestItems(filename);
-  setCardRunning(filename);
+  openAndResetCard(filename);
   log(`suite  "${suiteName}"  in ${filename}`, 'info');
-  const _suiteTests = Array.from(
+  const suiteTests = Array.from(
     document.getElementById('card-' + escAttr(filename))
       ?.querySelectorAll<HTMLElement>('.tx-test-item') ?? []
   ).filter(el => el.dataset.suite === suiteName).map(el => el.dataset.fullname!).filter(Boolean);
-  await notifyRunBegin([{ file: filename, tests: _suiteTests.length ? _suiteTests : null }]);
+  await notifyRunBegin([{ file: filename, tests: suiteTests.length ? suiteTests : null }]);
   try {
-    const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const results = await executeTests(await resp.text(), { filterSuite: suiteName, filename });
-    renderTestResults(results, filename);
-    reportToServer(results, filename);
-    const passed = results.filter(r => r.passed).length;
-    notifyRunEnd(passed, results.length - passed, results.length, results.reduce((s, r) => s + r.duration, 0));
+    const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filterSuite: suiteName, filename }));
+    notifyRunEnd(passed, failed, passed + failed, duration);
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     updateCardStatus(filename, 0, 1);
@@ -378,13 +409,8 @@ window.runTest = async (filename: string, fullName: string) => {
   log(`it  "${fullName}"`, 'info');
   await notifyRunBegin([{ file: filename, tests: [fullName] }]);
   try {
-    const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const results = await executeTests(await resp.text(), { filterTest: fullName, filename });
-    renderTestResults(results, filename);
-    reportToServer(results, filename);
-    const passed = results.filter(r => r.passed).length;
-    notifyRunEnd(passed, results.length - passed, results.length, results.reduce((s, r) => s + r.duration, 0));
+    const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filterTest: fullName, filename }));
+    notifyRunEnd(passed, failed, passed + failed, duration);
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     setTestItemStatus(filename, fullName, 'fail');
@@ -398,22 +424,15 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   _isTestRunning = true;
   setTopbarStatus('running', 'Running…');
   const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'));
-  const allFilenames = allCards.map(c => c.dataset.filename!);
-  await notifyRunBegin(allFilenames.map(f => ({ file: f, tests: null })));
+  await notifyRunBegin(allCards.map(c => ({ file: c.dataset.filename!, tests: null })));
   let totalPass = 0, totalFail = 0, totalDuration = 0;
   for (const card of allCards) {
     const filename = card.dataset.filename!;
-    document.getElementById('card-' + escAttr(filename))?.classList.add('open');
-    resetTestItems(filename);
-    setCardRunning(filename);
+    openAndResetCard(filename);
     log(`run  ${filename}`, 'info');
     try {
-      const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const results = await executeTests(await resp.text(), { filename });
-      renderTestResults(results, filename);
-      reportToServer(results, filename);
-      results.forEach(r => { r.passed ? totalPass++ : totalFail++; totalDuration += r.duration; });
+      const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filename }));
+      totalPass += passed; totalFail += failed; totalDuration += duration;
     } catch (e: any) {
       log('Error: ' + e.message, 'error');
       updateCardStatus(filename, 0, 1);
@@ -646,26 +665,19 @@ window.runFiltered = async () => {
     if (item.style.display === 'none') continue;
     const card = item.closest<HTMLElement>('.tx-spec-card[data-filename]');
     if (!card?.dataset.filename) continue;
-    const fullName = item.dataset.fullname!;
     const list = byFile.get(card.dataset.filename) ?? [];
-    list.push(fullName);
+    list.push(item.dataset.fullname!);
     byFile.set(card.dataset.filename, list);
   }
 
   await notifyRunBegin(Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests })));
 
   for (const [filename, testNames] of byFile) {
-    document.getElementById('card-' + escAttr(filename))?.classList.add('open');
-    resetTestItems(filename);
-    setCardRunning(filename);
+    openAndResetCard(filename);
     log(`run filtered  ${filename}`, 'info');
     try {
-      const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const results = await executeTests(await resp.text(), { filename, filterTests: testNames });
-      renderTestResults(results, filename);
-      reportToServer(results, filename);
-      results.forEach(r => { r.passed ? totalPass++ : totalFail++; totalDuration += r.duration; });
+      const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filename, filterTests: testNames }));
+      totalPass += passed; totalFail += failed; totalDuration += duration;
     } catch (e: any) {
       log('Error: ' + e.message, 'error');
       updateCardStatus(filename, 0, 1);

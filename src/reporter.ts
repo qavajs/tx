@@ -38,7 +38,6 @@ export interface Reporter {
   onEnd?(result: FullResult): void;
 }
 
-
 export class ReporterEmitter {
   private reporters: Reporter[] = [];
 

@@ -57,7 +57,7 @@ if (testFiles.length > 0) {
     bundle: true,
     platform: 'browser',
     format: 'iife',
-    outdir: 'dist/examples',
+    outdir: 'dist/tests',
     minify: !watch,
   });
 }

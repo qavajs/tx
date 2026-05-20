@@ -866,154 +866,145 @@ function _removePageListener(event: string, fn: (...args: any[]) => any): void {
 
 let _frameObserver: MutationObserver | null = null;
 
-function _installEventBridges(): void {
-  const win = iframeWin() as any;
-  const doc = iframeDoc();
-  if (!win || !doc) return;
+// ── Per-protocol bridge installers ────────────────────────────────────────────
 
-  // ── Window-level patches: guard against re-installing on same window ────────
-  if (!win.__cyEventBridges) {
-    win.__cyEventBridges = true;
-
-    // ── console ───────────────────────────────────────────────────────────────
-    const consoleMethods = ['log', 'debug', 'info', 'warn', 'error', 'trace'] as const;
-    for (const m of consoleMethods) {
-      const orig = (win.console[m] as (...a: any[]) => void).bind(win.console);
-      win.console[m] = (...args: any[]) => {
-        orig(...args);
-        const text = args.map((a: any) => {
-          try { return typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a); }
-          catch { return String(a); }
-        }).join(' ');
-        _emitPage('console', {
-          type:     () => (m === 'warn' ? 'warning' : m),
-          text:     () => text,
-          args:     () => args,
-          location: () => ({ url: win.location?.href ?? '', lineNumber: 0, columnNumber: 0 }),
-        });
-      };
-    }
-
-    // ── pageerror ─────────────────────────────────────────────────────────────
-    win.addEventListener('error', (e: ErrorEvent) => {
-      _emitPage('pageerror', e.error instanceof Error ? e.error : new Error(e.message || String(e)));
-    });
-    win.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
-      const err = e.reason instanceof Error ? e.reason : new Error(String(e.reason ?? 'Unhandled promise rejection'));
-      _emitPage('pageerror', err);
-    });
-
-    // ── dialog ────────────────────────────────────────────────────────────────
-    const _makeDialog = (type: string, message: string, defaultValue = '') => {
-      let _accepted = type === 'alert';
-      let _promptText = defaultValue;
-      return {
-        type:         () => type,
-        message:      () => message,
-        defaultValue: () => defaultValue,
-        accept: (text?: string) => { _accepted = true; if (text !== undefined) _promptText = text; },
-        dismiss: () => { _accepted = false; },
-        _result: () => {
-          if (type === 'confirm') return _accepted;
-          if (type === 'prompt')  return _accepted ? _promptText : null;
-          return undefined;
-        },
-      };
+function _bridgeConsole(win: any): void {
+  const consoleMethods = ['log', 'debug', 'info', 'warn', 'error', 'trace'] as const;
+  for (const m of consoleMethods) {
+    const orig = (win.console[m] as (...a: any[]) => void).bind(win.console);
+    win.console[m] = (...args: any[]) => {
+      orig(...args);
+      const text = args.map((a: any) => {
+        try { return typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a); }
+        catch { return String(a); }
+      }).join(' ');
+      _emitPage('console', {
+        type:     () => (m === 'warn' ? 'warning' : m),
+        text:     () => text,
+        args:     () => args,
+        location: () => ({ url: win.location?.href ?? '', lineNumber: 0, columnNumber: 0 }),
+      });
     };
-    win.alert   = (message = '') => { _emitPage('dialog', _makeDialog('alert',   String(message))); };
-    win.confirm = (message = '') => { const d = _makeDialog('confirm', String(message)); _emitPage('dialog', d); return Boolean(d._result()); };
-    win.prompt  = (message = '', def = '') => { const d = _makeDialog('prompt', String(message), String(def)); _emitPage('dialog', d); return d._result() as string | null; };
-
-    // ── popup ─────────────────────────────────────────────────────────────────
-    win.open = (url?: string, _target?: string, _features?: string) => {
-      const popupPage = createTab(url);
-      _emitPage('popup', popupPage);
-      return null;
-    };
-
-    // ── fetch interception ────────────────────────────────────────────────────
-    if (typeof win.fetch === 'function') {
-      const _origFetch = (win.fetch as typeof fetch).bind(win);
-      win.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url    = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
-        const method = ((init?.method) ?? (typeof input === 'object' && !(input instanceof URL) ? (input as Request).method : undefined) ?? 'GET').toUpperCase();
-        const reqObj = { url: () => url, method: () => method, headers: () => init?.headers ?? {}, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
-        _emitPage('request', reqObj);
-        try {
-          const resp = await _origFetch(input, init);
-          _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, request: () => reqObj });
-          _emitPage('requestfinished', reqObj);
-          return resp;
-        } catch (err) {
-          _emitPage('requestfailed', { ...reqObj, failure: () => ({ errorText: String(err) }) });
-          throw err;
-        }
-      };
-    }
-
-    // ── XHR interception ──────────────────────────────────────────────────────
-    if (win.XMLHttpRequest) {
-      const _proto = win.XMLHttpRequest.prototype as any;
-      const _origXHROpen = _proto.open as Function;
-      const _origXHRSend = _proto.send as Function;
-      _proto.open = function (method: string, url: string | URL, ...rest: any[]) {
-        (this as any)._xMethod = method;
-        (this as any)._xUrl    = String(url);
-        return _origXHROpen.call(this, method, url, ...rest);
-      };
-      _proto.send = function (body?: XMLHttpRequestBodyInit | Document | null) {
-        const self = this as any;
-        const reqObj = { url: () => self._xUrl ?? '', method: () => (self._xMethod ?? 'GET').toUpperCase(), headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
-        _emitPage('request', reqObj);
-        this.addEventListener('load',  () => { _emitPage('response', { url: () => self._xUrl, status: () => self.status, statusText: () => self.statusText, ok: () => self.status >= 200 && self.status < 300, request: () => reqObj }); _emitPage('requestfinished', reqObj); });
-        this.addEventListener('error', () => _emitPage('requestfailed', { ...reqObj, failure: () => ({ errorText: 'Network error' }) }));
-        this.addEventListener('abort', () => _emitPage('requestfailed', { ...reqObj, failure: () => ({ errorText: 'Request aborted' }) }));
-        return _origXHRSend.call(this, body);
-      };
-    }
-
-    // ── WebSocket interception ────────────────────────────────────────────────
-    if (win.WebSocket) {
-      const _OrigWS: typeof WebSocket = win.WebSocket;
-      win.WebSocket = class extends _OrigWS {
-        constructor(url: string | URL, protocols?: string | string[]) {
-          super(url as string, protocols);
-          _emitPage('websocket', this);
-        }
-      };
-      win.WebSocket.CONNECTING = _OrigWS.CONNECTING;
-      win.WebSocket.OPEN       = _OrigWS.OPEN;
-      win.WebSocket.CLOSING    = _OrigWS.CLOSING;
-      win.WebSocket.CLOSED     = _OrigWS.CLOSED;
-    }
-
-    // ── Worker interception ───────────────────────────────────────────────────
-    if (win.Worker) {
-      const _OrigWorker: typeof Worker = win.Worker;
-      win.Worker = class extends _OrigWorker {
-        constructor(scriptURL: string | URL, options?: WorkerOptions) {
-          super(scriptURL, options);
-          _emitPage('worker', this);
-        }
-      };
-    }
   }
+}
 
-  // ── Document-level listeners (re-install after each navigation) ─────────────
+function _bridgeErrors(win: any): void {
+  win.addEventListener('error', (e: ErrorEvent) => {
+    _emitPage('pageerror', e.error instanceof Error ? e.error : new Error(e.message || String(e)));
+  });
+  win.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+    const err = e.reason instanceof Error ? e.reason : new Error(String(e.reason ?? 'Unhandled promise rejection'));
+    _emitPage('pageerror', err);
+  });
+}
 
-  // target="_blank" → open as new tab
+function _bridgeDialogs(win: any): void {
+  const makeDialog = (type: string, message: string, defaultValue = '') => {
+    let accepted = type === 'alert';
+    let promptText = defaultValue;
+    return {
+      type:         () => type,
+      message:      () => message,
+      defaultValue: () => defaultValue,
+      accept:  (text?: string) => { accepted = true; if (text !== undefined) promptText = text; },
+      dismiss: () => { accepted = false; },
+      _result: () => {
+        if (type === 'confirm') return accepted;
+        if (type === 'prompt')  return accepted ? promptText : null;
+        return undefined;
+      },
+    };
+  };
+  win.alert   = (message = '') => { _emitPage('dialog', makeDialog('alert', String(message))); };
+  win.confirm = (message = '') => { const d = makeDialog('confirm', String(message)); _emitPage('dialog', d); return Boolean(d._result()); };
+  win.prompt  = (message = '', def = '') => { const d = makeDialog('prompt', String(message), String(def)); _emitPage('dialog', d); return d._result() as string | null; };
+}
+
+function _bridgePopup(win: any): void {
+  win.open = (url?: string, _target?: string, _features?: string) => {
+    const popupPage = createTab(url);
+    _emitPage('popup', popupPage);
+    return null;
+  };
+}
+
+function _bridgeFetch(win: any): void {
+  if (typeof win.fetch !== 'function') return;
+  const origFetch = (win.fetch as typeof fetch).bind(win);
+  win.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url    = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
+    const method = ((init?.method) ?? (typeof input === 'object' && !(input instanceof URL) ? (input as Request).method : undefined) ?? 'GET').toUpperCase();
+    const req    = { url: () => url, method: () => method, headers: () => init?.headers ?? {}, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
+    _emitPage('request', req);
+    try {
+      const resp = await origFetch(input, init);
+      _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, request: () => req });
+      _emitPage('requestfinished', req);
+      return resp;
+    } catch (err) {
+      _emitPage('requestfailed', { ...req, failure: () => ({ errorText: String(err) }) });
+      throw err;
+    }
+  };
+}
+
+function _bridgeXHR(win: any): void {
+  if (!win.XMLHttpRequest) return;
+  const proto       = win.XMLHttpRequest.prototype as any;
+  const origOpen    = proto.open as Function;
+  const origSend    = proto.send as Function;
+  proto.open = function (method: string, url: string | URL, ...rest: any[]) {
+    (this as any)._xMethod = method;
+    (this as any)._xUrl    = String(url);
+    return origOpen.call(this, method, url, ...rest);
+  };
+  proto.send = function (body?: XMLHttpRequestBodyInit | Document | null) {
+    const self = this as any;
+    const req  = { url: () => self._xUrl ?? '', method: () => (self._xMethod ?? 'GET').toUpperCase(), headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
+    _emitPage('request', req);
+    this.addEventListener('load',  () => { _emitPage('response', { url: () => self._xUrl, status: () => self.status, statusText: () => self.statusText, ok: () => self.status >= 200 && self.status < 300, request: () => req }); _emitPage('requestfinished', req); });
+    this.addEventListener('error', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Network error' }) }));
+    this.addEventListener('abort', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Request aborted' }) }));
+    return origSend.call(this, body);
+  };
+}
+
+function _bridgeWebSocket(win: any): void {
+  if (!win.WebSocket) return;
+  const OrigWS: typeof WebSocket = win.WebSocket;
+  win.WebSocket = class extends OrigWS {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url as string, protocols);
+      _emitPage('websocket', this);
+    }
+  };
+  win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+  win.WebSocket.OPEN       = OrigWS.OPEN;
+  win.WebSocket.CLOSING    = OrigWS.CLOSING;
+  win.WebSocket.CLOSED     = OrigWS.CLOSED;
+}
+
+function _bridgeWorker(win: any): void {
+  if (!win.Worker) return;
+  const OrigWorker: typeof Worker = win.Worker;
+  win.Worker = class extends OrigWorker {
+    constructor(scriptURL: string | URL, options?: WorkerOptions) {
+      super(scriptURL, options);
+      _emitPage('worker', this);
+    }
+  };
+}
+
+function _bridgeDocumentEvents(doc: Document): void {
+  // target="_blank" links → new tab
   doc.addEventListener('click', (e: MouseEvent) => {
     const a = (e.target as Element)?.closest?.('a') as HTMLAnchorElement | null;
     if (!a || a.target !== '_blank' || a.hasAttribute('download')) return;
     e.preventDefault();
-    const href = a.href;
-    if (href) {
-      const popupPage = createTab(href);
-      _emitPage('popup', popupPage);
-    }
+    if (a.href) { const popupPage = createTab(a.href); _emitPage('popup', popupPage); }
   }, true);
 
-  // download
+  // downloads
   doc.addEventListener('click', (e: MouseEvent) => {
     const a = (e.target as Element)?.closest?.('a') as HTMLAnchorElement | null;
     if (!a) return;
@@ -1026,7 +1017,7 @@ function _installEventBridges(): void {
     }
   }, true);
 
-  // filechooser
+  // file chooser
   doc.addEventListener('click', (e: MouseEvent) => {
     const el    = e.target as HTMLElement;
     const input = (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'file')
@@ -1048,7 +1039,7 @@ function _installEventBridges(): void {
     });
   }, true);
 
-  // frameattached / framedetached / framenavigated (sub-frames inside the page)
+  // sub-frame lifecycle (frameattached / framedetached / framenavigated)
   _frameObserver?.disconnect();
   _frameObserver = new MutationObserver((mutations: MutationRecord[]) => {
     for (const m of mutations) {
@@ -1075,6 +1066,30 @@ function _installEventBridges(): void {
   });
   const docRoot = doc.documentElement ?? doc.body;
   if (docRoot) _frameObserver.observe(docRoot, { subtree: true, childList: true });
+}
+
+// ── Event bridge orchestrator ─────────────────────────────────────────────────
+
+function _installEventBridges(): void {
+  const win = iframeWin() as any;
+  const doc = iframeDoc();
+  if (!win || !doc) return;
+
+  // Window-level bridges are guarded against re-installation on the same window
+  if (!win.__cyEventBridges) {
+    win.__cyEventBridges = true;
+    _bridgeConsole(win);
+    _bridgeErrors(win);
+    _bridgeDialogs(win);
+    _bridgePopup(win);
+    _bridgeFetch(win);
+    _bridgeXHR(win);
+    _bridgeWebSocket(win);
+    _bridgeWorker(win);
+  }
+
+  // Document-level bridges are re-installed on every navigation
+  _bridgeDocumentEvents(doc);
 }
 
 // ── Playwright-style page ─────────────────────────────────────────────────────
@@ -1475,7 +1490,7 @@ async function _retry(fn: () => Promise<void>, timeout = 5000): Promise<void> {
 export function pwExpect(target: any) {
   const t = (ms?: number) => ms ?? 5000;
 
-  // Log helpers: la = async matcher, ls = sync matcher
+  // la = async matcher log helper, ls = sync matcher log helper
   const la = async (cmd: string, msg: string, fn: () => Promise<void>) => {
     try { await fn(); log(msg, 'success', cmd); }
     catch (e: any) { log(msg, 'error', cmd); throw e; }
@@ -1485,107 +1500,68 @@ export function pwExpect(target: any) {
     catch (e: any) { log(msg, 'error', cmd); throw e; }
   };
 
+  // Runs `pred` in a retry loop; throws `errMsg` if pred returns false.
+  const locAssert = (cmd: string, pred: (loc: Locator) => Promise<boolean>, errMsg: string, timeout?: number) =>
+    la(cmd, '', async () => {
+      await _retry(async () => {
+        if (!await pred(target as Locator)) throw new Error(errMsg);
+      }, t(timeout));
+    });
+
+  // ── Locator assertions (auto-retry) ──────────────────────────────────────────
+
   const matchers = {
-    // ── Locator assertions (auto-retry) ────────────────────────────────────
-    async toBeVisible(opts?: { timeout?: number }) {
-      await la('toBeVisible', '', async () => {
-        await _retry(async () => { if (!await (target as Locator).isVisible()) throw new Error('Expected element to be visible'); }, t(opts?.timeout));
-      });
-    },
-    async toBeHidden(opts?: { timeout?: number }) {
-      await la('toBeHidden', '', async () => {
-        await _retry(async () => { if (await (target as Locator).isVisible()) throw new Error('Expected element to be hidden'); }, t(opts?.timeout));
-      });
-    },
-    async toBeEnabled(opts?: { timeout?: number }) {
-      await la('toBeEnabled', '', async () => {
-        await _retry(async () => { if (!await (target as Locator).isEnabled()) throw new Error('Expected element to be enabled'); }, t(opts?.timeout));
-      });
-    },
-    async toBeDisabled(opts?: { timeout?: number }) {
-      await la('toBeDisabled', '', async () => {
-        await _retry(async () => { if (await (target as Locator).isEnabled()) throw new Error('Expected element to be disabled'); }, t(opts?.timeout));
-      });
-    },
-    async toBeChecked(opts?: { timeout?: number }) {
-      await la('toBeChecked', '', async () => {
-        await _retry(async () => { if (!await (target as Locator).isChecked()) throw new Error('Expected element to be checked'); }, t(opts?.timeout));
-      });
-    },
-    async toBeEditable(opts?: { timeout?: number }) {
-      await la('toBeEditable', '', async () => {
-        await _retry(async () => { if (!await (target as Locator).isEditable()) throw new Error('Expected element to be editable'); }, t(opts?.timeout));
-      });
-    },
+    async toBeVisible(opts?: { timeout?: number })  { await locAssert('toBeVisible',  l => l.isVisible(),             'Expected element to be visible',  opts?.timeout); },
+    async toBeHidden(opts?: { timeout?: number })   { await locAssert('toBeHidden',   l => l.isVisible().then(v=>!v), 'Expected element to be hidden',   opts?.timeout); },
+    async toBeEnabled(opts?: { timeout?: number })  { await locAssert('toBeEnabled',  l => l.isEnabled(),             'Expected element to be enabled',   opts?.timeout); },
+    async toBeDisabled(opts?: { timeout?: number }) { await locAssert('toBeDisabled', l => l.isEnabled().then(v=>!v), 'Expected element to be disabled',  opts?.timeout); },
+    async toBeChecked(opts?: { timeout?: number })  { await locAssert('toBeChecked',  l => l.isChecked(),             'Expected element to be checked',   opts?.timeout); },
+    async toBeEditable(opts?: { timeout?: number }) { await locAssert('toBeEditable', l => l.isEditable(),            'Expected element to be editable',  opts?.timeout); },
     async toBeEmpty(opts?: { timeout?: number }) {
-      await la('toBeEmpty', '', async () => {
-        await _retry(async () => {
-          const v = await (target as Locator).inputValue();
-          if (v !== '') throw new Error(`Expected empty input, got "${v}"`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('toBeEmpty', async l => (await l.inputValue()) === '', 'Expected empty input', opts?.timeout);
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
-      await la('toHaveText', String(text), async () => {
-        await _retry(async () => {
-          const got = ((await (target as Locator).textContent()) ?? '').trim();
-          const ok  = text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
-          if (!ok) throw new Error(`Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('toHaveText', async l => {
+        const got = ((await l.textContent()) ?? '').trim();
+        return text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
+      }, `Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}`, opts?.timeout);
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
-      await la('toContainText', String(text), async () => {
-        await _retry(async () => {
-          const got = (await (target as Locator).textContent()) ?? '';
-          const ok  = text instanceof RegExp ? text.test(got) : got.includes(text as string);
-          if (!ok) throw new Error(`Expected "${got}" to contain ${JSON.stringify(text)}`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('toContainText', async l => {
+        const got = (await l.textContent()) ?? '';
+        return text instanceof RegExp ? text.test(got) : got.includes(text as string);
+      }, `Expected text to contain ${JSON.stringify(text)}`, opts?.timeout);
     },
     async toHaveValue(value: string | RegExp, opts?: { timeout?: number }) {
-      await la('toHaveValue', String(value), async () => {
-        await _retry(async () => {
-          const got = await (target as Locator).inputValue();
-          const ok  = value instanceof RegExp ? value.test(got) : got === value;
-          if (!ok) throw new Error(`Expected value ${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('toHaveValue', async l => {
+        const got = await l.inputValue();
+        return value instanceof RegExp ? value.test(got) : got === value;
+      }, `Expected value ${JSON.stringify(value)}`, opts?.timeout);
     },
     async toHaveAttribute(name: string, value: string | RegExp, opts?: { timeout?: number }) {
-      await la('toHaveAttr', `[${name}] ${String(value)}`, async () => {
-        await _retry(async () => {
-          const a  = await (target as Locator).getAttribute(name);
-          const ok = value instanceof RegExp ? value.test(a ?? '') : a === value;
-          if (!ok) throw new Error(`Expected [${name}]=${JSON.stringify(value)}, got ${JSON.stringify(a)}`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('toHaveAttr', async l => {
+        const a = await l.getAttribute(name);
+        return value instanceof RegExp ? value.test(a ?? '') : a === value;
+      }, `Expected [${name}]=${JSON.stringify(value)}`, opts?.timeout);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
-      await la('toHaveCount', String(count), async () => {
-        await _retry(async () => {
-          const n = await (target as Locator).count();
-          if (n !== count) throw new Error(`Expected ${count} elements, found ${n}`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('toHaveCount', async l => (await l.count()) === count, `Expected ${count} elements`, opts?.timeout);
     },
     async toHaveClass(cls: string | RegExp, opts?: { timeout?: number }) {
-      await la('toHaveClass', String(cls), async () => {
-        await _retry(async () => {
-          const c  = (target as Locator)._el()?.className ?? '';
-          const ok = cls instanceof RegExp ? cls.test(c) : c.split(/\s+/).includes(cls);
-          if (!ok) throw new Error(`Expected class ${JSON.stringify(cls)}, got "${c}"`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('toHaveClass', async l => {
+        const c = l._el()?.className ?? '';
+        return cls instanceof RegExp ? cls.test(c) : c.split(/\s+/).includes(cls as string);
+      }, `Expected class ${JSON.stringify(cls)}`, opts?.timeout);
     },
+
     // ── Page-level assertions ───────────────────────────────────────────────
     async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
       await la('toHaveURL', String(url), async () => {
         await _retry(async () => {
-          const u  = page.url();
-          const ok = url instanceof RegExp ? url.test(u) : u.includes(url as string);
-          if (!ok) throw new Error(`Expected URL to match ${url}, got "${u}"`);
+          const u = page.url();
+          if (!(url instanceof RegExp ? url.test(u) : u.includes(url as string)))
+            throw new Error(`Expected URL to match ${url}, got "${u}"`);
         }, t(opts?.timeout));
       });
     },
@@ -1593,35 +1569,25 @@ export function pwExpect(target: any) {
       await la('toHaveTitle', String(title), async () => {
         await _retry(async () => {
           const got = await page.title();
-          const ok  = title instanceof RegExp ? title.test(got) : got === title;
-          if (!ok) throw new Error(`Expected title ${JSON.stringify(title)}, got "${got}"`);
+          if (!(title instanceof RegExp ? title.test(got) : got === title))
+            throw new Error(`Expected title ${JSON.stringify(title)}, got "${got}"`);
         }, t(opts?.timeout));
       });
     },
+
     // ── Plain-value assertions (sync) ───────────────────────────────────────
-    toBe(expected: any) {
-      ls('toBe', JSON.stringify(expected), () => {
-        if (target !== expected) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
-      });
-    },
-    toEqual(expected: any) {
-      ls('toEqual', JSON.stringify(expected), () => {
-        if (JSON.stringify(target) !== JSON.stringify(expected)) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
-      });
-    },
-    toBeTruthy() { ls('toBeTruthy', '', () => { if (!target) throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
-    toBeFalsy()  { ls('toBeFalsy',  '', () => { if (target)  throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
-    toBeNull()      { ls('toBeNull',      '', () => { if (target !== null)      throw new Error(`Expected null, got ${JSON.stringify(target)}`); }); },
-    toBeUndefined() { ls('toBeUndefined', '', () => { if (target !== undefined) throw new Error(`Expected undefined, got ${JSON.stringify(target)}`); }); },
-    toBeGreaterThan(n: number) { ls('toBeGt', String(n), () => { if (target <= n) throw new Error(`${target} is not > ${n}`); }); },
-    toBeLessThan(n: number)    { ls('toBeLt', String(n), () => { if (target >= n) throw new Error(`${target} is not < ${n}`); }); },
+    toBe(expected: any)        { ls('toBe',         JSON.stringify(expected), () => { if (target !== expected)                                    throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`); }); },
+    toEqual(expected: any)     { ls('toEqual',      JSON.stringify(expected), () => { if (JSON.stringify(target) !== JSON.stringify(expected))    throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`); }); },
+    toBeTruthy()               { ls('toBeTruthy',   '', () => { if (!target)           throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
+    toBeFalsy()                { ls('toBeFalsy',    '', () => { if (target)            throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
+    toBeNull()                 { ls('toBeNull',     '', () => { if (target !== null)   throw new Error(`Expected null, got ${JSON.stringify(target)}`); }); },
+    toBeUndefined()            { ls('toBeUndef',    '', () => { if (target !== undefined) throw new Error(`Expected undefined, got ${JSON.stringify(target)}`); }); },
+    toBeGreaterThan(n: number) { ls('toBeGt',  String(n), () => { if (target <= n) throw new Error(`${target} is not > ${n}`); }); },
+    toBeLessThan(n: number)    { ls('toBeLt',  String(n), () => { if (target >= n) throw new Error(`${target} is not < ${n}`); }); },
     toContain(item: any) {
       ls('toContain', JSON.stringify(item), () => {
-        if (Array.isArray(target)) {
-          if (!target.includes(item)) throw new Error(`Array does not contain ${JSON.stringify(item)}`);
-        } else {
-          if (!String(target).includes(String(item))) throw new Error(`"${target}" does not contain "${item}"`);
-        }
+        if (Array.isArray(target)) { if (!target.includes(item)) throw new Error(`Array does not contain ${JSON.stringify(item)}`); }
+        else { if (!String(target).includes(String(item))) throw new Error(`"${target}" does not contain "${item}"`); }
       });
     },
     toMatch(r: RegExp | string) {
@@ -1633,81 +1599,46 @@ export function pwExpect(target: any) {
   };
 
   const not = {
-    async toBeVisible(opts?: { timeout?: number }) {
-      await la('not.toBeVisible', '', async () => {
-        await _retry(async () => { if (await (target as Locator).isVisible()) throw new Error('Expected NOT visible'); }, t(opts?.timeout));
-      });
-    },
-    async toBeHidden(opts?: { timeout?: number }) {
-      await la('not.toBeHidden', '', async () => {
-        await _retry(async () => { if (!await (target as Locator).isVisible()) throw new Error('Expected NOT hidden'); }, t(opts?.timeout));
-      });
-    },
-    async toBeEnabled(opts?: { timeout?: number }) {
-      await la('not.toBeEnabled', '', async () => {
-        await _retry(async () => { if (await (target as Locator).isEnabled()) throw new Error('Expected NOT enabled'); }, t(opts?.timeout));
-      });
-    },
-    async toBeChecked(opts?: { timeout?: number }) {
-      await la('not.toBeChecked', '', async () => {
-        await _retry(async () => { if (await (target as Locator).isChecked()) throw new Error('Expected NOT checked'); }, t(opts?.timeout));
-      });
+    async toBeVisible(opts?: { timeout?: number })  { await locAssert('not.toBeVisible', l => l.isVisible().then(v=>!v), 'Expected NOT visible',  opts?.timeout); },
+    async toBeHidden(opts?: { timeout?: number })   { await locAssert('not.toBeHidden',  l => l.isVisible(),              'Expected NOT hidden',   opts?.timeout); },
+    async toBeEnabled(opts?: { timeout?: number })  { await locAssert('not.toBeEnabled', l => l.isEnabled().then(v=>!v), 'Expected NOT enabled',  opts?.timeout); },
+    async toBeChecked(opts?: { timeout?: number })  { await locAssert('not.toBeChecked', l => l.isChecked().then(v=>!v), 'Expected NOT checked',  opts?.timeout); },
+    async toBeEmpty(opts?: { timeout?: number }) {
+      await locAssert('not.toBeEmpty', async l => (await l.inputValue()) !== '', 'Expected input NOT to be empty', opts?.timeout);
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
-      await la('not.toHaveText', String(text), async () => {
-        await _retry(async () => {
-          const got = ((await (target as Locator).textContent()) ?? '').trim();
-          const ok  = text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
-          if (ok) throw new Error(`Expected text NOT to match ${JSON.stringify(text)}`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('not.toHaveText', async l => {
+        const got = ((await l.textContent()) ?? '').trim();
+        return !(text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string));
+      }, `Expected text NOT to match ${JSON.stringify(text)}`, opts?.timeout);
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
-      await la('not.toContain', String(text), async () => {
-        await _retry(async () => {
-          const got = (await (target as Locator).textContent()) ?? '';
-          const ok  = text instanceof RegExp ? text.test(got) : got.includes(text as string);
-          if (ok) throw new Error(`Expected NOT to contain ${JSON.stringify(text)}`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('not.toContain', async l => {
+        const got = (await l.textContent()) ?? '';
+        return !(text instanceof RegExp ? text.test(got) : got.includes(text as string));
+      }, `Expected NOT to contain ${JSON.stringify(text)}`, opts?.timeout);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
-      await la('not.toHaveCount', String(count), async () => {
-        await _retry(async () => {
-          const n = await (target as Locator).count();
-          if (n === count) throw new Error(`Expected count NOT to be ${count}`);
-        }, t(opts?.timeout));
-      });
+      await locAssert('not.toHaveCount', async l => (await l.count()) !== count, `Expected count NOT to be ${count}`, opts?.timeout);
     },
     async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
       await la('not.toHaveURL', String(url), async () => {
         await _retry(async () => {
-          const u  = page.url();
-          const ok = url instanceof RegExp ? url.test(u) : u.includes(url as string);
-          if (ok) throw new Error(`Expected URL NOT to match ${url}`);
+          const u = page.url();
+          if (url instanceof RegExp ? url.test(u) : u.includes(url as string))
+            throw new Error(`Expected URL NOT to match ${url}`);
         }, t(opts?.timeout));
       });
     },
-    toBe(expected: any)  { ls('not.toBe',      JSON.stringify(expected), () => { if (target === expected)  throw new Error(`Expected NOT ${JSON.stringify(expected)}`); }); },
-    toBeTruthy()          { ls('not.toBeTruthy', '',                       () => { if (target)               throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
-    toBeFalsy()           { ls('not.toBeFalsy',  '',                       () => { if (!target)              throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
-    toBeNull()            { ls('not.toBeNull',   '',                       () => { if (target === null)       throw new Error('Expected NOT null'); }); },
+    toBe(expected: any) { ls('not.toBe',      JSON.stringify(expected), () => { if (target === expected)  throw new Error(`Expected NOT ${JSON.stringify(expected)}`); }); },
+    toBeTruthy()        { ls('not.toBeTruthy', '', () => { if (target)    throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
+    toBeFalsy()         { ls('not.toBeFalsy',  '', () => { if (!target)   throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
+    toBeNull()          { ls('not.toBeNull',   '', () => { if (target === null) throw new Error('Expected NOT null'); }); },
     toContain(item: any) {
       ls('not.toContain', JSON.stringify(item), () => {
-        if (Array.isArray(target)) {
-          if (target.includes(item)) throw new Error(`Expected array NOT to contain ${JSON.stringify(item)}`);
-        } else {
-          if (String(target).includes(String(item))) throw new Error(`Expected NOT to contain "${item}"`);
-        }
-      });
-    },
-    async toBeEmpty(opts?: { timeout?: number }) {
-      await la('not.toBeEmpty', '', async () => {
-        await _retry(async () => {
-          const v = await (target as Locator).inputValue();
-          if (v === '') throw new Error('Expected input NOT to be empty');
-        }, t(opts?.timeout));
+        if (Array.isArray(target)) { if (target.includes(item)) throw new Error(`Expected array NOT to contain ${JSON.stringify(item)}`); }
+        else { if (String(target).includes(String(item))) throw new Error(`Expected NOT to contain "${item}"`); }
       });
     },
   };
