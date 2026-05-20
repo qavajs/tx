@@ -13,6 +13,7 @@
   "include": [
     "../types/tx.d.ts",
     "./specs/**/*.ts",
-    "./specs/**/*.js"
+    "./specs/**/*.js",
+    "./pages/**/*.ts",
   ]
 }
