@@ -1,7 +1,4 @@
 describe('testauto.app', () => {
-    beforeEach(async () => {
-        await page.setViewportSize({ width: 1280, height: 800 });
-    });
 
     it('create task', async () => {
         await page.goto('https://testauto.app/task-manager');

@@ -78,12 +78,12 @@ export function iframeWin(): Window & typeof globalThis | null {
 
 // ── Command Log ───────────────────────────────────────────────────────────────
 
-export function log(message: string, type: 'info' | 'success' | 'error' = 'info') {
+export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string) {
   const container = document.getElementById('console');
   if (!container) return;
   const cls   = type === 'success' ? 'pass' : type === 'error' ? 'fail' : 'info';
   const icon  = type === 'success' ? '✓'   : type === 'error'  ? '✗'    : '›';
-  const label = type === 'success' ? 'ok'  : type === 'error'  ? 'err'   : 'log';
+  const label = cmd ?? (type === 'success' ? 'ok' : type === 'error' ? 'err' : 'log');
   const entry = document.createElement('div');
   entry.className = `tx-cmd ${cls}`;
   const iconEl  = document.createElement('span'); iconEl.className  = `tx-cmd-icon ${cls}`;  iconEl.textContent  = icon;
@@ -170,12 +170,13 @@ export class Locator {
   async click(opts?: { force?: boolean; timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout);
     el.click();
-    log(`click`, 'success');
+    log('', 'success', 'click');
   }
 
   async dblclick(opts?: { timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout);
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    log('', 'success', 'dblclick');
   }
 
   async fill(value: string, opts?: { timeout?: number; delay?: number }): Promise<void> {
@@ -230,7 +231,7 @@ export class Locator {
 
     el.dispatchEvent(new E('change', { bubbles: true }));
     el.dispatchEvent(new E('blur',   { bubbles: true }));
-    log(`fill  "${value}"`, 'success');
+    log(`"${value}"`, 'success', 'fill');
   }
 
   async clear(opts?: { timeout?: number }): Promise<void> { await this.fill('', opts); }
@@ -244,6 +245,7 @@ export class Locator {
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    log(`"${text}"`, 'success', 'type');
   }
 
   async press(key: string, opts?: { timeout?: number }): Promise<void> {
@@ -256,6 +258,7 @@ export class Locator {
       const form = (el as HTMLInputElement).form;
       if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     }
+    log(key, 'success', 'press');
   }
 
   async selectOption(value: string | string[], opts?: { timeout?: number }): Promise<void> {
@@ -265,30 +268,36 @@ export class Locator {
       opt.selected = vals.includes(opt.value) || vals.includes(opt.text);
     }
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    log(vals.join(', '), 'success', 'select');
   }
 
   async check(opts?: { timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    log('', 'success', 'check');
   }
 
   async uncheck(opts?: { timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    log('', 'success', 'uncheck');
   }
 
   async focus(opts?: { timeout?: number }): Promise<void> {
     (await this._waitForEl(opts?.timeout)).focus();
+    log('', 'info', 'focus');
   }
 
   async hover(opts?: { timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout);
     el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
     el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    log('', 'info', 'hover');
   }
 
   async scrollIntoViewIfNeeded(opts?: { timeout?: number }): Promise<void> {
     (await this._waitForEl(opts?.timeout)).scrollIntoView({ block: 'nearest' });
+    log('', 'info', 'scroll');
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -331,6 +340,7 @@ export class Locator {
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
     const state   = opts?.state   ?? 'visible';
     const timeout = opts?.timeout ?? 5000;
+    log(state, 'info', 'waitFor');
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
       const el = this._el();
@@ -599,7 +609,7 @@ export const page = {
       const timer = setTimeout(() => reject(new Error(`goto("${url}") timed out`)), 30_000);
       iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
       iframe.src = toProxiedUrl(url);
-      log(`goto  ${url}`, 'info');
+      log(url, 'info', 'goto');
     });
   },
 
@@ -607,6 +617,7 @@ export const page = {
     return new Promise((resolve, reject) => {
       const win = iframeWin();
       if (!win) { reject(new Error('iframe not ready')); return; }
+      log('', 'info', 'reload');
       iframe!.addEventListener('load', () => resolve(), { once: true });
       win.location.reload();
     });
@@ -747,6 +758,7 @@ export const page = {
   // ── Waits ──────────────────────────────────────────────────────────────────
 
   async waitForURL(url: string | RegExp, opts?: { timeout?: number }): Promise<void> {
+    log(String(url), 'info', 'waitForURL');
     const timeout = opts?.timeout ?? 5000;
     const re = typeof url === 'string' ? new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : url;
     const t0 = Date.now();
@@ -764,13 +776,14 @@ export const page = {
   },
 
   async waitForTimeout(ms: number): Promise<void> {
+    log(`${ms}ms`, 'info', 'wait');
     await new Promise(r => setTimeout(r, ms));
   },
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
 
   keyboard: {
-    async press(key: string): Promise<void> {
+    async press(key: string, _silent = false): Promise<void> {
       const el = iframeDoc()?.activeElement as HTMLElement | null;
       if (el) {
         const o = { key, bubbles: true };
@@ -778,11 +791,13 @@ export const page = {
         el.dispatchEvent(new KeyboardEvent('keypress', o));
         el.dispatchEvent(new KeyboardEvent('keyup',    o));
       }
+      if (!_silent) log(key, 'info', 'key.press');
     },
     async type(text: string, opts?: { delay?: number }): Promise<void> {
+      log(`"${text}"`, 'info', 'key.type');
       for (const ch of text) {
         if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
-        await page.keyboard.press(ch);
+        await page.keyboard.press(ch, true);
       }
     },
   },
@@ -791,7 +806,7 @@ export const page = {
 
   setViewportSize(size: { width: number; height: number }): void {
     applyViewport(size.width, size.height);
-    log(`viewport  ${size.width} × ${size.height}`, 'info');
+    log(`${size.width} × ${size.height}`, 'info', 'viewport');
   },
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -840,175 +855,240 @@ async function _retry(fn: () => Promise<void>, timeout = 5000): Promise<void> {
 export function pwExpect(target: any) {
   const t = (ms?: number) => ms ?? 5000;
 
+  // Log helpers: la = async matcher, ls = sync matcher
+  const la = async (cmd: string, msg: string, fn: () => Promise<void>) => {
+    try { await fn(); log(msg, 'success', cmd); }
+    catch (e: any) { log(msg, 'error', cmd); throw e; }
+  };
+  const ls = (cmd: string, msg: string, fn: () => void) => {
+    try { fn(); log(msg, 'success', cmd); }
+    catch (e: any) { log(msg, 'error', cmd); throw e; }
+  };
+
   const matchers = {
     // ── Locator assertions (auto-retry) ────────────────────────────────────
     async toBeVisible(opts?: { timeout?: number }) {
-      await _retry(async () => { if (!await (target as Locator).isVisible())  throw new Error('Expected element to be visible'); },  t(opts?.timeout));
+      await la('toBeVisible', '', async () => {
+        await _retry(async () => { if (!await (target as Locator).isVisible()) throw new Error('Expected element to be visible'); }, t(opts?.timeout));
+      });
     },
     async toBeHidden(opts?: { timeout?: number }) {
-      await _retry(async () => { if ( await (target as Locator).isVisible())  throw new Error('Expected element to be hidden'); },   t(opts?.timeout));
+      await la('toBeHidden', '', async () => {
+        await _retry(async () => { if (await (target as Locator).isVisible()) throw new Error('Expected element to be hidden'); }, t(opts?.timeout));
+      });
     },
     async toBeEnabled(opts?: { timeout?: number }) {
-      await _retry(async () => { if (!await (target as Locator).isEnabled())  throw new Error('Expected element to be enabled'); },  t(opts?.timeout));
+      await la('toBeEnabled', '', async () => {
+        await _retry(async () => { if (!await (target as Locator).isEnabled()) throw new Error('Expected element to be enabled'); }, t(opts?.timeout));
+      });
     },
     async toBeDisabled(opts?: { timeout?: number }) {
-      await _retry(async () => { if ( await (target as Locator).isEnabled())  throw new Error('Expected element to be disabled'); }, t(opts?.timeout));
+      await la('toBeDisabled', '', async () => {
+        await _retry(async () => { if (await (target as Locator).isEnabled()) throw new Error('Expected element to be disabled'); }, t(opts?.timeout));
+      });
     },
     async toBeChecked(opts?: { timeout?: number }) {
-      await _retry(async () => { if (!await (target as Locator).isChecked())  throw new Error('Expected element to be checked'); },  t(opts?.timeout));
+      await la('toBeChecked', '', async () => {
+        await _retry(async () => { if (!await (target as Locator).isChecked()) throw new Error('Expected element to be checked'); }, t(opts?.timeout));
+      });
     },
     async toBeEditable(opts?: { timeout?: number }) {
-      await _retry(async () => { if (!await (target as Locator).isEditable()) throw new Error('Expected element to be editable'); }, t(opts?.timeout));
+      await la('toBeEditable', '', async () => {
+        await _retry(async () => { if (!await (target as Locator).isEditable()) throw new Error('Expected element to be editable'); }, t(opts?.timeout));
+      });
     },
     async toBeEmpty(opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const v = await (target as Locator).inputValue();
-        if (v !== '') throw new Error(`Expected empty input, got "${v}"`);
-      }, t(opts?.timeout));
+      await la('toBeEmpty', '', async () => {
+        await _retry(async () => {
+          const v = await (target as Locator).inputValue();
+          if (v !== '') throw new Error(`Expected empty input, got "${v}"`);
+        }, t(opts?.timeout));
+      });
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
-      await _retry(async () => {
-        const got = ((await (target as Locator).textContent()) ?? '').trim();
-        const ok  = text instanceof RegExp ? text.test(got)
-                  : exact ? got === text : got.includes(text as string);
-        if (!ok) throw new Error(`Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
-      }, t(opts?.timeout));
+      await la('toHaveText', String(text), async () => {
+        await _retry(async () => {
+          const got = ((await (target as Locator).textContent()) ?? '').trim();
+          const ok  = text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
+          if (!ok) throw new Error(`Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
+        }, t(opts?.timeout));
+      });
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const got = (await (target as Locator).textContent()) ?? '';
-        const ok  = text instanceof RegExp ? text.test(got) : got.includes(text as string);
-        if (!ok) throw new Error(`Expected "${got}" to contain ${JSON.stringify(text)}`);
-      }, t(opts?.timeout));
+      await la('toContainText', String(text), async () => {
+        await _retry(async () => {
+          const got = (await (target as Locator).textContent()) ?? '';
+          const ok  = text instanceof RegExp ? text.test(got) : got.includes(text as string);
+          if (!ok) throw new Error(`Expected "${got}" to contain ${JSON.stringify(text)}`);
+        }, t(opts?.timeout));
+      });
     },
     async toHaveValue(value: string | RegExp, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const got = await (target as Locator).inputValue();
-        const ok  = value instanceof RegExp ? value.test(got) : got === value;
-        if (!ok) throw new Error(`Expected value ${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
-      }, t(opts?.timeout));
+      await la('toHaveValue', String(value), async () => {
+        await _retry(async () => {
+          const got = await (target as Locator).inputValue();
+          const ok  = value instanceof RegExp ? value.test(got) : got === value;
+          if (!ok) throw new Error(`Expected value ${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
+        }, t(opts?.timeout));
+      });
     },
     async toHaveAttribute(name: string, value: string | RegExp, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const a  = await (target as Locator).getAttribute(name);
-        const ok = value instanceof RegExp ? value.test(a ?? '') : a === value;
-        if (!ok) throw new Error(`Expected [${name}]=${JSON.stringify(value)}, got ${JSON.stringify(a)}`);
-      }, t(opts?.timeout));
+      await la('toHaveAttr', `[${name}] ${String(value)}`, async () => {
+        await _retry(async () => {
+          const a  = await (target as Locator).getAttribute(name);
+          const ok = value instanceof RegExp ? value.test(a ?? '') : a === value;
+          if (!ok) throw new Error(`Expected [${name}]=${JSON.stringify(value)}, got ${JSON.stringify(a)}`);
+        }, t(opts?.timeout));
+      });
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const n = await (target as Locator).count();
-        if (n !== count) throw new Error(`Expected ${count} elements, found ${n}`);
-      }, t(opts?.timeout));
+      await la('toHaveCount', String(count), async () => {
+        await _retry(async () => {
+          const n = await (target as Locator).count();
+          if (n !== count) throw new Error(`Expected ${count} elements, found ${n}`);
+        }, t(opts?.timeout));
+      });
     },
     async toHaveClass(cls: string | RegExp, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const c  = (target as Locator)._el()?.className ?? '';
-        const ok = cls instanceof RegExp ? cls.test(c) : c.split(/\s+/).includes(cls);
-        if (!ok) throw new Error(`Expected class ${JSON.stringify(cls)}, got "${c}"`);
-      }, t(opts?.timeout));
+      await la('toHaveClass', String(cls), async () => {
+        await _retry(async () => {
+          const c  = (target as Locator)._el()?.className ?? '';
+          const ok = cls instanceof RegExp ? cls.test(c) : c.split(/\s+/).includes(cls);
+          if (!ok) throw new Error(`Expected class ${JSON.stringify(cls)}, got "${c}"`);
+        }, t(opts?.timeout));
+      });
     },
     // ── Page-level assertions ───────────────────────────────────────────────
     async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const u  = page.url();
-        const ok = url instanceof RegExp ? url.test(u) : u.includes(url as string);
-        if (!ok) throw new Error(`Expected URL to match ${url}, got "${u}"`);
-      }, t(opts?.timeout));
+      await la('toHaveURL', String(url), async () => {
+        await _retry(async () => {
+          const u  = page.url();
+          const ok = url instanceof RegExp ? url.test(u) : u.includes(url as string);
+          if (!ok) throw new Error(`Expected URL to match ${url}, got "${u}"`);
+        }, t(opts?.timeout));
+      });
     },
     async toHaveTitle(title: string | RegExp, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const got = await page.title();
-        const ok  = title instanceof RegExp ? title.test(got) : got === title;
-        if (!ok) throw new Error(`Expected title ${JSON.stringify(title)}, got "${got}"`);
-      }, t(opts?.timeout));
+      await la('toHaveTitle', String(title), async () => {
+        await _retry(async () => {
+          const got = await page.title();
+          const ok  = title instanceof RegExp ? title.test(got) : got === title;
+          if (!ok) throw new Error(`Expected title ${JSON.stringify(title)}, got "${got}"`);
+        }, t(opts?.timeout));
+      });
     },
     // ── Plain-value assertions (sync) ───────────────────────────────────────
     toBe(expected: any) {
-      if (target !== expected)
-        throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
+      ls('toBe', JSON.stringify(expected), () => {
+        if (target !== expected) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
+      });
     },
     toEqual(expected: any) {
-      if (JSON.stringify(target) !== JSON.stringify(expected))
-        throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
+      ls('toEqual', JSON.stringify(expected), () => {
+        if (JSON.stringify(target) !== JSON.stringify(expected)) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
+      });
     },
-    toBeTruthy() { if (!target) throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); },
-    toBeFalsy()  { if (target)  throw new Error(`Expected falsy, got ${JSON.stringify(target)}`);  },
-    toBeNull()      { if (target !== null)      throw new Error(`Expected null, got ${JSON.stringify(target)}`); },
-    toBeUndefined() { if (target !== undefined) throw new Error(`Expected undefined, got ${JSON.stringify(target)}`); },
-    toBeGreaterThan(n: number) { if (target <= n) throw new Error(`${target} is not > ${n}`); },
-    toBeLessThan(n: number)    { if (target >= n) throw new Error(`${target} is not < ${n}`); },
+    toBeTruthy() { ls('toBeTruthy', '', () => { if (!target) throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
+    toBeFalsy()  { ls('toBeFalsy',  '', () => { if (target)  throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
+    toBeNull()      { ls('toBeNull',      '', () => { if (target !== null)      throw new Error(`Expected null, got ${JSON.stringify(target)}`); }); },
+    toBeUndefined() { ls('toBeUndefined', '', () => { if (target !== undefined) throw new Error(`Expected undefined, got ${JSON.stringify(target)}`); }); },
+    toBeGreaterThan(n: number) { ls('toBeGt', String(n), () => { if (target <= n) throw new Error(`${target} is not > ${n}`); }); },
+    toBeLessThan(n: number)    { ls('toBeLt', String(n), () => { if (target >= n) throw new Error(`${target} is not < ${n}`); }); },
     toContain(item: any) {
-      if (Array.isArray(target)) {
-        if (!target.includes(item)) throw new Error(`Array does not contain ${JSON.stringify(item)}`);
-      } else {
-        if (!String(target).includes(String(item))) throw new Error(`"${target}" does not contain "${item}"`);
-      }
+      ls('toContain', JSON.stringify(item), () => {
+        if (Array.isArray(target)) {
+          if (!target.includes(item)) throw new Error(`Array does not contain ${JSON.stringify(item)}`);
+        } else {
+          if (!String(target).includes(String(item))) throw new Error(`"${target}" does not contain "${item}"`);
+        }
+      });
     },
     toMatch(r: RegExp | string) {
-      const re = typeof r === 'string' ? new RegExp(r) : r;
-      if (!re.test(String(target))) throw new Error(`"${target}" does not match ${re}`);
+      ls('toMatch', String(r), () => {
+        const re = typeof r === 'string' ? new RegExp(r) : r;
+        if (!re.test(String(target))) throw new Error(`"${target}" does not match ${re}`);
+      });
     },
   };
 
   const not = {
     async toBeVisible(opts?: { timeout?: number }) {
-      await _retry(async () => { if ( await (target as Locator).isVisible())  throw new Error('Expected NOT visible'); },  t(opts?.timeout));
+      await la('not.toBeVisible', '', async () => {
+        await _retry(async () => { if (await (target as Locator).isVisible()) throw new Error('Expected NOT visible'); }, t(opts?.timeout));
+      });
     },
     async toBeHidden(opts?: { timeout?: number }) {
-      await _retry(async () => { if (!await (target as Locator).isVisible())  throw new Error('Expected NOT hidden'); },   t(opts?.timeout));
+      await la('not.toBeHidden', '', async () => {
+        await _retry(async () => { if (!await (target as Locator).isVisible()) throw new Error('Expected NOT hidden'); }, t(opts?.timeout));
+      });
     },
     async toBeEnabled(opts?: { timeout?: number }) {
-      await _retry(async () => { if ( await (target as Locator).isEnabled())  throw new Error('Expected NOT enabled'); },  t(opts?.timeout));
+      await la('not.toBeEnabled', '', async () => {
+        await _retry(async () => { if (await (target as Locator).isEnabled()) throw new Error('Expected NOT enabled'); }, t(opts?.timeout));
+      });
     },
     async toBeChecked(opts?: { timeout?: number }) {
-      await _retry(async () => { if ( await (target as Locator).isChecked())  throw new Error('Expected NOT checked'); },  t(opts?.timeout));
+      await la('not.toBeChecked', '', async () => {
+        await _retry(async () => { if (await (target as Locator).isChecked()) throw new Error('Expected NOT checked'); }, t(opts?.timeout));
+      });
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
-      await _retry(async () => {
-        const got = ((await (target as Locator).textContent()) ?? '').trim();
-        const ok  = text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
-        if (ok) throw new Error(`Expected text NOT to match ${JSON.stringify(text)}`);
-      }, t(opts?.timeout));
+      await la('not.toHaveText', String(text), async () => {
+        await _retry(async () => {
+          const got = ((await (target as Locator).textContent()) ?? '').trim();
+          const ok  = text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
+          if (ok) throw new Error(`Expected text NOT to match ${JSON.stringify(text)}`);
+        }, t(opts?.timeout));
+      });
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const got = (await (target as Locator).textContent()) ?? '';
-        const ok  = text instanceof RegExp ? text.test(got) : got.includes(text as string);
-        if (ok) throw new Error(`Expected NOT to contain ${JSON.stringify(text)}`);
-      }, t(opts?.timeout));
+      await la('not.toContain', String(text), async () => {
+        await _retry(async () => {
+          const got = (await (target as Locator).textContent()) ?? '';
+          const ok  = text instanceof RegExp ? text.test(got) : got.includes(text as string);
+          if (ok) throw new Error(`Expected NOT to contain ${JSON.stringify(text)}`);
+        }, t(opts?.timeout));
+      });
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const n = await (target as Locator).count();
-        if (n === count) throw new Error(`Expected count NOT to be ${count}`);
-      }, t(opts?.timeout));
+      await la('not.toHaveCount', String(count), async () => {
+        await _retry(async () => {
+          const n = await (target as Locator).count();
+          if (n === count) throw new Error(`Expected count NOT to be ${count}`);
+        }, t(opts?.timeout));
+      });
     },
     async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const u  = page.url();
-        const ok = url instanceof RegExp ? url.test(u) : u.includes(url as string);
-        if (ok) throw new Error(`Expected URL NOT to match ${url}`);
-      }, t(opts?.timeout));
+      await la('not.toHaveURL', String(url), async () => {
+        await _retry(async () => {
+          const u  = page.url();
+          const ok = url instanceof RegExp ? url.test(u) : u.includes(url as string);
+          if (ok) throw new Error(`Expected URL NOT to match ${url}`);
+        }, t(opts?.timeout));
+      });
     },
-    toBe(expected: any)  { if (target === expected)   throw new Error(`Expected NOT ${JSON.stringify(expected)}`); },
-    toBeTruthy()          { if (target)   throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); },
-    toBeFalsy()           { if (!target)  throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); },
-    toBeNull()            { if (target === null)  throw new Error('Expected NOT null'); },
+    toBe(expected: any)  { ls('not.toBe',      JSON.stringify(expected), () => { if (target === expected)  throw new Error(`Expected NOT ${JSON.stringify(expected)}`); }); },
+    toBeTruthy()          { ls('not.toBeTruthy', '',                       () => { if (target)               throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
+    toBeFalsy()           { ls('not.toBeFalsy',  '',                       () => { if (!target)              throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
+    toBeNull()            { ls('not.toBeNull',   '',                       () => { if (target === null)       throw new Error('Expected NOT null'); }); },
     toContain(item: any) {
-      if (Array.isArray(target)) {
-        if (target.includes(item)) throw new Error(`Expected array NOT to contain ${JSON.stringify(item)}`);
-      } else {
-        if (String(target).includes(String(item))) throw new Error(`Expected NOT to contain "${item}"`);
-      }
+      ls('not.toContain', JSON.stringify(item), () => {
+        if (Array.isArray(target)) {
+          if (target.includes(item)) throw new Error(`Expected array NOT to contain ${JSON.stringify(item)}`);
+        } else {
+          if (String(target).includes(String(item))) throw new Error(`Expected NOT to contain "${item}"`);
+        }
+      });
     },
     async toBeEmpty(opts?: { timeout?: number }) {
-      await _retry(async () => {
-        const v = await (target as Locator).inputValue();
-        if (v === '') throw new Error('Expected input NOT to be empty');
-      }, t(opts?.timeout));
+      await la('not.toBeEmpty', '', async () => {
+        await _retry(async () => {
+          const v = await (target as Locator).inputValue();
+          if (v === '') throw new Error('Expected input NOT to be empty');
+        }, t(opts?.timeout));
+      });
     },
   };
 
@@ -1022,15 +1102,16 @@ export const testApi = {
     if (!iframe) { log('iframe not ready', 'error'); return; }
     iframe.src = url;
     (document.getElementById('navUrl') as HTMLInputElement | null)!.value = url;
-    log(`visit  ${url}`, 'info');
+    log(url, 'info', 'visit');
   },
   reload() {
     if (!iframe) { log('iframe not ready', 'error'); return; }
+    log('', 'info', 'reload');
     iframeWin()!.location.reload();
   },
   get(selector: string): Element[] {
     try { return iframeDoc() ? Array.from(iframeDoc()!.querySelectorAll(selector)) : []; }
-    catch { log('Cross-origin blocked', 'error'); return []; }
+    catch { log('cross-origin blocked', 'error'); return []; }
   },
   find(selector: string): Element | null {
     try { return iframeDoc()?.querySelector(selector) ?? null; } catch { return null; }
@@ -1040,13 +1121,13 @@ export const testApi = {
   },
   click(selector: string) {
     const el = testApi.find(selector) as HTMLElement | null;
-    if (!el) { log(`click: not found  ${selector}`, 'error'); return; }
+    if (!el) { log(selector, 'error', 'click'); return; }
     el.click();
-    log(`click  ${selector}`, 'success');
+    log(selector, 'success', 'click');
   },
   type(selector: string, value: string) {
     const el = testApi.find(selector) as HTMLInputElement | null;
-    if (!el) { log(`type: not found  ${selector}`, 'error'); return; }
+    if (!el) { log(selector, 'error', 'type'); return; }
     const win = iframeWin() as any;
     const proto  = el.tagName === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
     const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
@@ -1054,7 +1135,7 @@ export const testApi = {
     if (setter) setter.call(el, value); else el.value = value;
     el.dispatchEvent(new Event('input',  { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    log(`type  ${selector}  "${value}"`, 'success');
+    log(`${selector}  "${value}"`, 'success', 'type');
   },
   isVisible(selector: string): boolean {
     const el = testApi.find(selector);

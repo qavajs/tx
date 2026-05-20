@@ -452,7 +452,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             font-weight: 700;
             letter-spacing: 0.3px;
             flex-shrink: 0;
-            min-width: 32px;
+            min-width: 68px;
         }
         .tx-cmd-label.pass { color: var(--pass); }
         .tx-cmd-label.fail { color: var(--fail); }
@@ -572,7 +572,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
 
 
-        #iframe-container { flex: 1; overflow: hidden; background: #fff; position: relative; }
+        #iframe-container { flex: 1; overflow: hidden; background: var(--bg-app); position: relative; }
         iframe { width: 100%; height: 100%; border: none; display: block; }
 
         .tx-empty {

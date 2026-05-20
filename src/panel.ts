@@ -211,10 +211,10 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     const fn = new Function(
       'describe','it','test','expect','tx','page',
       'beforeEach','afterEach',
-      'setTimeout','clearTimeout','Promise','console',
+      'setTimeout','clearTimeout','Promise','console','log',
       code
     );
-    fn(describe, it, it, pwExpect, testApi, page, beforeEach, afterEach, setTimeout, clearTimeout, Promise, console);
+    fn(describe, it, it, pwExpect, testApi, page, beforeEach, afterEach, setTimeout, clearTimeout, Promise, console, log);
   } catch (e: any) {
     return [{ name: '(parse/compile error)', passed: false, error: e.message, duration: 0 }];
   }
