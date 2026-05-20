@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { generateControlPanelHTML } from './controlPanel';
 import { TestRunner, parseTestFile, ParsedFile } from './testRunner';
-import { ConsoleReporter, ReporterEmitter, type Reporter, type Suite, type FullConfig, type TestResult as ReporterTestResult } from './reporter';
+import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from './reporter';
 
 export class TestServer {
   private server: http.Server | null = null;
@@ -24,7 +24,7 @@ export class TestServer {
 
   constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean) {
     this.port = port;
-    this.reporters = reporters ?? [new ConsoleReporter()];
+    this.reporters = reporters ?? [];
     this.emitter = new ReporterEmitter();
     for (const r of this.reporters) this.emitter.add(r);
     this.testFileMap = new Map();
@@ -105,33 +105,72 @@ export class TestServer {
           return;
         }
 
-        // POST /api/report — receive browser-side test results and fire reporter events
+        // POST /api/run-begin — browser signals the start of a run (once per run, not per file)
+        if (req.url === '/api/run-begin' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: Buffer) => (body += chunk));
+          req.on('end', () => {
+            try {
+              const { specs } = JSON.parse(body) as {
+                specs: Array<{ file: string; tests: string[] | null }>;
+              };
+              const allTestCases = specs.flatMap(({ file, tests }) => {
+                const parsed = this.parsedCache.get(file);
+                if (!parsed) return [];
+                const cases = parsed.tests.map(t => ({
+                  title: t.name,
+                  fullTitle: t.suite ? `${t.suite} > ${t.name}` : t.name,
+                }));
+                return tests === null ? cases : cases.filter(c => tests.includes(c.fullTitle));
+              });
+              const suite: Suite = { title: '', tests: allTestCases, allTests() { return this.tests; } };
+              this.emitter.emitBegin({ testFiles: specs.map(s => s.file) }, suite);
+              res.writeHead(204);
+              res.end();
+            } catch (err: any) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
+        // POST /api/run-end — browser signals the end of a run with cumulative totals
+        if (req.url === '/api/run-end' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: Buffer) => (body += chunk));
+          req.on('end', () => {
+            try {
+              const { passed, failed, total, duration } = JSON.parse(body) as {
+                passed: number; failed: number; total: number; duration: number;
+              };
+              this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
+              res.writeHead(204);
+              res.end();
+            } catch (err: any) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
+        // POST /api/report — receive browser-side test results; fires per-test reporter events
         if (req.url === '/api/report' && req.method === 'POST') {
           let body = '';
           req.on('data', (chunk: Buffer) => (body += chunk));
           req.on('end', () => {
             try {
-              const { filename, tests } = JSON.parse(body) as {
+              const { tests } = JSON.parse(body) as {
                 filename?: string;
                 tests: Array<{ name: string; passed: boolean; error?: string; duration: number }>;
               };
-              const allTestCases = tests.map(t => ({ title: t.name, fullTitle: t.name }));
-              const suite: Suite = { title: filename ?? '', tests: allTestCases, allTests() { return this.tests; } };
-              this.emitter.emitBegin({} as FullConfig, suite);
               for (const t of tests) {
                 const testCase = { title: t.name, fullTitle: t.name };
                 const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error };
                 this.emitter.emitTestBegin(testCase, result);
                 this.emitter.emitTestEnd(testCase, result);
               }
-              const passed = tests.filter(t => t.passed).length;
-              this.emitter.emitEnd({
-                status: passed === tests.length ? 'passed' : 'failed',
-                passed,
-                failed: tests.length - passed,
-                total: tests.length,
-                duration: tests.reduce((s, t) => s + t.duration, 0),
-              });
               res.writeHead(204);
               res.end();
             } catch (err: any) {

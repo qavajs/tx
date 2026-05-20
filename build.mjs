@@ -28,6 +28,16 @@ await esbuild.build({
 
 await esbuild.build({
   ...sharedOpts,
+  entryPoints: ['test/ConsoleReporter.ts'],
+  bundle: true,
+  platform: 'node',
+  packages: 'external',
+  outfile: 'dist/ConsoleReporter.js',
+  sourcemap: true,
+});
+
+await esbuild.build({
+  ...sharedOpts,
   entryPoints: ['src/panel.ts'],
   bundle: true,
   platform: 'browser',
@@ -36,7 +46,6 @@ await esbuild.build({
   minify: !watch,
 });
 
-// Bundle test files from examples/ so they support TypeScript and ES imports
 const testFiles = readdirSync('test/specs')
   .filter(f => /\.(js|ts)$/.test(f))
   .map(f => join('test/specs', f));
@@ -53,4 +62,4 @@ if (testFiles.length > 0) {
   });
 }
 
-console.log('✅  Build complete → dist/');
+console.log('Build complete → dist/');

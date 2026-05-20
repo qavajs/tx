@@ -5,7 +5,7 @@
 import type { Reporter } from './reporter';
 
 export interface TxConfig {
-  /** Custom reporters. Defaults to ConsoleReporter when omitted. */
+  /** Custom reporters. */
   reporters?: Reporter[];
   /** Proxy hostname (default: localhost) */
   proxyHost?: string;

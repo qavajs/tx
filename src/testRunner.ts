@@ -89,7 +89,7 @@ export class TestRunner {
     return this;
   }
 
-  async runCode(code: string, extraContext: Record<string, any> = {}): Promise<RunResults> {
+  async runCode(code: string, extraContext: Record<string, any> = {}, _lifecycle = true): Promise<RunResults> {
     type QueueItem = {
       name: string; fn: () => any;
       beforeEachs: Array<() => any>; afterEachs: Array<() => any>;
@@ -180,7 +180,7 @@ export class TestRunner {
       tests: allTestCases,
       allTests() { return this.tests; },
     };
-    this.emitter.emitBegin({} as FullConfig, suite);
+    if (_lifecycle) this.emitter.emitBegin({ testFiles: [] }, suite);
 
     for (let i = 0; i < queue.length; i++) {
       const t = queue[i];
@@ -217,7 +217,7 @@ export class TestRunner {
       tests: results,
     };
 
-    this.emitter.emitEnd({
+    if (_lifecycle) this.emitter.emitEnd({
       status: runResults.failed > 0 ? 'failed' : 'passed',
       passed: runResults.passed,
       failed: runResults.failed,
@@ -230,6 +230,44 @@ export class TestRunner {
 
   async runFile(filePath: string, extraContext: Record<string, any> = {}): Promise<RunResults> {
     return this.runCode(fs.readFileSync(filePath, 'utf-8'), extraContext);
+  }
+
+  async runFiles(filePaths: string[], extraContext: Record<string, any> = {}): Promise<RunResults> {
+    const allTestCases: TestCase[] = [];
+    for (const fp of filePaths) {
+      const parsed = parseTestFile(fp);
+      for (const t of parsed.tests) {
+        allTestCases.push({ title: t.name, fullTitle: t.suite ? `${t.suite} > ${t.name}` : t.name });
+      }
+    }
+    const suite: Suite = { title: '', tests: allTestCases, allTests() { return this.tests; } };
+    this.emitter.emitBegin({ testFiles: filePaths }, suite);
+
+    let totalPassed = 0, totalFailed = 0, totalDuration = 0;
+    const allTests: TestResult[] = [];
+    for (const fp of filePaths) {
+      const r = await this.runCode(fs.readFileSync(fp, 'utf-8'), extraContext, false);
+      totalPassed += r.passed;
+      totalFailed += r.failed;
+      totalDuration += r.duration;
+      allTests.push(...r.tests);
+    }
+
+    const runResults: RunResults = {
+      passed: totalPassed,
+      failed: totalFailed,
+      total: allTests.length,
+      duration: totalDuration,
+      tests: allTests,
+    };
+    this.emitter.emitEnd({
+      status: totalFailed > 0 ? 'failed' : 'passed',
+      passed: totalPassed,
+      failed: totalFailed,
+      total: allTests.length,
+      duration: totalDuration,
+    });
+    return runResults;
   }
 
   report(results: RunResults): void {

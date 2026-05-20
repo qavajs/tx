@@ -294,6 +294,22 @@ function reportToServer(results: TestResult[], filename?: string): void {
   }).catch(() => { /* non-critical */ });
 }
 
+async function notifyRunBegin(specs: Array<{ file: string; tests: string[] | null }>): Promise<void> {
+  await fetch(API_BASE + '/api/run-begin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ specs }),
+  }).catch(() => {});
+}
+
+function notifyRunEnd(passed: number, failed: number, total: number, duration: number): void {
+  fetch(API_BASE + '/api/run-end', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ passed, failed, total, duration }),
+  }).catch(() => {});
+}
+
 function renderTestResults(results: TestResult[], filename?: string) {
   if (filename) logSection(filename);
   let passed = 0, failed = 0;
@@ -314,15 +330,19 @@ window.runTestByFilename = async (filename: string) => {
   resetTestItems(filename);
   setCardRunning(filename);
   log(`run  ${filename}`, 'info');
+  await notifyRunBegin([{ file: filename, tests: null }]);
   try {
     const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const results = await executeTests(await resp.text(), { filename });
     renderTestResults(results, filename);
     reportToServer(results, filename);
+    const passed = results.filter(r => r.passed).length;
+    notifyRunEnd(passed, results.length - passed, results.length, results.reduce((s, r) => s + r.duration, 0));
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     updateCardStatus(filename, 0, 1);
+    notifyRunEnd(0, 1, 1, 0);
   }
 };
 
@@ -331,15 +351,23 @@ window.runSuite = async (filename: string, suiteName: string) => {
   resetTestItems(filename);
   setCardRunning(filename);
   log(`suite  "${suiteName}"  in ${filename}`, 'info');
+  const _suiteTests = Array.from(
+    document.getElementById('card-' + escAttr(filename))
+      ?.querySelectorAll<HTMLElement>('.tx-test-item') ?? []
+  ).filter(el => el.dataset.suite === suiteName).map(el => el.dataset.fullname!).filter(Boolean);
+  await notifyRunBegin([{ file: filename, tests: _suiteTests.length ? _suiteTests : null }]);
   try {
     const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const results = await executeTests(await resp.text(), { filterSuite: suiteName, filename });
     renderTestResults(results, filename);
     reportToServer(results, filename);
+    const passed = results.filter(r => r.passed).length;
+    notifyRunEnd(passed, results.length - passed, results.length, results.reduce((s, r) => s + r.duration, 0));
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     updateCardStatus(filename, 0, 1);
+    notifyRunEnd(0, 1, 1, 0);
   }
 };
 
@@ -348,15 +376,19 @@ window.runTest = async (filename: string, fullName: string) => {
   setTestItemStatus(filename, fullName, 'running');
   setCardRunning(filename);
   log(`it  "${fullName}"`, 'info');
+  await notifyRunBegin([{ file: filename, tests: [fullName] }]);
   try {
     const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const results = await executeTests(await resp.text(), { filterTest: fullName, filename });
     renderTestResults(results, filename);
     reportToServer(results, filename);
+    const passed = results.filter(r => r.passed).length;
+    notifyRunEnd(passed, results.length - passed, results.length, results.reduce((s, r) => s + r.duration, 0));
   } catch (e: any) {
     log('Error: ' + e.message, 'error');
     setTestItemStatus(filename, fullName, 'fail');
+    notifyRunEnd(0, 1, 1, 0);
   }
 };
 
@@ -365,8 +397,11 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   if (btn) btn.disabled = true;
   _isTestRunning = true;
   setTopbarStatus('running', 'Running…');
-  let totalPass = 0, totalFail = 0;
-  for (const card of Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'))) {
+  const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'));
+  const allFilenames = allCards.map(c => c.dataset.filename!);
+  await notifyRunBegin(allFilenames.map(f => ({ file: f, tests: null })));
+  let totalPass = 0, totalFail = 0, totalDuration = 0;
+  for (const card of allCards) {
     const filename = card.dataset.filename!;
     document.getElementById('card-' + escAttr(filename))?.classList.add('open');
     resetTestItems(filename);
@@ -378,13 +413,14 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
       const results = await executeTests(await resp.text(), { filename });
       renderTestResults(results, filename);
       reportToServer(results, filename);
-      results.forEach(r => r.passed ? totalPass++ : totalFail++);
+      results.forEach(r => { r.passed ? totalPass++ : totalFail++; totalDuration += r.duration; });
     } catch (e: any) {
       log('Error: ' + e.message, 'error');
       updateCardStatus(filename, 0, 1);
       totalFail++;
     }
   }
+  notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
   _isTestRunning = false;
   setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
   if (btn) btn.disabled = false;
@@ -520,7 +556,7 @@ window.runFiltered = async () => {
   if (btn) btn.disabled = true;
   _isTestRunning = true;
   setTopbarStatus('running', 'Running…');
-  let totalPass = 0, totalFail = 0;
+  let totalPass = 0, totalFail = 0, totalDuration = 0;
 
   const byFile = new Map<string, string[]>();
   for (const item of document.querySelectorAll<HTMLElement>('.tx-test-item')) {
@@ -533,6 +569,8 @@ window.runFiltered = async () => {
     byFile.set(card.dataset.filename, list);
   }
 
+  await notifyRunBegin(Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests })));
+
   for (const [filename, testNames] of byFile) {
     document.getElementById('card-' + escAttr(filename))?.classList.add('open');
     resetTestItems(filename);
@@ -544,7 +582,7 @@ window.runFiltered = async () => {
       const results = await executeTests(await resp.text(), { filename, filterTests: testNames });
       renderTestResults(results, filename);
       reportToServer(results, filename);
-      results.forEach(r => r.passed ? totalPass++ : totalFail++);
+      results.forEach(r => { r.passed ? totalPass++ : totalFail++; totalDuration += r.duration; });
     } catch (e: any) {
       log('Error: ' + e.message, 'error');
       updateCardStatus(filename, 0, 1);
@@ -552,6 +590,7 @@ window.runFiltered = async () => {
     }
   }
 
+  notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
   _isTestRunning = false;
   setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
   if (btn) btn.disabled = false;
