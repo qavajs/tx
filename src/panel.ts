@@ -1,4 +1,4 @@
-import { log, API_BASE, testApi, page, pwExpect, initIframe } from './browser';
+import { log, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab } from './browser';
 
 declare global {
   interface Window {
@@ -385,11 +385,44 @@ async function pollUpdates() {
   setTimeout(pollUpdates, 2000);
 }
 
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
+function renderTabBar() {
+  const bar = document.getElementById('tabBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  for (const t of getTabsSnapshot()) {
+    const item = document.createElement('div');
+    item.className = 'tx-tab-item' + (t.active ? ' active' : '');
+    item.onclick = () => setActiveTab(t.id);
+    const title = document.createElement('span');
+    title.className = 'tx-tab-title';
+    title.textContent = t.title || t.url || 'New Tab';
+    title.title = t.url || '';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'tx-tab-close';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Close tab';
+    closeBtn.onclick = (e) => { e.stopPropagation(); closeTab(t.id); };
+    item.appendChild(title);
+    item.appendChild(closeBtn);
+    bar.appendChild(item);
+  }
+  const newBtn = document.createElement('button');
+  newBtn.className = 'tx-new-tab-btn';
+  newBtn.title = 'New tab';
+  newBtn.textContent = '+';
+  newBtn.onclick = () => createTab();
+  bar.appendChild(newBtn);
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
   log('tx ready', 'info');
+  setOnTabsChanged(renderTabBar);
   initIframe();
+  renderTabBar();
   loadTestList();
   pollUpdates();
 });

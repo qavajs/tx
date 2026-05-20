@@ -15,6 +15,7 @@ let viewportObserver: ResizeObserver | null = null;
 export function reapplyViewport() {
   const container = document.getElementById('iframe-container');
   const tag = document.getElementById('viewportTag');
+  const iframe = _activeTab()?.iframe ?? null;
   if (!container || !iframe) return;
 
   if (!viewportW || !viewportH) {
@@ -53,9 +54,13 @@ export function applyViewport(w: number | null, h: number | null) {
   reapplyViewport();
 }
 
-// ── iframe state ──────────────────────────────────────────────────────────────
+// ── Tab state ─────────────────────────────────────────────────────────────────
 
-let iframe: HTMLIFrameElement | null = null;
+interface TabEntry { id: string; iframe: HTMLIFrameElement; title: string; url: string; }
+let _tabs: TabEntry[] = [];
+let _activeTabId: string | null = null;
+let _tabCounter = 0;
+function _activeTab(): TabEntry | null { return _tabs.find(t => t.id === _activeTabId) ?? null; }
 
 export const API_BASE = 'http://localhost:' + window.__CONFIG__.port;
 
@@ -70,10 +75,88 @@ export function toProxiedUrl(url: string): string {
 // ── iframe helpers ────────────────────────────────────────────────────────────
 
 export function iframeDoc(): Document | null {
-  try { return iframe?.contentDocument ?? null; } catch { return null; }
+  try { return _activeTab()?.iframe.contentDocument ?? null; } catch { return null; }
 }
 export function iframeWin(): Window & typeof globalThis | null {
-  try { return iframe?.contentWindow as any ?? null; } catch { return null; }
+  try { return _activeTab()?.iframe.contentWindow as any ?? null; } catch { return null; }
+}
+
+// ── Tab lifecycle ─────────────────────────────────────────────────────────────
+
+let _onTabsChanged: (() => void) | null = null;
+export function setOnTabsChanged(fn: () => void) { _onTabsChanged = fn; }
+
+export function getTabsSnapshot() {
+  return _tabs.map(t => ({ id: t.id, title: t.title, url: t.url, active: t.id === _activeTabId }));
+}
+
+export function setActiveTab(tabId: string) {
+  for (const t of _tabs) t.iframe.style.display = 'none';
+  const tab = _tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.iframe.style.display = 'block';
+  _activeTabId = tabId;
+  const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
+  if (navInput) navInput.value = tab.url;
+  reapplyViewport();
+  _onTabsChanged?.();
+}
+
+export function createTab(url?: string) {
+  const tabId = 'tab-' + (++_tabCounter);
+  const iframeEl = document.createElement('iframe');
+  iframeEl.id = 'tx-tab-' + tabId;
+  iframeEl.sandbox.add('allow-same-origin');
+  iframeEl.sandbox.add('allow-scripts');
+  iframeEl.sandbox.add('allow-forms');
+  iframeEl.sandbox.add('allow-popups');
+  iframeEl.sandbox.add('allow-modals');
+  iframeEl.sandbox.add('allow-top-navigation-by-user-activation');
+  iframeEl.style.width = '100%';
+  iframeEl.style.height = '100%';
+  iframeEl.style.border = 'none';
+  iframeEl.style.display = 'none';
+  const tab: TabEntry = { id: tabId, iframe: iframeEl, title: 'New Tab', url: url ?? '' };
+  iframeEl.addEventListener('load', () => {
+    try { tab.title = iframeEl.contentDocument?.title || 'New Tab'; } catch {}
+    try {
+      const href = iframeEl.contentWindow?.location.href ?? '';
+      tab.url = (_proxyPrefix && href.startsWith(_proxyPrefix)) ? href.slice(_proxyPrefix.length) : href;
+    } catch {}
+    if (_activeTabId === tabId) {
+      const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
+      if (navInput) navInput.value = tab.url;
+    }
+    _installEventBridges();
+    reapplyViewport();
+    _emitPage('domcontentloaded');
+    _emitPage('load');
+    _emitPage('framenavigated', { url: () => page.url(), name: () => '', isMainFrame: () => true });
+    _onTabsChanged?.();
+  });
+  iframeEl.addEventListener('error', () => { _emitPage('crash'); });
+  document.getElementById('iframe-container')!.appendChild(iframeEl);
+  _tabs.push(tab);
+  setActiveTab(tabId);
+  iframeEl.src = url ? toProxiedUrl(url) : API_BASE + '/mock';
+  log('new tab', 'info');
+  _onTabsChanged?.();
+  return _makePopupPage(tabId);
+}
+
+export function closeTab(tabId: string) {
+  const tab = _tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.iframe.remove();
+  _tabs = _tabs.filter(t => t.id !== tabId);
+  if (_activeTabId === tabId) {
+    if (_tabs.length > 0) {
+      setActiveTab(_tabs[_tabs.length - 1].id);
+    } else {
+      _activeTabId = null;
+    }
+  }
+  _onTabsChanged?.();
 }
 
 // ── Command Log ───────────────────────────────────────────────────────────────
@@ -434,11 +517,10 @@ function _installEventBridges(): void {
     win.prompt  = (message = '', def = '') => { const d = _makeDialog('prompt', String(message), String(def)); _emitPage('dialog', d); return d._result() as string | null; };
 
     // ── popup ─────────────────────────────────────────────────────────────────
-    const _origOpen = (win.open as Function | undefined)?.bind(win);
-    win.open = (url?: string, target?: string, features?: string) => {
-      const popupWin = _origOpen?.(url, target, features) ?? null;
-      _emitPage('popup', { url: () => url ?? '', close: async () => { try { popupWin?.close(); } catch {} } });
-      return popupWin;
+    win.open = (url?: string, _target?: string, _features?: string) => {
+      const popupPage = createTab(url);
+      _emitPage('popup', popupPage);
+      return null;
     };
 
     // ── fetch interception ────────────────────────────────────────────────────
@@ -510,6 +592,18 @@ function _installEventBridges(): void {
   }
 
   // ── Document-level listeners (re-install after each navigation) ─────────────
+
+  // target="_blank" → open as new tab
+  doc.addEventListener('click', (e: MouseEvent) => {
+    const a = (e.target as Element)?.closest?.('a') as HTMLAnchorElement | null;
+    if (!a || a.target !== '_blank' || a.hasAttribute('download')) return;
+    e.preventDefault();
+    const href = a.href;
+    if (href) {
+      const popupPage = createTab(href);
+      _emitPage('popup', popupPage);
+    }
+  }, true);
 
   // download
   doc.addEventListener('click', (e: MouseEvent) => {
@@ -603,12 +697,13 @@ export const page = {
 
   goto(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!iframe) { reject(new Error('iframe not ready')); return; }
+      const tab = _activeTab();
+      if (!tab) { reject(new Error('no active tab')); return; }
       const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
       if (navInput) navInput.value = url;
       const timer = setTimeout(() => reject(new Error(`goto("${url}") timed out`)), 30_000);
-      iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-      iframe.src = toProxiedUrl(url);
+      tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+      tab.iframe.src = toProxiedUrl(url);
       log(url, 'info', 'goto');
     });
   },
@@ -616,9 +711,10 @@ export const page = {
   reload(): Promise<void> {
     return new Promise((resolve, reject) => {
       const win = iframeWin();
-      if (!win) { reject(new Error('iframe not ready')); return; }
+      const tab = _activeTab();
+      if (!win || !tab) { reject(new Error('no active tab')); return; }
       log('', 'info', 'reload');
-      iframe!.addEventListener('load', () => resolve(), { once: true });
+      tab.iframe.addEventListener('load', () => resolve(), { once: true });
       win.location.reload();
     });
   },
@@ -835,7 +931,7 @@ export const page = {
 
   async close(): Promise<void> {
     _emitPage('close');
-    if (iframe) { iframe.remove(); iframe = null; }
+    closeTab(_activeTabId ?? '');
     log('page closed', 'info');
   },
 };
@@ -1099,15 +1195,18 @@ export function pwExpect(target: any) {
 
 export const testApi = {
   visit(url: string) {
-    if (!iframe) { log('iframe not ready', 'error'); return; }
-    iframe.src = url;
-    (document.getElementById('navUrl') as HTMLInputElement | null)!.value = url;
+    const tab = _activeTab();
+    if (!tab) { log('iframe not ready', 'error'); return; }
+    tab.iframe.src = url;
+    const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
+    if (navInput) navInput.value = url;
     log(url, 'info', 'visit');
   },
   reload() {
-    if (!iframe) { log('iframe not ready', 'error'); return; }
+    const win = iframeWin();
+    if (!win) { log('iframe not ready', 'error'); return; }
     log('', 'info', 'reload');
-    iframeWin()!.location.reload();
+    win.location.reload();
   },
   get(selector: string): Element[] {
     try { return iframeDoc() ? Array.from(iframeDoc()!.querySelectorAll(selector)) : []; }
@@ -1176,51 +1275,49 @@ export const testApi = {
   title(): string { return iframeDoc()?.title ?? ''; },
 };
 
+// ── Popup page factory ────────────────────────────────────────────────────────
+
+function _makePopupPage(tabId: string) {
+  const _activate = () => { if (_tabs.find(t => t.id === tabId)) setActiveTab(tabId); };
+  const popupPage = {
+    async goto(url: string) { _activate(); return page.goto(url); },
+    reload() { _activate(); return page.reload(); },
+    url() { _activate(); return page.url(); },
+    async title() { _activate(); return page.title(); },
+    locator(selector: string) {
+      return new Locator(() => { _activate(); return page.locator(selector)._els(); });
+    },
+    getByText: (text: string | RegExp, opts?: any) => new Locator(() => { _activate(); return page.getByText(text, opts)._els(); }),
+    getByRole: (role: string, opts?: any) => new Locator(() => { _activate(); return page.getByRole(role, opts)._els(); }),
+    getByLabel: (text: string | RegExp, opts?: any) => new Locator(() => { _activate(); return page.getByLabel(text, opts)._els(); }),
+    getByPlaceholder: (text: string | RegExp) => new Locator(() => { _activate(); return page.getByPlaceholder(text)._els(); }),
+    getByTestId: (id: string) => new Locator(() => { _activate(); return page.getByTestId(id)._els(); }),
+    getByAltText: (text: string | RegExp) => new Locator(() => { _activate(); return page.getByAltText(text)._els(); }),
+    getByTitle: (text: string | RegExp) => new Locator(() => { _activate(); return page.getByTitle(text)._els(); }),
+    waitForURL: (url: string | RegExp, opts?: any) => { _activate(); return page.waitForURL(url, opts); },
+    waitForSelector: (sel: string, opts?: any) => { _activate(); return page.waitForSelector(sel, opts); },
+    waitForTimeout: (ms: number) => page.waitForTimeout(ms),
+    on:   (event: string, fn: any) => { _addPageListener(event, fn); return popupPage; },
+    off:  (event: string, fn: any) => { _removePageListener(event, fn); return popupPage; },
+    once: (event: string, fn: any) => { page.once(event, fn); return popupPage; },
+    async close() { closeTab(tabId); },
+  };
+  return popupPage;
+}
+
+export type PopupPage = ReturnType<typeof _makePopupPage>;
+
 // ── iframe init ───────────────────────────────────────────────────────────────
 
 export function initIframe() {
-  const container = document.getElementById('iframe-container')!;
-  container.innerHTML = '';
-  iframe = document.createElement('iframe');
-  iframe.id = 'tx-virtual-browser';
-  iframe.sandbox.add('allow-same-origin');
-  iframe.sandbox.add('allow-scripts');
-  iframe.sandbox.add('allow-forms');
-  iframe.sandbox.add('allow-popups');
-  iframe.sandbox.add('allow-modals');
-  iframe.sandbox.add('allow-top-navigation-by-user-activation');
-  iframe.addEventListener('load', () => {
-    log('iframe ready', 'success');
-    reapplyViewport();
-    _emitPage('domcontentloaded');
-    _emitPage('load');
-    _emitPage('framenavigated', { url: () => page.url(), name: () => '', isMainFrame: () => true });
-    _installEventBridges();
-  });
-  iframe.addEventListener('error', () => {
-    log('iframe load error', 'error');
-    _emitPage('crash');
-  });
-  container.appendChild(iframe);
-
-  // close event: fire when the iframe element is removed from its container
-  const _closeObserver = new MutationObserver(() => {
-    if (iframe && !container.contains(iframe)) {
-      _closeObserver.disconnect();
-      _emitPage('close');
-    }
-  });
-  _closeObserver.observe(container, { childList: true });
-
-  iframe.src = API_BASE + '/mock';
-  log(`iframe → mock page`, 'info');
-
+  _tabs = []; _activeTabId = null; _tabCounter = 0;
+  document.getElementById('iframe-container')!.innerHTML = '';
   viewportObserver?.disconnect();
   viewportObserver = new ResizeObserver(reapplyViewport);
-  viewportObserver.observe(container);
-
+  viewportObserver.observe(document.getElementById('iframe-container')!);
   if (window.__CONFIG__.viewport) {
     const { width, height } = window.__CONFIG__.viewport;
-    applyViewport(width, height);
+    viewportW = width; viewportH = height;
   }
+  createTab();
 }

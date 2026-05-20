@@ -572,6 +572,63 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
 
 
+        /* ══ Tab bar ══════════════════════════════════════════════════ */
+
+        .tx-tab-bar {
+            display: flex;
+            align-items: center;
+            background: var(--bg-topbar);
+            border-bottom: 1px solid var(--border);
+            padding: 0 4px;
+            height: 32px;
+            gap: 2px;
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+        .tx-tab-bar::-webkit-scrollbar { height: 2px; }
+        .tx-tab-bar::-webkit-scrollbar-thumb { background: var(--border-s); }
+
+        .tx-tab-item {
+            display: flex; align-items: center; gap: 5px;
+            padding: 0 8px 0 10px;
+            height: 26px;
+            border-radius: var(--radius);
+            background: transparent;
+            cursor: pointer;
+            max-width: 180px;
+            min-width: 80px;
+            user-select: none;
+            transition: background 0.1s;
+            flex-shrink: 0;
+        }
+        .tx-tab-item:hover { background: var(--bg-hover); }
+        .tx-tab-item.active { background: var(--bg-active); }
+
+        .tx-tab-title {
+            flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-size: 11px; color: var(--text-dim);
+        }
+        .tx-tab-item.active .tx-tab-title { color: var(--text); }
+
+        .tx-tab-close {
+            width: 14px; height: 14px; border-radius: 3px;
+            background: transparent; border: none; cursor: pointer;
+            color: var(--text-muted); font-size: 10px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; opacity: 0; transition: opacity 0.1s, background 0.1s;
+        }
+        .tx-tab-item:hover .tx-tab-close { opacity: 1; }
+        .tx-tab-close:hover { background: var(--fail-bg); color: var(--fail); }
+
+        .tx-new-tab-btn {
+            width: 24px; height: 24px; border-radius: var(--radius);
+            background: transparent; border: 1px solid var(--border-s);
+            color: var(--text-muted); font-size: 14px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; transition: all 0.1s; margin-left: 2px;
+        }
+        .tx-new-tab-btn:hover { background: var(--bg-hover); color: var(--text); border-color: var(--jade); }
+
         #iframe-container { flex: 1; overflow: hidden; background: var(--bg-app); position: relative; }
         iframe { width: 100%; height: 100%; border: none; display: block; }
 
@@ -633,6 +690,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                 </div>
                 <span class="tx-viewport-tag" id="viewportTag">—</span>
             </div>
+            <div class="tx-tab-bar" id="tabBar"></div>
             <div id="iframe-container"></div>
         </main>
 
