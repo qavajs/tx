@@ -109,7 +109,14 @@ function splitCompound(sel: string): string[] {
 }
 
 function matchEl(el: HtmlEl, sel: string): boolean {
-  return splitCompound(sel.trim()).every(t => matchToken(el, t));
+  sel = sel.trim();
+  const htMatch = sel.match(/:has-text\(["'](.+?)["']\)/);
+  if (htMatch) {
+    if (!el.text.includes(htMatch[1])) return false;
+    sel = sel.replace(/:has-text\(["'](.+?)["']\)/, '').trim();
+    if (!sel || sel === '*') return true;
+  }
+  return splitCompound(sel).every(t => matchToken(el, t));
 }
 
 function queryAll(els: HtmlEl[], selector: string): HtmlEl[] {

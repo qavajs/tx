@@ -103,6 +103,19 @@ function textMatches(el: Element, text: string | RegExp, exact = false): boolean
   return text instanceof RegExp ? text.test(t) : exact ? t === text : t.includes(text);
 }
 
+/** Parse `:has-text("...")` pseudo-classes out of a selector string. */
+function resolveSelector(selector: string): { base: string; hasText: string | null }[] {
+  return selector.split(',').map(s => {
+    s = s.trim();
+    const m = s.match(/:has-text\(["'](.+?)["']\)/);
+    if (m) {
+      const base = s.replace(/:has-text\(["'](.+?)["']\)/, '').trim() || '*';
+      return { base, hasText: m[1] };
+    }
+    return { base: s, hasText: null };
+  });
+}
+
 export class Locator {
   constructor(readonly _query: QueryFn) {}
 
@@ -136,9 +149,20 @@ export class Locator {
     }));
   }
   locator(selector: string): Locator {
-    return new Locator(() =>
-      this._els().flatMap(el => Array.from(el.querySelectorAll(selector)))
-    );
+    return new Locator(() => {
+      const parts = resolveSelector(selector);
+      const seen = new Set<Element>();
+      const out: Element[] = [];
+      for (const root of this._els()) {
+        for (const { base, hasText } of parts) {
+          for (const el of Array.from(root.querySelectorAll(base))) {
+            if (hasText && !textMatches(el, hasText)) continue;
+            if (!seen.has(el)) { seen.add(el); out.push(el); }
+          }
+        }
+      }
+      return out;
+    });
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -372,7 +396,17 @@ export const page = {
   locator(selector: string): Locator {
     return new Locator(() => {
       const doc = iframeDoc();
-      return doc ? Array.from(doc.querySelectorAll(selector)) : [];
+      if (!doc) return [];
+      const parts = resolveSelector(selector);
+      const seen = new Set<Element>();
+      const out: Element[] = [];
+      for (const { base, hasText } of parts) {
+        for (const el of Array.from(doc.querySelectorAll(base))) {
+          if (hasText && !textMatches(el, hasText)) continue;
+          if (!seen.has(el)) { seen.add(el); out.push(el); }
+        }
+      }
+      return out;
     });
   },
 
