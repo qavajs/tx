@@ -40,7 +40,6 @@ export interface Reporter {
 
 export class ConsoleReporter implements Reporter {
   onBegin(_config: FullConfig, suite: Suite): void {
-    console.log(`\n─────────────────────────────`);
     console.log(`Running ${suite.allTests().length} test(s)`);
   }
 
@@ -54,7 +53,6 @@ export class ConsoleReporter implements Reporter {
   }
 
   onEnd(result: FullResult): void {
-    console.log(`─────────────────────────────`);
     console.log(`  ${result.passed} passed, ${result.failed} failed, ${result.total} total (${result.duration}ms)\n`);
   }
 }

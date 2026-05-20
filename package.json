@@ -12,7 +12,8 @@
     "start": "node dist/index.js --config test/tx.config.js",
     "dev": "node build.mjs && node dist/index.js --config test/tx.config.js",
     "test": "node build.mjs && node dist/index.js --config test/tx.config.js --test",
-    "example:show": "cat examples/sampleTest.js"
+    "example:show": "cat examples/sampleTest.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "testcafe-hammerhead": "^31.7.7",

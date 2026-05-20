@@ -217,7 +217,7 @@ function resolveSelector(selector: string): { base: string; hasText: string | nu
 }
 
 export class Locator {
-  constructor(readonly _query: QueryFn) {}
+  constructor(readonly _query: QueryFn, private _desc = '') {}
 
   _els(): Element[]      { return this._query(); }
   _el():  Element | null { return this._els()[0] ?? null; }
@@ -235,18 +235,19 @@ export class Locator {
   // ── Chaining ──────────────────────────────────────────────────────────────
 
   nth(n: number): Locator {
-    return new Locator(() => { const e = this._els()[n]; return e ? [e] : []; });
+    return new Locator(() => { const e = this._els()[n]; return e ? [e] : []; }, `${this._desc}:nth(${n})`);
   }
   first(): Locator { return this.nth(0); }
   last():  Locator {
-    return new Locator(() => { const a = this._els(); return a.length ? [a[a.length - 1]] : []; });
+    return new Locator(() => { const a = this._els(); return a.length ? [a[a.length - 1]] : []; }, `${this._desc}:last`);
   }
   filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp }): Locator {
+    const tag = opts.hasText ? `[has-text: ${opts.hasText}]` : opts.hasNotText ? `[not-text: ${opts.hasNotText}]` : '[filtered]';
     return new Locator(() => this._els().filter(el => {
       if (opts.hasText    && !textMatches(el, opts.hasText))    return false;
       if (opts.hasNotText &&  textMatches(el, opts.hasNotText)) return false;
       return true;
-    }));
+    }), `${this._desc}${tag}`);
   }
   locator(selector: string): Locator {
     return new Locator(() => {
@@ -262,7 +263,7 @@ export class Locator {
         }
       }
       return out;
-    });
+    }, `${this._desc} ${selector}`.trim());
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -270,13 +271,13 @@ export class Locator {
   async click(opts?: { force?: boolean; timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout);
     el.click();
-    log('', 'success', 'click');
+    log(this._desc, 'success', 'click');
   }
 
   async dblclick(opts?: { timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout);
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    log('', 'success', 'dblclick');
+    log(this._desc, 'success', 'dblclick');
   }
 
   async fill(value: string, opts?: { timeout?: number; delay?: number }): Promise<void> {
@@ -331,7 +332,7 @@ export class Locator {
 
     el.dispatchEvent(new E('change', { bubbles: true }));
     el.dispatchEvent(new E('blur',   { bubbles: true }));
-    log(`"${value}"`, 'success', 'fill');
+    log(this._desc ? `${this._desc}  "${value}"` : `"${value}"`, 'success', 'fill');
   }
 
   async clear(opts?: { timeout?: number }): Promise<void> { await this.fill('', opts); }
@@ -345,7 +346,7 @@ export class Locator {
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    log(`"${text}"`, 'success', 'type');
+    log(this._desc ? `${this._desc}  "${text}"` : `"${text}"`, 'success', 'type');
   }
 
   async press(key: string, opts?: { timeout?: number }): Promise<void> {
@@ -358,7 +359,7 @@ export class Locator {
       const form = (el as HTMLInputElement).form;
       if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     }
-    log(key, 'success', 'press');
+    log(this._desc ? `${this._desc}  ${key}` : key, 'success', 'press');
   }
 
   async selectOption(value: string | string[], opts?: { timeout?: number }): Promise<void> {
@@ -368,36 +369,36 @@ export class Locator {
       opt.selected = vals.includes(opt.value) || vals.includes(opt.text);
     }
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    log(vals.join(', '), 'success', 'select');
+    log(this._desc ? `${this._desc}  ${vals.join(', ')}` : vals.join(', '), 'success', 'select');
   }
 
   async check(opts?: { timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
-    log('', 'success', 'check');
+    log(this._desc, 'success', 'check');
   }
 
   async uncheck(opts?: { timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
-    log('', 'success', 'uncheck');
+    log(this._desc, 'success', 'uncheck');
   }
 
   async focus(opts?: { timeout?: number }): Promise<void> {
     (await this._waitForEl(opts?.timeout)).focus();
-    log('', 'info', 'focus');
+    log(this._desc, 'info', 'focus');
   }
 
   async hover(opts?: { timeout?: number }): Promise<void> {
     const el = await this._waitForEl(opts?.timeout);
     el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
     el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-    log('', 'info', 'hover');
+    log(this._desc, 'info', 'hover');
   }
 
   async scrollIntoViewIfNeeded(opts?: { timeout?: number }): Promise<void> {
     (await this._waitForEl(opts?.timeout)).scrollIntoView({ block: 'nearest' });
-    log('', 'info', 'scroll');
+    log(this._desc, 'info', 'scroll');
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -440,7 +441,7 @@ export class Locator {
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
     const state   = opts?.state   ?? 'visible';
     const timeout = opts?.timeout ?? 5000;
-    log(state, 'info', 'waitFor');
+    log(this._desc ? `${this._desc}  ${state}` : state, 'info', 'waitFor');
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
       const el = this._el();
@@ -752,11 +753,12 @@ export const page = {
         }
       }
       return out;
-    });
+    }, selector);
   },
 
   getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator {
     const exact = opts?.exact ?? false;
+    const desc = `text(${text instanceof RegExp ? text : `"${text}"`})`;
     return new Locator(() => {
       const doc = iframeDoc();
       if (!doc) return [];
@@ -765,10 +767,11 @@ export const page = {
       );
       if (leafs.length) return leafs;
       return Array.from(doc.querySelectorAll('*')).filter(el => textMatches(el, text, exact));
-    });
+    }, desc);
   },
 
   getByRole(role: string, opts?: { name?: string | RegExp; exact?: boolean }): Locator {
+    const desc = opts?.name ? `role=${role}[name="${opts.name}"]` : `role=${role}`;
     return new Locator(() => {
       const doc = iframeDoc();
       if (!doc) return [];
@@ -779,21 +782,24 @@ export const page = {
         const exact = opts.exact ?? false;
         els = els.filter(el => {
           const labelledById = el.getAttribute('aria-labelledby');
+          const labelled = labelledById ? doc.getElementById(labelledById) : null;
           const acc = (
             el.getAttribute('aria-label') ??
-            (labelledById ? doc.getElementById(labelledById)?.textContent ?? null : null) ??
+            labelled?.textContent ??
             (el.tagName === 'INPUT' ? el.getAttribute('value') : null) ??
-            (el.textContent ?? '')
+            el.textContent ??
+            ''
           ).trim();
           return name instanceof RegExp ? name.test(acc) : exact ? acc === name : acc.includes(name);
         });
       }
       return els;
-    });
+    }, desc);
   },
 
   getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator {
     const exact = opts?.exact ?? false;
+    const desc = `label(${text instanceof RegExp ? text : `"${text}"`})`;
     return new Locator(() => {
       const doc = iframeDoc();
       if (!doc) return [];
@@ -812,10 +818,11 @@ export const page = {
         if (ok && !results.includes(el)) results.push(el);
       }
       return results;
-    });
+    }, desc);
   },
 
   getByPlaceholder(text: string | RegExp): Locator {
+    const desc = `placeholder(${text instanceof RegExp ? text : `"${text}"`})`;
     return new Locator(() => {
       const doc = iframeDoc();
       if (!doc) return [];
@@ -823,7 +830,7 @@ export const page = {
         const p = el.getAttribute('placeholder') ?? '';
         return text instanceof RegExp ? text.test(p) : p.includes(text as string);
       });
-    });
+    }, desc);
   },
 
   getByTestId(id: string): Locator {
@@ -833,10 +840,11 @@ export const page = {
       const q = id.replace(/"/g, '\\"');
       // Support both data-testid (Playwright default) and data-test (common alternative)
       return Array.from(doc.querySelectorAll(`[data-testid="${q}"],[data-test="${q}"]`));
-    });
+    }, `[data-testid="${id}"]`);
   },
 
   getByAltText(text: string | RegExp): Locator {
+    const desc = `alt(${text instanceof RegExp ? text : `"${text}"`})`;
     return new Locator(() => {
       const doc = iframeDoc();
       if (!doc) return [];
@@ -844,10 +852,11 @@ export const page = {
         const a = el.getAttribute('alt') ?? '';
         return text instanceof RegExp ? text.test(a) : a.includes(text as string);
       });
-    });
+    }, desc);
   },
 
   getByTitle(text: string | RegExp): Locator {
+    const desc = `title(${text instanceof RegExp ? text : `"${text}"`})`;
     return new Locator(() => {
       const doc = iframeDoc();
       if (!doc) return [];
@@ -855,7 +864,7 @@ export const page = {
         const t = el.getAttribute('title') ?? '';
         return text instanceof RegExp ? text.test(t) : t.includes(text as string);
       });
-    });
+    }, desc);
   },
 
   // ── Page state ─────────────────────────────────────────────────────────────
