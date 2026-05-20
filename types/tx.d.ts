@@ -15,6 +15,23 @@ interface TxFillOptions    { timeout?: number; delay?: number; }
 interface TxTextOptions    { exact?: boolean;  timeout?: number; }
 interface TxNameOptions    { name?: string | RegExp; exact?: boolean; }
 
+/** Handle returned by {@link Page.addInitScript}. Call `dispose()` to stop the script from running on future navigations. */
+interface TxScriptHandle { dispose(): void; }
+
+/** Options for {@link Page.addLocatorHandler}. */
+interface TxLocatorHandlerOptions {
+  /**
+   * If `true`, tx will not wait for the locator to become hidden after the handler returns.
+   * Default: `false`.
+   */
+  noWaitAfter?: boolean;
+  /**
+   * Maximum number of times this handler may be invoked. The handler is automatically
+   * removed once the limit is reached. `0` (default) means unlimited.
+   */
+  times?: number;
+}
+
 // ── Locator ───────────────────────────────────────────────────────────────────
 
 interface Locator {
@@ -207,6 +224,51 @@ interface Page {
   // ── Viewport ──────────────────────────────────────────────────────────────────
   setViewportSize(size: { width: number; height: number }): void;
 
+  // ── Script evaluation ─────────────────────────────────────────────────────────
+  /**
+   * Evaluate a function or expression in the page's JavaScript context and return the result.
+   *
+   * - **string** — evaluated as an expression in the iframe window scope.
+   * - **function** — serialized to a self-calling IIFE; cannot close over test-scope variables.
+   * - **arg** — passed as the sole argument when `pageFunction` is a function (must be JSON-serializable).
+   *
+   * If the result is a `Promise` it is awaited before returning. Non-serializable
+   * return values (e.g. DOM nodes) are returned as-is since tx runs in the same process.
+   */
+  evaluate<T = any>(pageFunction: string | ((...args: any[]) => T | Promise<T>), arg?: any): Promise<T>;
+
+  // ── Script injection ──────────────────────────────────────────────────────────
+  /**
+   * Register a script that runs in the page on every navigation, before any test
+   * code interacts with the page.
+   *
+   * - **string** — executed as-is in the iframe window scope.
+   * - **function** — serialized to a self-calling IIFE; cannot close over test-scope variables.
+   * - **arg** — passed as the sole argument when `script` is a function (must be JSON-serializable).
+   *
+   * Returns a handle whose `dispose()` method removes this script from future navigations.
+   */
+  addInitScript(script: string | ((...args: any[]) => void), arg?: any): TxScriptHandle;
+
+  // ── Locator handlers ──────────────────────────────────────────────────────────
+  /**
+   * Register a handler that is invoked automatically whenever `locator` is visible,
+   * checked before every Locator action (`click`, `fill`, `press`, …).
+   *
+   * Useful for dismissing overlays, cookie banners, or modals that appear at
+   * unpredictable times and would otherwise block test interactions.
+   *
+   * Actions performed inside a handler do not re-trigger handler checks (re-entrancy guard).
+   */
+  addLocatorHandler(
+    locator: Locator,
+    handler: (locator: Locator) => Promise<void>,
+    options?: TxLocatorHandlerOptions
+  ): void;
+
+  /** Remove a handler previously registered with {@link Page.addLocatorHandler}. */
+  removeLocatorHandler(locator: Locator): void;
+
   // ── Events ────────────────────────────────────────────────────────────────────
   on(event: 'close',            fn: () => any): Page;
   on(event: 'console',          fn: (msg: TxConsoleMessage) => any): Page;
@@ -267,6 +329,7 @@ declare module 'tx' {
   export { Locator, Page, PopupPage, Browser };
   export { LocatorAssertions, ValueAssertions };
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
+  export { TxScriptHandle, TxLocatorHandlerOptions };
 
   export const page: Page;
   export const browser: Browser;

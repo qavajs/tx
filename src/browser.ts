@@ -138,6 +138,7 @@ export function createTab(url?: string) {
       const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
       if (navInput) navInput.value = tab.url;
     }
+    _runInitScripts();
     _installEventBridges();
     reapplyViewport();
     _emitPage('domcontentloaded');
@@ -269,18 +270,21 @@ export class Locator {
   // ── Actions ───────────────────────────────────────────────────────────────
 
   async click(opts?: { force?: boolean; timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el = await this._waitForEl(opts?.timeout);
     el.click();
     log(this._desc, 'success', 'click');
   }
 
   async dblclick(opts?: { timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el = await this._waitForEl(opts?.timeout);
     el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     log(this._desc, 'success', 'dblclick');
   }
 
   async fill(value: string, opts?: { timeout?: number; delay?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el    = await this._waitForEl(opts?.timeout) as HTMLInputElement | HTMLTextAreaElement;
     const win   = iframeWin() as any;
     const delay = opts?.delay ?? 30;
@@ -338,6 +342,7 @@ export class Locator {
   async clear(opts?: { timeout?: number }): Promise<void> { await this.fill('', opts); }
 
   async type(text: string, opts?: { delay?: number; timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     el.focus();
     for (const ch of text) {
@@ -350,6 +355,7 @@ export class Locator {
   }
 
   async press(key: string, opts?: { timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el = await this._waitForEl(opts?.timeout);
     const kOpts = { key, bubbles: true, cancelable: true };
     el.dispatchEvent(new KeyboardEvent('keydown',  kOpts));
@@ -363,6 +369,7 @@ export class Locator {
   }
 
   async selectOption(value: string | string[], opts?: { timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el = await this._waitForEl(opts?.timeout) as HTMLSelectElement;
     const vals = Array.isArray(value) ? value : [value];
     for (const opt of Array.from(el.options)) {
@@ -373,23 +380,27 @@ export class Locator {
   }
 
   async check(opts?: { timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
     log(this._desc, 'success', 'check');
   }
 
   async uncheck(opts?: { timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
     if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
     log(this._desc, 'success', 'uncheck');
   }
 
   async focus(opts?: { timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     (await this._waitForEl(opts?.timeout)).focus();
     log(this._desc, 'info', 'focus');
   }
 
   async hover(opts?: { timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     const el = await this._waitForEl(opts?.timeout);
     el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
     el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
@@ -397,6 +408,7 @@ export class Locator {
   }
 
   async scrollIntoViewIfNeeded(opts?: { timeout?: number }): Promise<void> {
+    await _checkLocatorHandlers();
     (await this._waitForEl(opts?.timeout)).scrollIntoView({ block: 'nearest' });
     log(this._desc, 'info', 'scroll');
   }
@@ -452,6 +464,54 @@ export class Locator {
       await new Promise(r => setTimeout(r, 50));
     }
     throw new Error(`waitFor(state="${state}") timed out after ${timeout}ms`);
+  }
+}
+
+// ── Init scripts ─────────────────────────────────────────────────────────────
+
+const _initScripts: string[] = [];
+
+function _runInitScripts(): void {
+  const win = iframeWin() as any;
+  if (!win) return;
+  for (const code of _initScripts) {
+    try { win.eval(code); }
+    catch (e: any) { console.error('[addInitScript]', e.message); }
+  }
+}
+
+// ── Locator handlers ──────────────────────────────────────────────────────────
+
+interface LocatorHandlerEntry {
+  locator: Locator;
+  handler: (locator: Locator) => Promise<void>;
+  noWaitAfter: boolean;
+  times: number;
+  invocations: number;
+}
+
+const _locatorHandlers: LocatorHandlerEntry[] = [];
+let _handlerRunning = false;
+
+async function _checkLocatorHandlers(): Promise<void> {
+  if (_handlerRunning || _locatorHandlers.length === 0) return;
+  _handlerRunning = true;
+  try {
+    for (let i = _locatorHandlers.length - 1; i >= 0; i--) {
+      const h = _locatorHandlers[i];
+      if (!await h.locator.isVisible()) continue;
+      h.invocations++;
+      await h.handler(h.locator);
+      if (!h.noWaitAfter) {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 5000 && await h.locator.isVisible()) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      }
+      if (h.times > 0 && h.invocations >= h.times) _locatorHandlers.splice(i, 1);
+    }
+  } finally {
+    _handlerRunning = false;
   }
 }
 
@@ -959,6 +1019,58 @@ export const page = {
     if (_activeTabId) setActiveTab(_activeTabId);
   },
 
+  async evaluate(pageFunction: string | ((...args: any[]) => any), arg?: any): Promise<any> {
+    const win = iframeWin() as any;
+    if (!win) throw new Error('no active page');
+    const code = typeof pageFunction === 'function'
+      ? arg !== undefined
+        ? `(${pageFunction.toString()})(${JSON.stringify(arg)})`
+        : `(${pageFunction.toString()})()`
+      : String(pageFunction);
+    const result = await Promise.resolve(win.eval(code));
+    log(code.slice(0, 50).replace(/\s+/g, ' '), 'info', 'evaluate');
+    return result;
+  },
+
+  addInitScript(script: string | ((...args: any[]) => any), arg?: any): { dispose: () => void } {
+    let code: string;
+    if (typeof script === 'function') {
+      code = arg !== undefined
+        ? `(${script.toString()})(${JSON.stringify(arg)})`
+        : `(${script.toString()})()`;
+    } else {
+      code = script;
+    }
+    _initScripts.push(code);
+    log(code.slice(0, 50).replace(/\s+/g, ' '), 'info', 'initScript');
+    return {
+      dispose() {
+        const i = _initScripts.indexOf(code);
+        if (i >= 0) _initScripts.splice(i, 1);
+      },
+    };
+  },
+
+  addLocatorHandler(
+    locator: Locator,
+    handler: (locator: Locator) => Promise<void>,
+    options?: { noWaitAfter?: boolean; times?: number }
+  ): void {
+    _locatorHandlers.push({
+      locator,
+      handler,
+      noWaitAfter: options?.noWaitAfter ?? false,
+      times: options?.times ?? 0,
+      invocations: 0,
+    });
+    log('handler registered', 'info', 'addLocatorHandler');
+  },
+
+  removeLocatorHandler(locator: Locator): void {
+    const i = _locatorHandlers.findIndex(h => h.locator === locator);
+    if (i >= 0) _locatorHandlers.splice(i, 1);
+  },
+
   async close(): Promise<void> {
     _emitPage('close');
     closeTab(_activeTabId ?? '');
@@ -1342,6 +1454,8 @@ export type PopupPage = ReturnType<typeof _makePopupPage>;
 
 export function initIframe() {
   _tabs = []; _activeTabId = null; _tabCounter = 0;
+  _initScripts.length = 0;
+  _locatorHandlers.length = 0;
   document.getElementById('iframe-container')!.innerHTML = '';
   viewportObserver?.disconnect();
   viewportObserver = new ResizeObserver(reapplyViewport);

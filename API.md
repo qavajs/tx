@@ -178,6 +178,81 @@ page.setViewportSize(size: { width: number; height: number }): void
 ```
 Apply a fixed viewport to the iframe (scales to fit the panel container).
 
+### Script evaluation
+
+```js
+await page.evaluate(
+  pageFunction: string | ((...args: any[]) => any),
+  arg?: any
+): Promise<any>
+```
+
+Evaluate a function or expression in the page's JavaScript context and return its result. If the result is a `Promise` it is awaited before returning.
+
+- **`pageFunction`** — a JS expression string, or a function. Functions are serialized and called as an IIFE; they cannot close over variables in test scope.
+- **`arg`** — passed as the sole argument when `pageFunction` is a function (must be JSON-serializable).
+
+```js
+// Expression string
+const title = await page.evaluate('document.title');
+
+// Function — read from the page
+const itemCount = await page.evaluate(() => {
+  return document.querySelectorAll('.item').length;
+});
+
+// Function with arg — write into the page
+await page.evaluate((token) => {
+  localStorage.setItem('auth_token', token);
+}, 'my-secret-token');
+
+// Async function — awaited automatically
+const data = await page.evaluate(async () => {
+  const res = await fetch('/api/user');
+  return res.json();
+});
+```
+
+### Script injection
+
+```js
+page.addInitScript(
+  script: string | ((...args: any[]) => void),
+  arg?: any
+): { dispose(): void }
+```
+
+Register a script to run inside the page on every navigation, before any test code interacts with the page. Scripts are executed in the iframe's window context in registration order.
+
+- **`script`** — either a JS source string or a function. Functions are serialized and called as an IIFE; they cannot close over variables in test scope.
+- **`arg`** — passed as the sole argument when `script` is a function (must be JSON-serializable).
+- **Returns** an object with a `dispose()` method that removes this specific script.
+
+Scripts accumulate across navigations for the lifetime of the panel session. Call `dispose()` to stop a script from running on future navigations.
+
+```js
+// String form — set a global before the page's own code runs
+page.addInitScript(`window.__ENV__ = 'test'`);
+
+// Function form — mock an API
+page.addInitScript(() => {
+  window.fetch = async () => new Response('{"ok":true}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+});
+
+// Function form with arg
+page.addInitScript((cfg) => {
+  window.__CONFIG__ = cfg;
+}, { featureFlags: { darkMode: true } });
+
+// Remove a specific script
+const handle = page.addInitScript(`window.DEBUG = true`);
+// … later:
+handle.dispose();
+```
+
 ### Keyboard
 
 ```js
@@ -199,6 +274,84 @@ page.once(event: string, fn: (...args) => any): page
 ```
 
 See [page Events](#page-events) for available events.
+
+### Locator handlers
+
+```js
+page.addLocatorHandler(
+  locator: Locator,
+  handler: (locator: Locator) => Promise<void>,
+  options?: { noWaitAfter?: boolean; times?: number }
+): void
+```
+
+Register a handler that is called automatically whenever the given locator becomes visible — **before** any Locator action (`click`, `fill`, `press`, etc.) is attempted. This is useful for dismissing overlays, cookie banners, or modals that can appear at unpredictable times and would otherwise block test interactions.
+
+**Options:**
+
+| Option        | Type      | Default | Description                                                                 |
+|---------------|-----------|---------|-----------------------------------------------------------------------------|
+| `noWaitAfter` | `boolean` | `false` | If `false` (default), after the handler returns tx waits up to 5 s for the locator to become hidden before continuing. Set to `true` to skip the wait. |
+| `times`       | `number`  | `0`     | Maximum number of invocations. `0` means unlimited. The handler is automatically removed once the limit is reached. |
+
+```js
+page.removeLocatorHandler(locator: Locator): void
+```
+
+Remove a previously registered handler by the same locator reference.
+
+**Behavior details:**
+- The check runs before every Locator action, not on a timer.
+- Handlers do not nest — actions performed inside a handler do not re-trigger handler checks (re-entrancy guard).
+- All handlers are cleared when the panel is fully reset (equivalent to a new session).
+
+**Example — cookie consent banner:**
+
+```js
+describe('Shopping flow', () => {
+  beforeEach(async () => {
+    // Dismiss the cookie banner whenever it appears, throughout the suite
+    page.addLocatorHandler(
+      page.locator('#cookie-banner'),
+      async (banner) => {
+        await banner.getByRole('button', { name: 'Accept all' }).click();
+      }
+    );
+
+    await page.goto('https://shop.example.com');
+  });
+
+  it('adds item to cart', async () => {
+    // If the banner appears before or during this click, it is dismissed first
+    await page.locator('.add-to-cart').click();
+    await expect(page.locator('.cart-count')).toHaveText('1');
+  });
+});
+```
+
+**Example — dismiss a modal at most once:**
+
+```js
+page.addLocatorHandler(
+  page.locator('.promo-modal'),
+  async (modal) => {
+    await modal.locator('[aria-label="Close"]').click();
+  },
+  { times: 1 }
+);
+```
+
+**Example — non-blocking tooltip removal:**
+
+```js
+page.addLocatorHandler(
+  page.locator('.blocking-tooltip'),
+  async () => {
+    await page.keyboard.press('Escape');
+  },
+  { noWaitAfter: true }   // tooltip may linger; don't stall the test
+);
+```
 
 ### Lifecycle
 

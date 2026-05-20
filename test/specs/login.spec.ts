@@ -37,3 +37,20 @@ describe('Failed login', () => {
     await expect(page.getByTestId('error')).toContainText('Username and password do not match');
   });
 });
+
+describe('Cookie-based login', () => {
+  it('uses existing session cookie', async () => {
+    await page.goto('https://www.saucedemo.com/');
+    await page.addInitScript(() => {
+      document.cookie = 'session-username=standard_user; domain=saucedemo.com; path=/;';
+    });
+    await page.goto('https://www.saucedemo.com/inventory.html');
+    // await page.getByTestId('username').fill('standard_user');
+    // await page.getByTestId('password').fill('secret_sauce');
+    // await page.getByTestId('login-button').click();
+    await page.waitForURL(/inventory/, { timeout: 5000 });
+    expect(page.url()).toContain('inventory');
+    await expect(page.getByTestId('title')).toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId('title')).toHaveText('Products');
+  });
+});
