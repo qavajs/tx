@@ -293,6 +293,95 @@ export class Locator {
     throw new Error(`Locator timed out after ${timeout}ms — element not found`);
   }
 
+  _isVisibleElement(el: Element | null): boolean {
+    if (!el) return false;
+    const win = iframeWin();
+    if (!win) return false;
+    const s = win.getComputedStyle(el as HTMLElement);
+    return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0'
+      && (el as HTMLElement).offsetParent !== null;
+  }
+
+  _receivesEvents(el: HTMLElement): boolean {
+    const win = iframeWin();
+    if (!win) return false;
+    const s = win.getComputedStyle(el);
+    if (s.pointerEvents === 'none') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  _isEnabledElement(el: HTMLElement): boolean {
+    return !('disabled' in el && (el as any).disabled);
+  }
+
+  _isEditableElement(el: HTMLElement): boolean {
+    return this._isEnabledElement(el) && !('readOnly' in el && (el as any).readOnly);
+  }
+
+  async _waitForActionableEl(opts: { timeout?: number; force?: boolean } = {}, action?: 'click' | 'dblclick' | 'check' | 'uncheck' | 'fill' | 'clear' | 'selectOption' | 'hover' | 'type'): Promise<HTMLElement> {
+    const timeout = opts.timeout ?? 5000;
+    const force = !!opts.force;
+    const needsStable = action === 'click' || action === 'dblclick' || action === 'check' || action === 'uncheck' || action === 'hover';
+    const needsEditable = action === 'fill' || action === 'clear' || action === 'selectOption' || action === 'type';
+    const t0 = Date.now();
+    let stableRect: DOMRect | null = null;
+    let lastReason = 'element not found';
+
+    while (Date.now() - t0 < timeout) {
+      const el = this._el() as HTMLElement | null;
+      if (!el) {
+        lastReason = 'element not found';
+        stableRect = null;
+        await new Promise(r => setTimeout(r, 50));
+        continue;
+      }
+      if (force) return el;
+      if (!this._isVisibleElement(el)) {
+        lastReason = 'element not visible';
+        stableRect = null;
+        await new Promise(r => setTimeout(r, 50));
+        continue;
+      }
+      if (!this._receivesEvents(el)) {
+        lastReason = 'element does not receive events';
+        stableRect = null;
+        await new Promise(r => setTimeout(r, 50));
+        continue;
+      }
+      if (!this._isEnabledElement(el)) {
+        lastReason = 'element is disabled';
+        stableRect = null;
+        await new Promise(r => setTimeout(r, 50));
+        continue;
+      }
+      if (needsEditable && !this._isEditableElement(el)) {
+        lastReason = 'element is not editable';
+        stableRect = null;
+        await new Promise(r => setTimeout(r, 50));
+        continue;
+      }
+      if (needsStable) {
+        const rect = el.getBoundingClientRect();
+        if (!stableRect) {
+          stableRect = rect;
+          lastReason = 'element is not stable';
+          await new Promise(r => setTimeout(r, 50));
+          continue;
+        }
+        if (rect.top !== stableRect.top || rect.left !== stableRect.left || rect.width !== stableRect.width || rect.height !== stableRect.height) {
+          stableRect = rect;
+          lastReason = 'element is not stable';
+          await new Promise(r => setTimeout(r, 50));
+          continue;
+        }
+      }
+      return el;
+    }
+
+    throw new Error(`Locator timed out after ${timeout}ms — ${this._desc} ${lastReason}`);
+  }
+
   // ── Chaining ──────────────────────────────────────────────────────────────
 
   nth(n: number): Locator {
@@ -333,7 +422,7 @@ export class Locator {
     const entry = logCommand(this._desc, 'click');
     try {
       await _checkLocatorHandlers();
-      const el = await this._waitForEl(opts?.timeout);
+      const el = await this._waitForActionableEl(opts, 'click');
       el.click();
       entry.success();
     } catch (error: any) {
@@ -346,7 +435,7 @@ export class Locator {
     const entry = logCommand(this._desc, 'dblclick');
     try {
       await _checkLocatorHandlers();
-      const el = await this._waitForEl(opts?.timeout);
+      const el = await this._waitForActionableEl(opts, 'dblclick');
       el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
       entry.success();
     } catch (error: any) {
@@ -359,7 +448,7 @@ export class Locator {
     const entry = logCommand(this._desc ? `${this._desc}  "${value}"` : `"${value}"`, 'fill');
     try {
       await _checkLocatorHandlers();
-      const el    = await this._waitForEl(opts?.timeout) as HTMLInputElement | HTMLTextAreaElement;
+      const el    = await this._waitForActionableEl(opts, 'fill') as HTMLInputElement | HTMLTextAreaElement;
       const win   = iframeWin() as any;
       const delay = opts?.delay ?? 30;
 
@@ -423,7 +512,7 @@ export class Locator {
     const entry = logCommand(this._desc ? `${this._desc}  "${text}"` : `"${text}"`, 'type');
     try {
       await _checkLocatorHandlers();
-      const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
+      const el = await this._waitForActionableEl(opts, 'type') as HTMLInputElement;
       el.focus();
       for (const ch of text) {
         if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
@@ -462,7 +551,7 @@ export class Locator {
     const entry = logCommand(this._desc ? `${this._desc}  ${Array.isArray(value) ? value.join(', ') : value}` : Array.isArray(value) ? value.join(', ') : value, 'select');
     try {
       await _checkLocatorHandlers();
-      const el = await this._waitForEl(opts?.timeout) as HTMLSelectElement;
+      const el = await this._waitForActionableEl(opts, 'selectOption') as HTMLSelectElement;
       const vals = Array.isArray(value) ? value : [value];
       for (const opt of Array.from(el.options)) {
         opt.selected = vals.includes(opt.value) || vals.includes(opt.text);
@@ -479,7 +568,7 @@ export class Locator {
     const entry = logCommand(this._desc, 'check');
     try {
       await _checkLocatorHandlers();
-      const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
+      const el = await this._waitForActionableEl(opts, 'check') as HTMLInputElement;
       if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
       entry.success();
     } catch (error: any) {
@@ -492,7 +581,7 @@ export class Locator {
     const entry = logCommand(this._desc, 'uncheck');
     try {
       await _checkLocatorHandlers();
-      const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
+      const el = await this._waitForActionableEl(opts, 'uncheck') as HTMLInputElement;
       if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
       entry.success();
     } catch (error: any) {
@@ -517,7 +606,7 @@ export class Locator {
     const entry = logCommand(this._desc, 'hover');
     try {
       await _checkLocatorHandlers();
-      const el = await this._waitForEl(opts?.timeout);
+      const el = await this._waitForActionableEl(opts, 'hover');
       el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
       el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
       entry.success();
