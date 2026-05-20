@@ -10,12 +10,16 @@ interface TestEntry {
   error?: string;
 }
 
+export interface HtmlReporterConfig {
+  outputPath?: string;
+}
+
 export class HtmlReporter implements Reporter {
   private tests: TestEntry[] = [];
   private outputPath: string;
 
-  constructor(outputPath = 'report.html') {
-    this.outputPath = resolve(outputPath);
+  constructor(config: HtmlReporterConfig = {}) {
+    this.outputPath = resolve(config.outputPath ?? 'report.html');
   }
 
   onBegin(_config: FullConfig, _suite: Suite): void {

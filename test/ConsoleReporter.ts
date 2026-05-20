@@ -1,6 +1,8 @@
 import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from '../src/reporter';
 
 export class ConsoleReporter implements Reporter {
+  constructor(_config: Record<string, unknown> = {}) {}
+
   onBegin(_config: FullConfig, suite: Suite): void {
     console.log(`Running ${suite.allTests().length} test(s)`);
   }

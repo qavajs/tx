@@ -1,6 +1,3 @@
-const { ConsoleReporter } = require('../dist/ConsoleReporter');
-const { HtmlReporter } = require('../dist/HtmlReporter');
-
 module.exports = {
   proxyHost: 'localhost',
   port1: 1337,
@@ -9,5 +6,8 @@ module.exports = {
   headless: false,
   testFiles: ['./specs/**/*.spec.ts'],
   viewport: { width: 1600, height: 900 },
-  reporters: [new ConsoleReporter(), new HtmlReporter('report.html')],
+  reporters: [
+    ['./ConsoleReporter.ts', {}],
+    ['./HtmlReporter.ts', { outputPath: 'report.html' }],
+  ],
 };

@@ -4,9 +4,12 @@
 
 import type { Reporter } from './reporter';
 
+/** A reporter entry: [path-to-module, config-object] */
+export type ReporterEntry = [path: string, config: Record<string, unknown>];
+
 export interface TxConfig {
-  /** Custom reporters. */
-  reporters?: Reporter[];
+  /** Reporter entries — each is a [modulePath, configObject] tuple. */
+  reporters?: ReporterEntry[];
   /** Proxy hostname (default: localhost) */
   proxyHost?: string;
 

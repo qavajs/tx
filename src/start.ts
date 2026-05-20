@@ -5,7 +5,22 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { TxWrapper } from './wrapper';
-import { TxConfig } from './types';
+import { TxConfig, ReporterEntry } from './types';
+import type { Reporter } from './reporter';
+import { register as registerTsLoader } from './tsLoader';
+
+registerTsLoader();
+
+// ── Reporter loading ───────────────────────────────────────────────────────────
+
+function loadReporter(entry: ReporterEntry, configDir: string): Reporter {
+    const [filePath, config] = entry;
+    const resolved = path.resolve(configDir, filePath);
+    const mod = require(resolved) as Record<string, unknown>;
+    const Ctor = (mod.default ?? Object.values(mod).find(v => typeof v === 'function')) as (new (cfg: Record<string, unknown>) => Reporter) | undefined;
+    if (!Ctor) throw new Error(`No exported class found in reporter module: ${filePath}`);
+    return new Ctor(config);
+}
 
 // ── CLI argument parsing ───────────────────────────────────────────────────────
 
@@ -215,12 +230,14 @@ async function main() {
         ? (Array.isArray(fileConfig.testMatch) ? fileConfig.testMatch : [fileConfig.testMatch])
         : [];
 
+    const reporters: Reporter[] = (fileConfig.reporters ?? []).map(entry => loadReporter(entry, configDir));
+
     const wrapper = new TxWrapper({
         ...mergedConfig,
         testFiles: resolvedFiles,
         testPatterns,
         watchBaseDir: configDir,
-        reporters: fileConfig.reporters,
+        reporters,
     });
 
     try {
