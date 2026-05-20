@@ -112,6 +112,12 @@ export class TestServer {
           return;
         }
 
+        if (req.url === '/mock' && req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(generateMockHTML());
+          return;
+        }
+
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');
       });
@@ -136,4 +142,31 @@ export class TestServer {
   getPort(): number {
     return this.port;
   }
+}
+
+function generateMockHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test Automation Server is ready</title>
+<style>
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; background: #f5f5f7; color: #1c1c1e; }
+  h1 { font-size: 22px; font-weight: 600; color: #1c1c1e; }
+  p  { margin-top: 8px; font-size: 14px; color: #6e6e73; }
+  .wrap { text-align: center; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #34c759;
+         display: inline-block; margin-right: 8px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1><span class="dot"></span>Test Automation Server is ready</h1>
+    <p>Use <code>page.goto(url)</code> in your tests to navigate here.</p>
+  </div>
+</body>
+</html>`;
 }

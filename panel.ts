@@ -14,6 +14,51 @@ declare global {
   }
 }
 
+let viewportW: number | null = null;
+let viewportH: number | null = null;
+let viewportObserver: ResizeObserver | null = null;
+
+function reapplyViewport() {
+  const container = document.getElementById('iframe-container');
+  const tag = document.getElementById('viewportTag');
+  if (!container || !iframe) return;
+
+  if (!viewportW || !viewportH) {
+    iframe.style.position = '';
+    iframe.style.top = '';
+    iframe.style.left = '';
+    iframe.style.width = '';
+    iframe.style.height = '';
+    iframe.style.transform = '';
+    iframe.style.transformOrigin = '';
+    if (tag) tag.textContent = `${iframe.offsetWidth} × ${iframe.offsetHeight}`;
+    return;
+  }
+
+  const cw = container.clientWidth;
+  const ch = container.clientHeight;
+  if (!cw || !ch) return;
+
+  const scale  = Math.min(cw / viewportW, ch / viewportH);
+  const ox     = (cw - viewportW * scale) / 2;
+  const oy     = (ch - viewportH * scale) / 2;
+
+  iframe.style.position      = 'absolute';
+  iframe.style.top           = '0';
+  iframe.style.left          = '0';
+  iframe.style.width         = viewportW + 'px';
+  iframe.style.height        = viewportH + 'px';
+  iframe.style.transform     = `translate(${ox}px,${oy}px) scale(${scale})`;
+  iframe.style.transformOrigin = 'top left';
+  if (tag) tag.textContent   = `${viewportW} × ${viewportH} @ ${Math.round(scale * 100)}%`;
+}
+
+function applyViewport(w: number | null, h: number | null) {
+  viewportW = w;
+  viewportH = h;
+  reapplyViewport();
+}
+
 let iframe: HTMLIFrameElement | null = null;
 const API_BASE = 'http://localhost:' + window.__CONFIG__.port;
 
@@ -434,6 +479,13 @@ const page = {
       }
     },
   },
+
+  // ── Viewport ───────────────────────────────────────────────────────────────
+
+  setViewportSize(size: { width: number; height: number }): void {
+    applyViewport(size.width, size.height);
+    log(`viewport  ${size.width} × ${size.height}`, 'info');
+  },
 };
 
 // ── Playwright-style expect ───────────────────────────────────────────────────
@@ -841,13 +893,16 @@ function initIframe() {
   iframe.onload = () => {
     setTopbarStatus('ready', 'Ready');
     log('iframe ready', 'success');
-    const tag = document.getElementById('viewportTag');
-    if (tag) tag.textContent = `${iframe!.offsetWidth} × ${iframe!.offsetHeight}`;
+    reapplyViewport();
   };
   iframe.onerror = () => log('iframe load error', 'error');
   container.appendChild(iframe);
-  iframe.src = window.__CONFIG__.proxyUrl;
-  log(`iframe → proxy`, 'info');
+  iframe.src = API_BASE + '/mock';
+  log(`iframe → mock page`, 'info');
+
+  viewportObserver?.disconnect();
+  viewportObserver = new ResizeObserver(reapplyViewport);
+  viewportObserver.observe(container);
 }
 
 // ── Spec list ─────────────────────────────────────────────────────────────────

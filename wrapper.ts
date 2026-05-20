@@ -29,7 +29,7 @@ export class CypressSafariWrapper {
       headless?: boolean;
     } = {}
   ) {
-    this.targetUrl = config.targetUrl || 'https://www.saucedemo.com/';
+    this.targetUrl = config.targetUrl || 'about:blank';
     config.proxyHost = config.proxyHost || 'localhost';
     config.port1 = config.port1 || 1337;
     config.port2 = config.port2 || 1338;

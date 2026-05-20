@@ -5,7 +5,7 @@
 import { CypressSafariWrapper } from './wrapper';
 
 async function main() {
-    const targetUrl = process.argv[2] || 'https://www.saucedemo.com/';
+    const targetUrl = process.argv[2] || 'about:blank';
 
     // Initialize the wrapper
     const wrapper = new CypressSafariWrapper({

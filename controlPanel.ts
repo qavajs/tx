@@ -613,7 +613,8 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             flex-shrink: 0;
         }
 
-        #iframe-container { flex: 1; overflow: hidden; background: #fff; }
+
+        #iframe-container { flex: 1; overflow: hidden; background: #fff; position: relative; }
         iframe { width: 100%; height: 100%; border: none; display: block; }
 
         .cy-empty {
@@ -677,7 +678,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
             <div class="cy-browser-toolbar">
                 <button class="cy-nav-btn" onclick="window.testApi && window.testApi.reload()" title="Reload">&#8635;</button>
                 <div class="cy-url-bar">
-                    <input type="text" id="navUrl" class="cy-url-input" placeholder="Enter URL…" value="${targetUrl}">
+                    <input type="text" id="navUrl" class="cy-url-input" placeholder="Enter URL…" value="">
                     <button class="cy-go-btn" onclick="window.testApi && window.testApi.visit(document.getElementById('navUrl').value)">Go</button>
                 </div>
                 <span class="cy-viewport-tag" id="viewportTag">—</span>
