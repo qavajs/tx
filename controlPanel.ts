@@ -244,6 +244,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
         }
 
         .cy-spec-badges { display: flex; gap: 4px; flex-shrink: 0; }
+        .cy-suite-badges { display: flex; gap: 3px; flex-shrink: 0; }
 
         .cy-badge {
             font-size: 10px;

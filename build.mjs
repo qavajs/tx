@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import { cpSync, mkdirSync } from 'fs';
+import { cpSync, mkdirSync } from 'node:fs';
 
 const watch = process.argv.includes('--watch');
 

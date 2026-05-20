@@ -766,7 +766,7 @@ function updateCardStatus(filename: string, passed: number, failed: number) {
 }
 
 function setTestItemStatus(filename: string, fullName: string, state: 'running'|'pass'|'fail', duration?: number) {
-  const key = filename + '\x01' + fullName;
+  const key = escAttr(filename + '\x01' + fullName);
   const item = document.querySelector<HTMLElement>(`[data-testkey="${key}"]`);
   if (!item) return;
   item.classList.remove('running', 'pass', 'fail');
@@ -783,15 +783,39 @@ function setTestItemStatus(filename: string, fullName: string, state: 'running'|
       badge.textContent = duration != null ? duration + 'ms' : (state === 'pass' ? 'PASS' : 'FAIL');
     }
   }
+  refreshSuiteBadge(filename, item.dataset.suite ?? '');
 }
 
 function resetTestItems(filename: string) {
-  document.getElementById('card-' + escAttr(filename))
-    ?.querySelectorAll('.cy-test-item, .cy-test-dot')
+  const card = document.getElementById('card-' + escAttr(filename));
+  card?.querySelectorAll('.cy-test-item, .cy-test-dot')
     .forEach(el => el.classList.remove('running', 'pass', 'fail'));
-  document.getElementById('card-' + escAttr(filename))
-    ?.querySelectorAll<HTMLElement>('.cy-test-badge')
+  card?.querySelectorAll<HTMLElement>('.cy-test-badge')
     .forEach(el => { el.className = 'cy-test-badge'; el.textContent = ''; });
+  card?.querySelectorAll<HTMLElement>('.cy-suite-badges')
+    .forEach(el => { el.innerHTML = ''; });
+}
+
+function refreshSuiteBadge(filename: string, suiteName: string) {
+  const card = document.getElementById('card-' + escAttr(filename));
+  if (!card) return;
+  const items = Array.from(card.querySelectorAll<HTMLElement>('.cy-test-item')).filter(
+    el => el.dataset.suite === suiteName
+  );
+  let pass = 0, fail = 0, running = 0;
+  for (const item of items) {
+    if (item.classList.contains('pass')) pass++;
+    else if (item.classList.contains('fail')) fail++;
+    else if (item.classList.contains('running')) running++;
+  }
+  const b = document.getElementById('sbadges-' + escAttr(filename + '\x01' + suiteName));
+  if (!b) return;
+  if (running > 0) {
+    b.innerHTML = '<span class="cy-badge" style="color:var(--warn)">●</span>';
+  } else {
+    b.innerHTML = (pass > 0 ? `<span class="cy-badge cy-badge--pass">${pass}</span>` : '')
+                + (fail > 0 ? `<span class="cy-badge cy-badge--fail">${fail}</span>` : '');
+  }
 }
 
 function setTopbarStatus(state: 'ready'|'running'|'passed'|'failed', text: string) {
@@ -853,10 +877,11 @@ function renderTestFileCard(f: ParsedFile): string {
   const suiteHtml = Object.entries(suites).map(([s, names]) =>
     '<div class="cy-suite-row">' +
       '<span class="cy-suite-name">' + escHtml(s) + '</span>' +
+      '<span class="cy-suite-badges" id="sbadges-' + escAttr(f.filename + '\x01' + s) + '"></span>' +
       '<button class="cy-suite-run-btn" onclick="window.runSuite(' + jsq(f.filename) + ',' + jsq(s) + ')">&#9654;</button>' +
     '</div>' + names.map(n => {
       const fullName = s === '(root)' ? n : s + ' > ' + n;
-      return '<div class="cy-test-item" data-testkey="' + escAttr(f.filename + '\x01' + fullName) + '">' +
+      return '<div class="cy-test-item" data-testkey="' + escAttr(f.filename + '\x01' + fullName) + '" data-suite="' + escHtml(s) + '">' +
         '<span class="cy-test-dot"></span>' +
         '<span class="cy-test-name">' + escHtml(n) + '</span>' +
         '<span class="cy-test-badge"></span>' +
