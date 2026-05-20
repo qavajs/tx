@@ -148,10 +148,12 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             flex-shrink: 0;
             transition: background 0.3s;
         }
-        .tx-status-dot.ready   { background: var(--jade); box-shadow: 0 0 5px var(--jade); }
-        .tx-status-dot.running { background: var(--warn); animation: tx-pulse 0.9s ease-in-out infinite; }
-        .tx-status-dot.passed  { background: var(--pass); }
-        .tx-status-dot.failed  { background: var(--fail); }
+        .tx-status-dot.ready        { background: var(--jade); box-shadow: 0 0 5px var(--jade); }
+        .tx-status-dot.running      { background: var(--warn); animation: tx-pulse 0.9s ease-in-out infinite; }
+        .tx-status-dot.passed       { background: var(--pass); }
+        .tx-status-dot.failed       { background: var(--fail); }
+        .tx-status-dot.connected    { background: var(--jade); box-shadow: 0 0 5px var(--jade); }
+        .tx-status-dot.disconnected { background: var(--fail); box-shadow: 0 0 5px var(--fail); }
 
         @keyframes tx-pulse { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
 
@@ -169,7 +171,6 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             width: 252px;
             flex-shrink: 0;
             background: var(--bg-panel);
-            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -189,6 +190,48 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             justify-content: space-between;
         }
 
+        .tx-filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .tx-filter-input {
+            flex: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border-s);
+            border-radius: 5px;
+            padding: 4px 8px;
+            font-size: 12px;
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.15s;
+            min-width: 0;
+        }
+        .tx-filter-input::placeholder { color: var(--text-muted); }
+        .tx-filter-input:focus { border-color: var(--jade); }
+
+        .tx-filter-run-btn {
+            width: 24px;
+            height: 24px;
+            flex-shrink: 0;
+            border-radius: 4px;
+            background: var(--jade);
+            border: none;
+            color: #000;
+            font-size: 8px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.15s;
+        }
+        .tx-filter-run-btn:hover { opacity: 0.8; }
+        .tx-filter-run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
         .tx-specs-scroll {
             flex: 1;
             overflow-y: auto;
@@ -203,14 +246,16 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-spec-hdr {
             display: flex;
             align-items: center;
-            padding: 6px 10px 6px 8px;
+            padding: 6px 10px 6px 6px;
             gap: 5px;
             cursor: pointer;
             user-select: none;
-            transition: background 0.1s;
+            transition: background 0.1s, border-color 0.1s;
+            border-left: 2px solid transparent;
         }
         .tx-spec-hdr:hover { background: var(--bg-hover); }
         .tx-spec-card.active .tx-spec-hdr { background: var(--bg-active); }
+        .tx-spec-card.open .tx-spec-hdr { border-left-color: var(--jade); }
 
         .tx-spec-chevron {
             width: 12px;
@@ -225,12 +270,14 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-spec-filename {
             flex: 1;
             font-family: var(--font-mono);
-            font-size: 13.5px;
+            font-size: 11px;
             color: var(--text);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            letter-spacing: 0.1px;
         }
+        .tx-spec-filename .ext { color: var(--text-muted); }
 
         .tx-suite-badges { display: flex; gap: 3px; flex-shrink: 0; }
 
@@ -263,52 +310,64 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-spec-hdr:hover .tx-spec-run-btn { opacity: 1; border-color: var(--jade); color: var(--jade); }
 
         /* spec body: suites + test items */
-        .tx-spec-body { display: none; padding: 0 0 4px; }
+        .tx-spec-body { display: none; padding: 0 0 6px; border-bottom: 1px solid var(--border); }
         .tx-spec-card.open .tx-spec-body { display: block; }
+        .tx-spec-card:not(.open) + .tx-spec-card { border-top: 1px solid var(--border); }
 
         .tx-suite-row {
             display: flex;
             align-items: center;
-            padding: 4px 10px 3px 24px;
+            padding: 5px 10px 3px 24px;
             gap: 6px;
+            margin-top: 2px;
         }
         .tx-suite-name {
             flex: 1;
-            font-size: 13px;
+            font-size: 11px;
             color: var(--text-dim);
-            font-weight: 600;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .tx-suite-run-btn {
-            padding: 1px 6px;
-            font-size: 9px;
+            width: 20px;
+            height: 20px;
             background: transparent;
-            border: 1px solid var(--border-s);
-            border-radius: 3px;
+            border: 1px solid transparent;
+            border-radius: 4px;
             color: var(--text-muted);
+            font-size: 8px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
             opacity: 0;
-            transition: opacity 0.1s, color 0.1s, border-color 0.1s;
+            transition: opacity 0.1s, border-color 0.1s, color 0.1s;
         }
-        .tx-suite-row:hover .tx-suite-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
+        .tx-suite-row:hover .tx-suite-run-btn { opacity: 1; border-color: var(--jade); color: var(--jade); }
 
         .tx-test-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tx-test-run-btn {
-            padding: 0px 5px;
-            font-size: 8px;
+            width: 20px;
+            height: 20px;
             background: transparent;
-            border: 1px solid var(--border-s);
-            border-radius: 3px;
+            border: 1px solid transparent;
+            border-radius: 4px;
             color: var(--text-muted);
+            font-size: 8px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
             opacity: 0;
-            transition: opacity 0.1s, color 0.1s, border-color 0.1s;
+            transition: opacity 0.1s, border-color 0.1s, color 0.1s;
         }
-        .tx-test-item:hover .tx-test-run-btn { opacity: 1; color: var(--jade); border-color: var(--jade); }
+        .tx-test-item:hover .tx-test-run-btn { opacity: 1; border-color: var(--jade); color: var(--jade); }
 
         .tx-test-badge {
             font-size: 11px;
@@ -322,14 +381,15 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-test-badge.fail { background: rgba(239,68,68,0.15);  color: var(--fail); }
 
         .tx-test-item {
-            padding: 2px 10px 2px 36px;
-            font-size: 13px;
+            padding: 3px 10px 3px 36px;
+            font-size: 12px;
             color: var(--text-muted);
             display: flex;
             align-items: center;
             gap: 6px;
-            transition: color 0.15s;
+            transition: color 0.15s, background 0.1s;
         }
+        .tx-test-item:hover { background: var(--bg-hover); }
         .tx-test-item.pass { color: var(--text-dim); }
         .tx-test-item.fail { color: var(--fail); }
         .tx-test-dot {
@@ -353,13 +413,40 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             50%       { opacity: 0.2; }
         }
 
-        /* upload footer */
-
         #testRunnerStatus {
-            font-size: 10px;
-            margin-top: 5px;
-            color: var(--text-muted);
+            flex-shrink: 0;
+            border-top: 1px solid var(--border);
+            padding: 7px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+            min-height: 32px;
         }
+        #testRunnerStatus:empty { display: none; }
+        .tx-runner-pass { color: var(--pass); }
+        .tx-runner-fail { color: var(--fail); }
+
+        /* ══ Resize handles ══════════════════════════════════════════════ */
+
+        .tx-resize-handle {
+            width: 8px;
+            flex-shrink: 0;
+            cursor: col-resize;
+            position: relative;
+            display: flex;
+            align-items: stretch;
+            justify-content: center;
+        }
+        .tx-resize-handle::before {
+            content: '';
+            width: 1px;
+            background: var(--border);
+            transition: background 0.15s, width 0.1s;
+        }
+        .tx-resize-handle:hover::before,
+        .tx-resize-handle.dragging::before { background: var(--jade); width: 2px; }
 
         /* ══ Command log ══════════════════════════════════════════════════ */
 
@@ -367,7 +454,6 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             width: 310px;
             flex-shrink: 0;
             background: var(--bg-app);
-            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -457,6 +543,20 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             font-size: 10px;
             color: var(--text-muted);
             flex-shrink: 0;
+        }
+
+        .tx-cmd-stack {
+            margin: 0 10px 4px 29px;
+            padding: 6px 8px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            line-height: 1.6;
+            color: var(--fail);
+            background: color-mix(in srgb, var(--fail) 8%, transparent);
+            border-left: 2px solid var(--fail);
+            border-radius: 0 3px 3px 0;
+            white-space: pre-wrap;
+            word-break: break-all;
         }
 
         .tx-log-section {
@@ -653,11 +753,17 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         <!-- ── Specs ──────────────────────────────────────────────── -->
         <nav class="tx-specs">
             <div class="tx-panel-hdr">Specs</div>
+            <div class="tx-filter-bar">
+                <input type="text" id="testFilter" class="tx-filter-input" placeholder="Filter tests…" oninput="window.applyFilter && window.applyFilter(this.value)" autocomplete="off" spellcheck="false">
+                <button class="tx-filter-run-btn" id="filterRunBtn" onclick="window.runFiltered && window.runFiltered()" title="Run filtered tests">&#9654;</button>
+            </div>
             <div class="tx-specs-scroll" id="testList">
                 <div class="tx-empty">Loading specs…</div>
             </div>
             <div id="testRunnerStatus"></div>
         </nav>
+
+        <div class="tx-resize-handle" id="specsResizer"></div>
 
         <!-- ── Command Log ────────────────────────────────────────── -->
         <aside class="tx-log-panel">
@@ -667,6 +773,8 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             </div>
             <div id="console"></div>
         </aside>
+
+        <div class="tx-resize-handle" id="logResizer"></div>
 
         <!-- ── Browser ───────────────────────────────────────────── -->
         <main class="tx-browser">

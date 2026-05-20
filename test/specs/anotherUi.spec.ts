@@ -44,6 +44,7 @@ describe('testauto.app', () => {
         await submitButton.click();
         const searchInput = page.locator('[aria-label="Search tasks"]');
         await searchInput.fill(name);
+        await expect(page.locator(`tr`)).toHaveCount(2);
         await expect(page.locator(`tr:has-text("${name}")`)).toBeVisible();
         await page.on('dialog', async dialog => {
             await dialog.accept();

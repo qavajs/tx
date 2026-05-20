@@ -10,6 +10,8 @@ declare global {
     toggleCard:       (filename: string) => void;
     runTestByFilename:(filename: string) => void;
     runAll:           () => Promise<{ passed: number; failed: number }>;
+    applyFilter:      (query: string) => void;
+    runFiltered:      () => Promise<void>;
   }
 }
 
@@ -43,10 +45,17 @@ function logResult(t: TestResult) {
   const entry = document.createElement('div');
   entry.className = `tx-cmd ${cls}`;
   const iconEl = document.createElement('span'); iconEl.className = `tx-cmd-icon ${cls}`; iconEl.textContent = icon;
-  const msgEl  = document.createElement('span'); msgEl.className  = 'tx-cmd-msg';         msgEl.textContent  = t.name + (t.error ? '  —  ' + t.error : '');
-  const durEl  = document.createElement('span'); durEl.className  = 'tx-cmd-dur';          durEl.textContent  = t.duration + 'ms';
+  const firstLine = t.error ? t.error.split('\n')[0] : '';
+  const msgEl  = document.createElement('span'); msgEl.className  = 'tx-cmd-msg';  msgEl.textContent = t.name + (firstLine ? '  —  ' + firstLine : '');
+  const durEl  = document.createElement('span'); durEl.className  = 'tx-cmd-dur';  durEl.textContent = t.duration + 'ms';
   entry.appendChild(iconEl); entry.appendChild(msgEl); entry.appendChild(durEl);
   container.appendChild(entry);
+  if (!t.passed && t.error && t.error.includes('\n')) {
+    const stackEl = document.createElement('pre');
+    stackEl.className = 'tx-cmd-stack';
+    stackEl.textContent = t.error;
+    container.appendChild(stackEl);
+  }
   container.scrollTop = container.scrollHeight;
 }
 
@@ -117,7 +126,7 @@ function refreshSuiteBadge(filename: string, suiteName: string) {
   }
 }
 
-function setTopbarStatus(state: 'ready'|'running'|'passed'|'failed', text: string) {
+function setTopbarStatus(state: 'ready'|'running'|'passed'|'failed'|'connected'|'disconnected', text: string) {
   const dot  = document.getElementById('statusIndicator');
   const span = document.getElementById('statusText');
   if (dot)  dot.className    = 'tx-status-dot ' + state;
@@ -155,7 +164,7 @@ function renderTestFileCard(f: ParsedFile): string {
       '<button class="tx-suite-run-btn" onclick="window.runSuite(' + jsq(f.filename) + ',' + jsq(s) + ')">&#9654;</button>' +
     '</div>' + names.map(n => {
       const fullName = s === '(root)' ? n : s + ' > ' + n;
-      return '<div class="tx-test-item" data-testkey="' + escAttr(f.filename + '\x01' + fullName) + '" data-suite="' + escHtml(s) + '">' +
+      return '<div class="tx-test-item" data-testkey="' + escAttr(f.filename + '\x01' + fullName) + '" data-suite="' + escHtml(s) + '" data-fullname="' + escHtml(fullName) + '">' +
         '<span class="tx-test-dot"></span>' +
         '<span class="tx-test-name">' + escHtml(n) + '</span>' +
         '<span class="tx-test-badge"></span>' +
@@ -168,7 +177,7 @@ function renderTestFileCard(f: ParsedFile): string {
   return '<div class="tx-spec-card" id="card-' + escAttr(f.filename) + '" data-filename="' + escHtml(f.filename) + '">' +
     '<div class="tx-spec-hdr" onclick="window.toggleCard(' + jsq(f.filename) + ')">' +
       '<span class="tx-spec-chevron">&#9658;</span>' +
-      '<span class="tx-spec-filename">' + escHtml(f.filename) + '</span>' +
+      '<span class="tx-spec-filename">' + escHtml(stem) + '<span class="ext">.' + escHtml(ext) + '</span></span>' +
       '<button class="tx-spec-run-btn" onclick="event.stopPropagation();window.runTestByFilename(' + jsq(f.filename) + ')">&#9654;</button>' +
     '</div>' +
     (Object.keys(suites).length ? '<div class="tx-spec-body">' + suiteHtml + '</div>' : '') +
@@ -182,10 +191,11 @@ window.toggleCard = (filename: string) =>
 
 interface TestResult { name: string; passed: boolean; error?: string; duration: number; }
 
-async function executeTests(code: string, opts?: { filterSuite?: string; filterTest?: string; filename?: string }): Promise<TestResult[]> {
-  const filterSuite = opts?.filterSuite;
-  const filterTest  = opts?.filterTest;
-  const filename    = opts?.filename;
+async function executeTests(code: string, opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string }): Promise<TestResult[]> {
+  const filterSuite  = opts?.filterSuite;
+  const filterTest   = opts?.filterTest;
+  const filterTests  = opts?.filterTests;
+  const filename     = opts?.filename;
   type QueueItem = {
     name: string; fn: () => any;
     beforeEachs: Array<() => any>; afterEachs: Array<() => any>;
@@ -213,6 +223,7 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     const fullName = stack.length ? suite + ' > ' + name : name;
     if (filterSuite && suite !== filterSuite) return;
     if (filterTest && fullName !== filterTest) return;
+    if (filterTests && !filterTests.includes(fullName)) return;
     const beforeEachs = hookStack.flatMap(s => s.beforeEachs);
     const afterEachs  = hookStack.flatMap(s => s.afterEachs).reverse();
     queue.push({ name: fullName, fn, beforeEachs, afterEachs, setupBeforeAlls: [], teardownAfterAlls: [] });
@@ -249,7 +260,7 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
     // eslint-disable-next-line no-new-func
     new Function(code)();
   } catch (e: any) {
-    return [{ name: '(parse/compile error)', passed: false, error: e.message, duration: 0 }];
+    return [{ name: '(parse/compile error)', passed: false, error: e.stack || e.message, duration: 0 }];
   }
 
   const results: TestResult[] = [];
@@ -268,7 +279,7 @@ async function executeTests(code: string, opts?: { filterSuite?: string; filterT
       if (filename) setTestItemStatus(filename, t.name, 'pass', dur);
     } catch (e: any) {
       const dur = Date.now() - t0;
-      results.push({ name: t.name, passed: false, error: e.message, duration: dur });
+      results.push({ name: t.name, passed: false, error: e.stack || e.message, duration: dur });
       if (filename) setTestItemStatus(filename, t.name, 'fail', dur);
     }
   }
@@ -289,8 +300,9 @@ function renderTestResults(results: TestResult[], filename?: string) {
   results.forEach(t => { logResult(t); t.passed ? passed++ : failed++; });
   const status = document.getElementById('testRunnerStatus');
   if (status) {
-    status.textContent = `${passed} passed, ${failed} failed`;
-    status.style.color = failed === 0 ? 'var(--pass)' : 'var(--fail)';
+    status.innerHTML =
+      `<span class="tx-runner-pass">&#10003;&nbsp;${passed} passed</span>` +
+      (failed > 0 ? `<span class="tx-runner-fail">&#10007;&nbsp;${failed} failed</span>` : '');
   }
   if (filename) updateCardStatus(filename, passed, failed);
 }
@@ -351,6 +363,7 @@ window.runTest = async (filename: string, fullName: string) => {
 window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   const btn = document.getElementById('runAllBtn') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
+  _isTestRunning = true;
   setTopbarStatus('running', 'Running…');
   let totalPass = 0, totalFail = 0;
   for (const card of Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'))) {
@@ -372,6 +385,7 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
       totalFail++;
     }
   }
+  _isTestRunning = false;
   setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
   if (btn) btn.disabled = false;
   return { passed: totalPass, failed: totalFail };
@@ -422,6 +436,7 @@ function jsq(s: string) {
 // ── File-change polling ───────────────────────────────────────────────────────
 
 let _watchVersion = -1;
+let _isTestRunning = false;
 
 async function pollUpdates() {
   try {
@@ -433,7 +448,10 @@ async function pollUpdates() {
       await loadTestList();
       log('test files updated', 'info');
     }
-  } catch { /* server not ready yet */ }
+    if (!_isTestRunning) setTopbarStatus('connected', 'Connected');
+  } catch {
+    if (!_isTestRunning) setTopbarStatus('disconnected', 'Disconnected');
+  }
   setTimeout(pollUpdates, 2000);
 }
 
@@ -468,6 +486,121 @@ function renderTabBar() {
   bar.appendChild(newBtn);
 }
 
+// ── Filter ────────────────────────────────────────────────────────────────────
+
+window.applyFilter = (query: string) => {
+  const q = query.trim().toLowerCase();
+  const runBtn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
+  if (runBtn) runBtn.style.display = q ? 'flex' : 'none';
+
+  for (const card of document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]')) {
+    let cardHasMatch = false;
+
+    for (const item of card.querySelectorAll<HTMLElement>('.tx-test-item')) {
+      const name = item.querySelector('.tx-test-name')?.textContent?.toLowerCase() ?? '';
+      const matches = !q || name.includes(q);
+      item.style.display = matches ? '' : 'none';
+      if (matches) cardHasMatch = true;
+    }
+
+    for (const suiteRow of card.querySelectorAll<HTMLElement>('.tx-suite-row')) {
+      const suiteName = suiteRow.querySelector<HTMLElement>('.tx-suite-name')?.textContent ?? '';
+      const hasSuiteVisible = Array.from(card.querySelectorAll<HTMLElement>('.tx-test-item'))
+        .some(item => item.dataset.suite === suiteName && item.style.display !== 'none');
+      suiteRow.style.display = !q || hasSuiteVisible ? '' : 'none';
+    }
+
+    card.style.display = !q || cardHasMatch ? '' : 'none';
+    if (q && cardHasMatch) card.classList.add('open');
+  }
+};
+
+window.runFiltered = async () => {
+  const btn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  _isTestRunning = true;
+  setTopbarStatus('running', 'Running…');
+  let totalPass = 0, totalFail = 0;
+
+  const byFile = new Map<string, string[]>();
+  for (const item of document.querySelectorAll<HTMLElement>('.tx-test-item')) {
+    if (item.style.display === 'none') continue;
+    const card = item.closest<HTMLElement>('.tx-spec-card[data-filename]');
+    if (!card?.dataset.filename) continue;
+    const fullName = item.dataset.fullname!;
+    const list = byFile.get(card.dataset.filename) ?? [];
+    list.push(fullName);
+    byFile.set(card.dataset.filename, list);
+  }
+
+  for (const [filename, testNames] of byFile) {
+    document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+    resetTestItems(filename);
+    setCardRunning(filename);
+    log(`run filtered  ${filename}`, 'info');
+    try {
+      const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const results = await executeTests(await resp.text(), { filename, filterTests: testNames });
+      renderTestResults(results, filename);
+      reportToServer(results, filename);
+      results.forEach(r => r.passed ? totalPass++ : totalFail++);
+    } catch (e: any) {
+      log('Error: ' + e.message, 'error');
+      updateCardStatus(filename, 0, 1);
+      totalFail++;
+    }
+  }
+
+  _isTestRunning = false;
+  setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
+  if (btn) btn.disabled = false;
+};
+
+// ── Panel resizing ────────────────────────────────────────────────────────────
+
+function initResizers() {
+  const specs = document.querySelector<HTMLElement>('.tx-specs');
+  const log   = document.querySelector<HTMLElement>('.tx-log-panel');
+  const specsHandle = document.getElementById('specsResizer');
+  const logHandle   = document.getElementById('logResizer');
+  if (!specs || !log || !specsHandle || !logHandle) return;
+
+  const saved = {
+    specs: Number(localStorage.getItem('tx-specs-w') || 0),
+    log:   Number(localStorage.getItem('tx-log-w')   || 0),
+  };
+  if (saved.specs) specs.style.width = saved.specs + 'px';
+  if (saved.log)   log.style.width   = saved.log   + 'px';
+
+  function attach(handle: HTMLElement, target: HTMLElement, key: string, min: number, max: number) {
+    handle.addEventListener('mousedown', (e: MouseEvent) => {
+      e.preventDefault();
+      handle.classList.add('dragging');
+      document.body.style.cursor    = 'col-resize';
+      document.body.style.userSelect = 'none';
+      const startX = e.clientX;
+      const startW = target.offsetWidth;
+      const onMove = (ev: MouseEvent) => {
+        target.style.width = Math.min(max, Math.max(min, startW + ev.clientX - startX)) + 'px';
+      };
+      const onUp = () => {
+        handle.classList.remove('dragging');
+        document.body.style.cursor    = '';
+        document.body.style.userSelect = '';
+        localStorage.setItem(key, String(target.offsetWidth));
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup',   onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup',   onUp);
+    });
+  }
+
+  attach(specsHandle, specs, 'tx-specs-w', 150, 500);
+  attach(logHandle,   log,   'tx-log-w',   180, 600);
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -475,6 +608,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setOnTabsChanged(renderTabBar);
   initIframe();
   renderTabBar();
+  initResizers();
   await loadTestList();
   pollUpdates();
   if (window.__CONFIG__.autorun) {
