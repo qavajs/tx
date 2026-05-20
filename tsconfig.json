@@ -18,6 +18,6 @@
     "build.mjs",
     "dist",
     "node_modules",
-    "examples"
+    "test/specs"
   ]
 }

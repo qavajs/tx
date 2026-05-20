@@ -27,9 +27,9 @@ await esbuild.build({
 });
 
 // Bundle test files from examples/ so they support TypeScript and ES imports
-const testFiles = readdirSync('examples')
+const testFiles = readdirSync('test/specs')
   .filter(f => /\.(js|ts)$/.test(f))
-  .map(f => join('examples', f));
+  .map(f => join('test/specs', f));
 
 if (testFiles.length > 0) {
   await esbuild.build({

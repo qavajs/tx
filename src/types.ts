@@ -3,9 +3,6 @@
  */
 
 export interface TxConfig {
-  /** Target URL to test (default: https://www.saucedemo.com/) */
-  targetUrl?: string;
-
   /** Proxy hostname (default: localhost) */
   proxyHost?: string;
 
@@ -20,6 +17,15 @@ export interface TxConfig {
 
   /** Run in headless mode (default: false) */
   headless?: boolean;
+
+  /** Explicit list of test file paths (relative to config file) */
+  testFiles?: string[];
+
+  /** Glob pattern(s) for discovering test files (relative to config file) */
+  testMatch?: string | string[];
+
+  /** Iframe viewport dimensions */
+  viewport?: { width: number; height: number };
 }
 
 export interface WaitOptions {
@@ -86,7 +92,6 @@ export interface ITxWrapper {
   stop(): Promise<void>;
   getTestApi(): ITestApi;
   getProxyUrl(): string;
-  getTargetUrl(): string;
 }
 
 /**

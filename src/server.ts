@@ -6,17 +6,33 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { generateControlPanelHTML } from './controlPanel';
-import { TestRunner, parseTestFile } from './testRunner';
+import { TestRunner, parseTestFile, ParsedFile } from './testRunner';
 
 export class TestServer {
   private server: http.Server | null = null;
   private port: number;
+  private testFileMap: Map<string, string>;   // basename → absolute path (from config)
+  private bundledCodeMap = new Map<string, string>();  // basename → bundled browser JS
+  private parsedCache = new Map<string, ParsedFile>(); // basename → parsed test structure
+  private _version = 0;
 
-  constructor(port: number = 3000) {
+  constructor(port: number = 3000, testFiles?: string[]) {
     this.port = port;
+    this.testFileMap = new Map();
+    if (testFiles) {
+      for (const f of testFiles) {
+        this.testFileMap.set(path.basename(f), f);
+      }
+    }
   }
 
-  start(proxyUrl: string, targetUrl: string): Promise<void> {
+  updateFile(basename: string, bundledCode: string, parsed: ParsedFile): void {
+    this.bundledCodeMap.set(basename, bundledCode);
+    this.parsedCache.set(basename, parsed);
+    this._version++;
+  }
+
+  start(proxyUrl: string, viewport?: { width: number; height: number }): Promise<void> {
     return new Promise((resolve) => {
       this.server = http.createServer((req, res) => {
         // CORS headers so the control panel can call the API even when loaded via proxy
@@ -31,7 +47,7 @@ export class TestServer {
         }
 
         if (req.url === '/' && req.method === 'GET') {
-          const html = generateControlPanelHTML(proxyUrl, targetUrl, this.port);
+          const html = generateControlPanelHTML(proxyUrl, this.port, viewport);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(html);
           return;
@@ -73,16 +89,30 @@ export class TestServer {
           return;
         }
 
-        // GET /api/tests — list and parse all .js files in examples/
+        // GET /api/version — monotonic counter incremented on each file update
+        if (req.url === '/api/version' && req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ version: this._version }));
+          return;
+        }
+
+        // GET /api/tests — list and parse test files
         if (req.url === '/api/tests' && req.method === 'GET') {
-          const examplesDir = path.join(__dirname, 'examples');
           try {
-            const files = fs.readdirSync(examplesDir)
-              .filter(f => f.endsWith('.js'))
-              .sort()
-              .map(f => parseTestFile(path.join(examplesDir, f)));
+            let parsedFiles: ParsedFile[];
+            if (this.parsedCache.size > 0) {
+              parsedFiles = Array.from(this.parsedCache.values());
+            } else if (this.testFileMap.size > 0) {
+              parsedFiles = Array.from(this.testFileMap.values()).map(parseTestFile);
+            } else {
+              const examplesDir = path.join(__dirname, 'examples');
+              parsedFiles = fs.readdirSync(examplesDir)
+                .filter(f => f.endsWith('.js'))
+                .sort()
+                .map(f => parseTestFile(path.join(examplesDir, f)));
+            }
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(files));
+            res.end(JSON.stringify(parsedFiles));
           } catch (err: any) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: err.message }));
@@ -94,13 +124,20 @@ export class TestServer {
         if (req.url?.startsWith('/api/test-source') && req.method === 'GET') {
           const qs = new URL(req.url, `http://localhost`).searchParams;
           const file = qs.get('file') ?? '';
-          // Reject any path traversal attempt
           if (!file || file.includes('/') || file.includes('\\') || !file.endsWith('.js')) {
             res.writeHead(400, { 'Content-Type': 'text/plain' });
             res.end('Invalid filename');
             return;
           }
-          const filePath = path.join(__dirname, 'examples', file);
+          // In-memory bundled code takes priority (set by watcher)
+          const bundled = this.bundledCodeMap.get(file);
+          if (bundled) {
+            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end(bundled);
+            return;
+          }
+          // Fall back to file on disk (custom testFiles or examples dir)
+          const filePath = this.testFileMap.get(file) ?? path.join(__dirname, 'examples', file);
           try {
             const content = fs.readFileSync(filePath, 'utf-8');
             res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });

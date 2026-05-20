@@ -4,7 +4,6 @@
 
 export interface IframeConfig {
   proxyUrl: string;
-  targetUrl: string;
   containerId?: string;
 }
 

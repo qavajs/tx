@@ -9,8 +9,9 @@
   "scripts": {
     "prestart": "node build.mjs",
     "build:watch": "node build.mjs --watch",
-    "start": "node dist/index.js",
-    "dev": "ts-node start.ts",
+    "start": "node dist/index.js --config test/tx.config.json",
+    "dev": "node build.mjs && node dist/index.js --config test/tx.config.json",
+    "test": "node build.mjs && node dist/index.js --config test/tx.config.json --headless",
     "example:show": "cat examples/sampleTest.js"
   },
   "dependencies": {

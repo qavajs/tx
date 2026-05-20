@@ -2,7 +2,7 @@
  * Control Panel - Tx HTML UI
  */
 
-export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, controlPanelPort: number = 3000): string {
+export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: number = 3000, viewport?: { width: number; height: number }): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -641,8 +641,7 @@ export function generateControlPanelHTML(proxyUrl: string, targetUrl: string, co
     <script>
         window.__CONFIG__ = {
             proxyUrl: "${proxyUrl}",
-            targetUrl: "${targetUrl}",
-            port: ${controlPanelPort}
+            port: ${controlPanelPort}${viewport ? `,\n            viewport: { width: ${viewport.width}, height: ${viewport.height} }` : ''}
         };
     </script>
     <script src="/panel.js"></script>

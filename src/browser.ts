@@ -2,7 +2,7 @@
 
 declare global {
   interface Window {
-    __CONFIG__: { proxyUrl: string; targetUrl: string; port: number };
+    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number } };
   }
 }
 
@@ -1137,4 +1137,9 @@ export function initIframe() {
   viewportObserver?.disconnect();
   viewportObserver = new ResizeObserver(reapplyViewport);
   viewportObserver.observe(container);
+
+  if (window.__CONFIG__.viewport) {
+    const { width, height } = window.__CONFIG__.viewport;
+    applyViewport(width, height);
+  }
 }

@@ -7,6 +7,7 @@ const hammerhead = require('testcafe-hammerhead');
 import { IframeInjector, IframeConfig } from './iframeInjector';
 import { TestApi } from './testApi';
 import { TestServer } from './server';
+import { startWatcher } from './watcher';
 
 export class TxWrapper {
   private proxy: any;
@@ -14,22 +15,23 @@ export class TxWrapper {
   private controlPanelSession: any;
   private proxyUrl: string = '';
   private controlPanelProxyUrl: string = '';
-  private targetUrl: string = '';
   private testApi: TestApi | null = null;
   private server: TestServer | null = null;
   private injector: IframeInjector | null = null;
 
   constructor(
     private config: {
-      targetUrl?: string;
       proxyHost?: string;
       port1?: number;
       port2?: number;
       controlPanelPort?: number;
       headless?: boolean;
+      testFiles?: string[];
+      testPatterns?: string[];
+      watchBaseDir?: string;
+      viewport?: { width: number; height: number };
     } = {}
   ) {
-    this.targetUrl = config.targetUrl || 'about:blank';
     config.proxyHost = config.proxyHost || 'localhost';
     config.port1 = config.port1 || 1337;
     config.port2 = config.port2 || 1338;
@@ -67,7 +69,7 @@ export class TxWrapper {
 
     // @ts-ignore
     this.session = new ProxySession([], {});
-    this.proxyUrl = this.proxy.openSession(this.targetUrl, this.session);
+    this.proxyUrl = this.proxy.openSession('about:blank', this.session);
 
     // Create a second session for the control panel server (localhost:3000)
     // This bypasses CSP and allows the control panel to access the iframe
@@ -94,20 +96,18 @@ export class TxWrapper {
       // Create iframe injector (for compatibility, though browser handles it)
       this.injector = new IframeInjector({
         proxyUrl: this.proxyUrl,
-        targetUrl: this.targetUrl,
       });
 
       // Create test API
       this.testApi = new TestApi(this.injector);
 
       // Start control panel server (on localhost:3000)
-      this.server = new TestServer(this.config.controlPanelPort);
-      await this.server.start(this.proxyUrl, this.targetUrl);
+      this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles);
+      await this.server.start(this.proxyUrl, this.config.viewport);
 
       console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);
       console.log(`✅ Control Panel via proxy at ${this.controlPanelProxyUrl}`);
-      console.log(`📦 Target proxy URL: ${this.proxyUrl}`);
-      console.log(`🎯 Target URL: ${this.targetUrl}`);
+      console.log(`📦 Proxy URL: ${this.proxyUrl}`);
 
       if (!this.config.headless) {
         // Open in browser via proxy to bypass CSP
@@ -126,6 +126,15 @@ export class TxWrapper {
 
         // Add small delay to ensure browser opens
         await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      if (this.config.testFiles?.length) {
+        startWatcher(
+          this.config.testFiles,
+          this.config.testPatterns ?? [],
+          this.config.watchBaseDir ?? process.cwd(),
+          this.server,
+        );
       }
 
       console.log(`\n✨ Control Panel ready for use`);
@@ -178,10 +187,4 @@ export class TxWrapper {
     return this.proxyUrl;
   }
 
-  /**
-   * Get target URL
-   */
-  getTargetUrl(): string {
-    return this.targetUrl;
-  }
 }

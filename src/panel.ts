@@ -367,10 +367,29 @@ function jsq(s: string) {
   return JSON.stringify(s).replace(/"/g, '&quot;');
 }
 
+// ── File-change polling ───────────────────────────────────────────────────────
+
+let _watchVersion = -1;
+
+async function pollUpdates() {
+  try {
+    const { version } = await fetch(API_BASE + '/api/version').then(r => r.json()) as { version: number };
+    if (_watchVersion < 0) {
+      _watchVersion = version;
+    } else if (version !== _watchVersion) {
+      _watchVersion = version;
+      await loadTestList();
+      log('test files updated', 'info');
+    }
+  } catch { /* server not ready yet */ }
+  setTimeout(pollUpdates, 2000);
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
   log('tx ready', 'info');
   initIframe();
   loadTestList();
+  pollUpdates();
 });
