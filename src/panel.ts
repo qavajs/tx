@@ -8,6 +8,7 @@ declare global {
     runSuite:         (filename: string, suiteName: string) => void;
     runTest:          (filename: string, fullName: string) => void;
     toggleCard:       (filename: string) => void;
+    toggleSuite:      (filename: string, suiteName: string) => void;
     runTestByFilename:(filename: string) => void;
     runAll:           () => Promise<{ passed: number; failed: number }>;
     applyFilter:      (query: string) => void;
@@ -46,7 +47,6 @@ function appendErrorToLog(error: string) {
     '<div class="tx-cmd-num"></div>' +
     '<div class="tx-cmd-expander-col"></div>' +
     '<div class="tx-cmd-pin">' +
-      '<span class="tx-cmd-method tx-cmd-method--child">assert</span>' +
       '<span class="tx-cmd-msg tx-cmd-msg--error">' + escHtml(firstLine) + '</span>' +
     '</div>';
   el.appendChild(child);
@@ -173,6 +173,7 @@ function renderTestItemHtml(filename: string, suite: string, name: string): stri
     ' data-testkey="' + key + '"' +
     ' data-suite="' + escHtml(suite) + '"' +
     ' data-fullname="' + escHtml(fullName) + '">' +
+    '<span class="tx-test-chevron">&#9658;</span>' +
     '<span class="tx-test-dot">' + stateIcons + '</span>' +
     '<span class="tx-test-name">' + escHtml(name) + '</span>' +
     '<span class="tx-test-badge"></span>' +
@@ -182,10 +183,12 @@ function renderTestItemHtml(filename: string, suite: string, name: string): stri
 }
 
 function renderSuiteHtml(filename: string, suite: string, names: string[]): string {
-  return '<div class="tx-suite-row">' +
+  const key = escAttr(filename + '\x01' + suite);
+  return '<div class="tx-suite-row" data-suite-key="' + key + '" onclick="window.toggleSuite(' + jsq(filename) + ',' + jsq(suite) + ')">' +
+    '<span class="tx-suite-chevron">&#9658;</span>' +
     '<span class="tx-suite-name">' + escHtml(suite) + '</span>' +
-    '<span class="tx-suite-badges" id="sbadges-' + escAttr(filename + '\x01' + suite) + '"></span>' +
-    '<button class="tx-suite-run-btn" onclick="window.runSuite(' + jsq(filename) + ',' + jsq(suite) + ')">&#9654;</button>' +
+    '<span class="tx-suite-badges" id="sbadges-' + key + '"></span>' +
+    '<button class="tx-suite-run-btn" onclick="event.stopPropagation();window.runSuite(' + jsq(filename) + ',' + jsq(suite) + ')">&#9654;</button>' +
   '</div>' + names.map(n => renderTestItemHtml(filename, suite, n)).join('');
 }
 
@@ -218,6 +221,21 @@ function renderTestFileCard(f: ParsedFile): string {
 
 window.toggleCard = (filename: string) =>
   document.getElementById('card-' + filename)?.classList.toggle('open');
+
+window.toggleSuite = (filename: string, suiteName: string) => {
+  const key = escAttr(filename + '\x01' + suiteName);
+  const suiteRow = document.querySelector<HTMLElement>(`[data-suite-key="${key}"]`);
+  if (!suiteRow) return;
+  const collapsed = suiteRow.classList.toggle('collapsed');
+  const card = document.getElementById('card-' + escAttr(filename));
+  card?.querySelectorAll<HTMLElement>('.tx-test-item').forEach(item => {
+    if (item.dataset.suite === suiteName) {
+      item.style.display = collapsed ? 'none' : '';
+      const logEl = item.nextElementSibling as HTMLElement | null;
+      if (logEl?.classList.contains('tx-test-log')) logEl.style.display = collapsed ? 'none' : '';
+    }
+  });
+};
 
 // ── Test execution ────────────────────────────────────────────────────────────
 
@@ -692,6 +710,8 @@ window.applyFilter = (query: string) => {
       const fullName = item.dataset.fullname ?? name;
       const matches = !matcher || matcher(name) || matcher(fullName);
       item.style.display = matches ? '' : 'none';
+      const logEl = item.nextElementSibling as HTMLElement | null;
+      if (logEl?.classList.contains('tx-test-log')) logEl.style.display = matches ? '' : 'none';
       if (matches) cardHasMatch = true;
     }
 

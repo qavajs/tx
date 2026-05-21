@@ -8,7 +8,7 @@
 
 describe('Inventory page layout', () => {
   it('shows the Products heading', async () => {
-    await page.goto('https://www.saucedemo.com/');
+    await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
     await page.getByTestId('password').fill('secret_sauce');
     await page.getByTestId('login-button').click();

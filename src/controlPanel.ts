@@ -318,10 +318,23 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-suite-row {
             display: flex;
             align-items: center;
-            padding: 5px 10px 3px 24px;
-            gap: 6px;
+            padding: 5px 10px 3px 10px;
+            gap: 5px;
             margin-top: 2px;
+            cursor: pointer;
+            user-select: none;
         }
+        .tx-suite-row:hover { background: var(--bg-hover); }
+        .tx-suite-chevron {
+            width: 12px;
+            font-size: 10px;
+            color: var(--text-muted);
+            transition: transform 0.14s;
+            flex-shrink: 0;
+            text-align: center;
+            transform: rotate(90deg);
+        }
+        .tx-suite-row.collapsed .tx-suite-chevron { transform: rotate(0deg); }
         .tx-suite-name {
             flex: 1;
             font-size: 11px;
@@ -370,6 +383,18 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
         .tx-test-item:hover .tx-test-run-btn { opacity: 1; border-color: var(--jade); color: var(--jade); }
 
+        .tx-test-chevron {
+            width: 10px;
+            font-size: 9px;
+            color: var(--text-muted);
+            transition: transform 0.14s, color 0.14s;
+            flex-shrink: 0;
+            text-align: center;
+        }
+        .tx-test-item:has(+ .tx-test-log.open) .tx-test-chevron {
+            transform: rotate(90deg);
+        }
+
         .tx-test-badge {
             font-size: 11px;
             font-weight: 600;
@@ -382,13 +407,14 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-test-badge.fail { background: rgba(239,68,68,0.15);  color: var(--fail); }
 
         .tx-test-item {
-            padding: 3px 10px 3px 36px;
+            padding: 3px 10px 3px 24px;
             font-size: 12px;
             color: var(--text-muted);
             display: flex;
             align-items: center;
             gap: 6px;
             transition: color 0.15s, background 0.1s;
+            cursor: pointer;
         }
         .tx-test-item:hover { background: var(--bg-hover); }
         .tx-test-item.pass { color: var(--text-dim); }

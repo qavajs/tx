@@ -156,18 +156,29 @@ export function onSnapshotsChanged(fn: () => void): () => void {
 }
 
 export function toProxiedUrl(url: string): string {
-  if (!_proxyPrefix) return url;
-  if (url.startsWith(_proxyPrefix)) return url;
+  if (!_proxyPrefix) return removeTrailingSlash(url);
+  if (url.startsWith(_proxyPrefix)) return removeTrailingSlash(url);
+
   if (!/^https?:\/\//.test(url)) {
     // Relative URL — resolve against the current page URL so it routes through the proxy
     const baseUrl = _activeTab()?.url;
+
     if (baseUrl && /^https?:\/\//.test(baseUrl)) {
-      try { url = new URL(url, baseUrl).href; } catch { return url; }
+      try {
+        url = new URL(url, baseUrl).href;
+      } catch {
+        return removeTrailingSlash(url);
+      }
     } else {
-      return url;
+      return removeTrailingSlash(url);
     }
   }
-  return _proxyPrefix + url;
+
+  return removeTrailingSlash(_proxyPrefix + url);
+}
+
+function removeTrailingSlash(url: string): string {
+  return url.endsWith("/") ? url.slice(0, -1) : url;
 }
 
 // ── iframe helpers ────────────────────────────────────────────────────────────
