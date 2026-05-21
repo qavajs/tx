@@ -394,7 +394,7 @@ function resolveSelector(selector: string): { base: string; hasText: string | nu
 }
 
 export class Locator {
-  constructor(readonly _query: QueryFn, private _desc = '') {}
+  constructor(readonly _query: QueryFn, readonly _desc = '') {}
 
   _els(): Element[]      { return this._query(); }
   _el():  Element | null { return this._els()[0] ?? null; }
@@ -1495,6 +1495,7 @@ async function _retry(fn: () => Promise<void>, timeout = 5000): Promise<void> {
 
 export function pwExpect(target: any) {
   const t = (ms?: number) => ms ?? 5000;
+  const locDesc = (target instanceof Locator) ? (target as Locator)._desc : '';
 
   // la = async matcher log helper, ls = sync matcher log helper
   const la = async (cmd: string, msg: string, fn: () => Promise<void>) => {
@@ -1506,59 +1507,90 @@ export function pwExpect(target: any) {
     catch (e: any) { log(msg, 'error', cmd); throw e; }
   };
 
-  // Runs `pred` in a retry loop; throws `errMsg` if pred returns false.
-  const locAssert = (cmd: string, pred: (loc: Locator) => Promise<boolean>, errMsg: string, timeout?: number) =>
-    la(cmd, '', async () => {
-      await _retry(async () => {
-        if (!await pred(target as Locator)) throw new Error(errMsg);
-      }, t(timeout));
-    });
+  // Runs `fn` in a retry loop; fn must throw with a descriptive error on failure.
+  const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number) =>
+    la(cmd, locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
 
   // ── Locator assertions (auto-retry) ──────────────────────────────────────────
 
   const matchers = {
-    async toBeVisible(opts?: { timeout?: number })  { await locAssert('toBeVisible',  l => l.isVisible(),             'Expected element to be visible',  opts?.timeout); },
-    async toBeHidden(opts?: { timeout?: number })   { await locAssert('toBeHidden',   l => l.isVisible().then(v=>!v), 'Expected element to be hidden',   opts?.timeout); },
-    async toBeEnabled(opts?: { timeout?: number })  { await locAssert('toBeEnabled',  l => l.isEnabled(),             'Expected element to be enabled',   opts?.timeout); },
-    async toBeDisabled(opts?: { timeout?: number }) { await locAssert('toBeDisabled', l => l.isEnabled().then(v=>!v), 'Expected element to be disabled',  opts?.timeout); },
-    async toBeChecked(opts?: { timeout?: number })  { await locAssert('toBeChecked',  l => l.isChecked(),             'Expected element to be checked',   opts?.timeout); },
-    async toBeEditable(opts?: { timeout?: number }) { await locAssert('toBeEditable', l => l.isEditable(),            'Expected element to be editable',  opts?.timeout); },
+    async toBeVisible(opts?: { timeout?: number }) {
+      await locAssert('toBeVisible', async l => {
+        if (!await l.isVisible()) throw new Error('Expected element to be visible');
+      }, opts?.timeout);
+    },
+    async toBeHidden(opts?: { timeout?: number }) {
+      await locAssert('toBeHidden', async l => {
+        if (await l.isVisible()) throw new Error('Expected element to be hidden');
+      }, opts?.timeout);
+    },
+    async toBeEnabled(opts?: { timeout?: number }) {
+      await locAssert('toBeEnabled', async l => {
+        if (!await l.isEnabled()) throw new Error('Expected element to be enabled');
+      }, opts?.timeout);
+    },
+    async toBeDisabled(opts?: { timeout?: number }) {
+      await locAssert('toBeDisabled', async l => {
+        if (await l.isEnabled()) throw new Error('Expected element to be disabled');
+      }, opts?.timeout);
+    },
+    async toBeChecked(opts?: { timeout?: number }) {
+      await locAssert('toBeChecked', async l => {
+        if (!await l.isChecked()) throw new Error('Expected element to be checked');
+      }, opts?.timeout);
+    },
+    async toBeEditable(opts?: { timeout?: number }) {
+      await locAssert('toBeEditable', async l => {
+        if (!await l.isEditable()) throw new Error('Expected element to be editable');
+      }, opts?.timeout);
+    },
     async toBeEmpty(opts?: { timeout?: number }) {
-      await locAssert('toBeEmpty', async l => (await l.inputValue()) === '', 'Expected empty input', opts?.timeout);
+      await locAssert('toBeEmpty', async l => {
+        const got = await l.inputValue();
+        if (got !== '') throw new Error(`Expected empty input, got ${JSON.stringify(got)}`);
+      }, opts?.timeout);
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
       await locAssert('toHaveText', async l => {
         const got = ((await l.textContent()) ?? '').trim();
-        return text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
-      }, `Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}`, opts?.timeout);
+        if (!(text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string)))
+          throw new Error(`Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
+      }, opts?.timeout);
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toContainText', async l => {
         const got = (await l.textContent()) ?? '';
-        return text instanceof RegExp ? text.test(got) : got.includes(text as string);
-      }, `Expected text to contain ${JSON.stringify(text)}`, opts?.timeout);
+        if (!(text instanceof RegExp ? text.test(got) : got.includes(text as string)))
+          throw new Error(`Expected text to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
+      }, opts?.timeout);
     },
     async toHaveValue(value: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveValue', async l => {
         const got = await l.inputValue();
-        return value instanceof RegExp ? value.test(got) : got === value;
-      }, `Expected value ${JSON.stringify(value)}`, opts?.timeout);
+        if (!(value instanceof RegExp ? value.test(got) : got === value))
+          throw new Error(`Expected value ${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
+      }, opts?.timeout);
     },
     async toHaveAttribute(name: string, value: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveAttr', async l => {
-        const a = await l.getAttribute(name);
-        return value instanceof RegExp ? value.test(a ?? '') : a === value;
-      }, `Expected [${name}]=${JSON.stringify(value)}`, opts?.timeout);
+        const got = await l.getAttribute(name);
+        if (!(value instanceof RegExp ? value.test(got ?? '') : got === value))
+          throw new Error(`Expected [${name}]=${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
+      }, opts?.timeout);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
-      await locAssert('toHaveCount', async l => (await l.count()) === count, `Expected ${count} elements`, opts?.timeout);
+      await locAssert('toHaveCount', async l => {
+        const got = await l.count();
+        if (got !== count) throw new Error(`Expected ${count} elements, got ${got}`);
+      }, opts?.timeout);
     },
     async toHaveClass(cls: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveClass', async l => {
-        const c = l._el()?.className ?? '';
-        return cls instanceof RegExp ? cls.test(c) : c.split(/\s+/).includes(cls as string);
-      }, `Expected class ${JSON.stringify(cls)}`, opts?.timeout);
+        const got = l._el()?.className ?? '';
+        if (!(cls instanceof RegExp ? cls.test(got) : got.split(/\s+/).includes(cls as string)))
+          throw new Error(`Expected class ${JSON.stringify(cls)}, got ${JSON.stringify(got)}`);
+      }, opts?.timeout);
     },
 
     // ── Page-level assertions ───────────────────────────────────────────────
@@ -1605,35 +1637,59 @@ export function pwExpect(target: any) {
   };
 
   const not = {
-    async toBeVisible(opts?: { timeout?: number })  { await locAssert('not.toBeVisible', l => l.isVisible().then(v=>!v), 'Expected NOT visible',  opts?.timeout); },
-    async toBeHidden(opts?: { timeout?: number })   { await locAssert('not.toBeHidden',  l => l.isVisible(),              'Expected NOT hidden',   opts?.timeout); },
-    async toBeEnabled(opts?: { timeout?: number })  { await locAssert('not.toBeEnabled', l => l.isEnabled().then(v=>!v), 'Expected NOT enabled',  opts?.timeout); },
-    async toBeChecked(opts?: { timeout?: number })  { await locAssert('not.toBeChecked', l => l.isChecked().then(v=>!v), 'Expected NOT checked',  opts?.timeout); },
+    async toBeVisible(opts?: { timeout?: number }) {
+      await locAssert('not.toBeVisible', async l => {
+        if (await l.isVisible()) throw new Error('Expected element NOT to be visible');
+      }, opts?.timeout);
+    },
+    async toBeHidden(opts?: { timeout?: number }) {
+      await locAssert('not.toBeHidden', async l => {
+        if (!await l.isVisible()) throw new Error('Expected element NOT to be hidden');
+      }, opts?.timeout);
+    },
+    async toBeEnabled(opts?: { timeout?: number }) {
+      await locAssert('not.toBeEnabled', async l => {
+        if (await l.isEnabled()) throw new Error('Expected element NOT to be enabled');
+      }, opts?.timeout);
+    },
+    async toBeChecked(opts?: { timeout?: number }) {
+      await locAssert('not.toBeChecked', async l => {
+        if (await l.isChecked()) throw new Error('Expected element NOT to be checked');
+      }, opts?.timeout);
+    },
     async toBeEmpty(opts?: { timeout?: number }) {
-      await locAssert('not.toBeEmpty', async l => (await l.inputValue()) !== '', 'Expected input NOT to be empty', opts?.timeout);
+      await locAssert('not.toBeEmpty', async l => {
+        const got = await l.inputValue();
+        if (got === '') throw new Error('Expected input NOT to be empty');
+      }, opts?.timeout);
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
       await locAssert('not.toHaveText', async l => {
         const got = ((await l.textContent()) ?? '').trim();
-        return !(text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string));
-      }, `Expected text NOT to match ${JSON.stringify(text)}`, opts?.timeout);
+        if (text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string))
+          throw new Error(`Expected text NOT to match ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
+      }, opts?.timeout);
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('not.toContain', async l => {
         const got = (await l.textContent()) ?? '';
-        return !(text instanceof RegExp ? text.test(got) : got.includes(text as string));
-      }, `Expected NOT to contain ${JSON.stringify(text)}`, opts?.timeout);
+        if (text instanceof RegExp ? text.test(got) : got.includes(text as string))
+          throw new Error(`Expected NOT to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
+      }, opts?.timeout);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
-      await locAssert('not.toHaveCount', async l => (await l.count()) !== count, `Expected count NOT to be ${count}`, opts?.timeout);
+      await locAssert('not.toHaveCount', async l => {
+        const got = await l.count();
+        if (got === count) throw new Error(`Expected count NOT to be ${count}, got ${got}`);
+      }, opts?.timeout);
     },
     async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
       await la('not.toHaveURL', String(url), async () => {
         await _retry(async () => {
           const u = page.url();
           if (url instanceof RegExp ? url.test(u) : u.includes(url as string))
-            throw new Error(`Expected URL NOT to match ${url}`);
+            throw new Error(`Expected URL NOT to match ${url}, got "${u}"`);
         }, t(opts?.timeout));
       });
     },

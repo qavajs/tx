@@ -7,7 +7,7 @@ module.exports = {
   testFiles: ['./specs/**/*.spec.ts'],
   //grep: 'login',
   viewport: { width: 1600, height: 900 },
-  snapshot: true,
+  //snapshot: true,
   reporters: [
     ['./ConsoleReporter.ts', {}],
     ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
