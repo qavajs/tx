@@ -433,10 +433,8 @@ export class Locator {
     // content-visibility) — the same logic Playwright uses. Available in all
     // modern Chromium/Firefox/Safari builds.
     if (typeof (htmlEl as any).checkVisibility === 'function') {
-      console.warn(htmlEl, (htmlEl as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
       return (htmlEl as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
     }
-    console.warn('fallback to older envs')
     // Fallback for older environments
     const win = iframeWin();
     if (!win) return false;
