@@ -14,5 +14,6 @@ module.exports = {
   ],
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
+    dirname: () => __dirname,
   },
 };

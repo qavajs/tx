@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UI Automation Verification Playground</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #f5f5f5;
+    }
+    h1, h2 { margin-top: 0; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    button, select, input, textarea {
+      margin: 6px 0;
+      padding: 8px;
+    }
+    .drop-zone {
+      border: 2px dashed #999;
+      min-height: 100px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+    .drag-item {
+      background: #ddd;
+      padding: 10px;
+      margin: 6px 0;
+      cursor: move;
+    }
+    .scroll-box {
+      height: 120px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+    }
+    .spacer {
+      height: 700px;
+      background: linear-gradient(#eee, #ddd);
+      margin-top: 10px;
+    }
+    iframe {
+      width: 100%;
+      height: 140px;
+      border: 1px solid #ccc;
+    }
+    #hoverTarget:hover {
+      background: lightgreen;
+    }
+  </style>
+</head>
+<body>
+  <h1>UI Automation Verification Playground</h1>
+  <p>Use this page to validate UI automation interactions and assertions.</p>
+
+  <div class="grid">
+
+    <section class="card">
+      <h2>Mouse / Pointer</h2>
+      <button id="clickBtn">Click</button>
+      <button id="dblClickBtn">Double Click</button>
+      <button id="rightClickBtn">Right Click</button>
+      <button id="hoverTarget">Hover Me</button>
+      <p id="mouseResult"></p>
+    </section>
+
+    <section class="card">
+      <h2>Keyboard & Inputs</h2>
+      <input id="textInput" placeholder="Type here" />
+      <textarea id="textareaInput" placeholder="Textarea"></textarea>
+      <input type="password" id="passwordInput" placeholder="Password" />
+      <p>Last key: <span id="lastKey">none</span></p>
+    </section>
+
+    <section class="card">
+      <h2>Form Controls</h2>
+      <label><input type="checkbox" id="checkbox" /> Checkbox</label><br>
+
+      <label><input type="radio" name="role" value="admin"> Admin</label>
+      <label><input type="radio" name="role" value="user"> User</label>
+
+      <br><br>
+      <select id="countrySelect">
+        <option value="">Select country</option>
+        <option>Latvia</option>
+        <option>Germany</option>
+        <option>Japan</option>
+      </select>
+
+      <br>
+      <input type="date" id="datePicker" />
+      <br>
+      <input type="file" id="fileUpload" />
+    </section>
+
+    <section class="card">
+      <h2>Drag & Drop</h2>
+      <div id="dragItem" class="drag-item" draggable="true">Drag me</div>
+      <div id="dropZone" class="drop-zone">Drop here</div>
+      <p id="dragResult"></p>
+    </section>
+
+    <section class="card">
+      <h2>Scrolling</h2>
+      <div class="scroll-box" id="scrollBox">
+        <div>Item 1</div><div>Item 2</div><div>Item 3</div>
+        <div>Item 4</div><div>Item 5</div><div>Item 6</div>
+        <div>Item 7</div><div>Item 8</div><div>Item 9</div>
+        <div id="scrollTarget">Scroll Target</div>
+      </div>
+      <button onclick="document.getElementById('scrollTarget').scrollIntoView()">Scroll Into View</button>
+    </section>
+
+    <section class="card">
+      <h2>Dialog Handling</h2>
+      <button onclick="alert('Alert dialog')">Alert</button>
+      <button onclick="confirm('Confirm dialog?')">Confirm</button>
+      <button onclick="prompt('Enter text')">Prompt</button>
+    </section>
+
+    <section class="card">
+      <h2>Visibility / Enablement</h2>
+      <button id="toggleVisibility">Toggle Visibility</button>
+      <button id="toggleEnabled">Toggle Enabled</button>
+      <div id="visibilityTarget">Visible element</div>
+      <button id="disabledBtn" disabled>Disabled button</button>
+    </section>
+
+    <section class="card">
+      <h2>Iframe</h2>
+      <iframe srcdoc='
+        <html>
+        <body>
+          <button id="frameBtn" onclick="document.body.dataset.clicked=true">Frame Button</button>
+        </body>
+        </html>'>
+      </iframe>
+    </section>
+
+    <section class="card">
+      <h2>Navigation</h2>
+      <a id="linkNav" href="#bottom">Jump to bottom</a>
+      <br>
+      <button onclick="history.back()">Back</button>
+      <button onclick="history.forward()">Forward</button>
+      <button onclick="location.reload()">Reload</button>
+    </section>
+
+    <section class="card">
+      <h2>Hidden / Dynamic Element</h2>
+      <button id="showDelayed">Show after 2s</button>
+      <div id="delayedElement" hidden>Loaded later</div>
+    </section>
+
+  </div>
+
+  <div class="spacer"></div>
+  <div id="bottom"><h2>Bottom of page</h2></div>
+
+  <script>
+    const result = document.getElementById('mouseResult');
+
+    document.getElementById('clickBtn').onclick = () => {
+      result.textContent = 'Clicked';
+    };
+
+    document.getElementById('dblClickBtn').ondblclick = () => {
+      result.textContent = 'Double clicked';
+    };
+
+    document.getElementById('rightClickBtn').oncontextmenu = (e) => {
+      e.preventDefault();
+      result.textContent = 'Right clicked';
+    };
+
+    document.addEventListener('keydown', e => {
+      document.getElementById('lastKey').textContent = e.key;
+    });
+
+    const dragItem = document.getElementById('dragItem');
+    const dropZone = document.getElementById('dropZone');
+
+    dragItem.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', 'dragged');
+    });
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+    });
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      document.getElementById('dragResult').textContent = 'Dropped successfully';
+    });
+
+    document.getElementById('toggleVisibility').onclick = () => {
+      const el = document.getElementById('visibilityTarget');
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    };
+
+    document.getElementById('toggleEnabled').onclick = () => {
+      const btn = document.getElementById('disabledBtn');
+      btn.disabled = !btn.disabled;
+    };
+
+    document.getElementById('showDelayed').onclick = () => {
+      setTimeout(() => {
+        document.getElementById('delayedElement').hidden = false;
+      }, 2000);
+    };
+  </script>
+</body>
+</html>

@@ -336,7 +336,7 @@ function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail', durat
 }
 
 const _snapshotCommands = new Set([
-  'click', 'dblclick', 'fill', 'type', 'press', 'select', 'check', 'uncheck', 'focus', 'hover', 'scroll', 'goto', 'reload', 'waitForURL'
+  'click', 'dblclick', 'rightClick', 'fill', 'type', 'press', 'select', 'check', 'uncheck', 'focus', 'hover', 'scroll', 'goto', 'reload', 'waitForURL'
 ]);
 
 export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string, duration?: number) {
@@ -446,10 +446,10 @@ export class Locator {
     return this._isEnabledElement(el) && !('readOnly' in el && (el as any).readOnly);
   }
 
-  async _waitForActionableEl(opts: { timeout?: number; force?: boolean } = {}, action?: 'click' | 'dblclick' | 'check' | 'uncheck' | 'fill' | 'clear' | 'selectOption' | 'hover' | 'type'): Promise<HTMLElement> {
+  async _waitForActionableEl(opts: { timeout?: number; force?: boolean } = {}, action?: 'click' | 'dblclick' | 'rightClick' | 'check' | 'uncheck' | 'fill' | 'clear' | 'selectOption' | 'hover' | 'type'): Promise<HTMLElement> {
     const timeout = opts.timeout ?? 5000;
     const force = !!opts.force;
-    const needsStable = action === 'click' || action === 'dblclick' || action === 'check' || action === 'uncheck' || action === 'hover';
+    const needsStable = action === 'click' || action === 'dblclick' || action === 'rightClick' || action === 'check' || action === 'uncheck' || action === 'hover';
     const needsEditable = action === 'fill' || action === 'clear' || action === 'selectOption' || action === 'type';
     const t0 = Date.now();
     let stableRect: DOMRect | null = null;
@@ -564,6 +564,22 @@ export class Locator {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'dblclick');
       el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  async rightClick(opts?: { timeout?: number }): Promise<void> {
+    const entry = logCommand(this._desc, 'rightClick');
+    try {
+      await _checkLocatorHandlers();
+      const el = await this._waitForActionableEl(opts, 'rightClick');
+      const init: MouseEventInit = { bubbles: true, cancelable: true, button: 2, buttons: 2 };
+      el.dispatchEvent(new MouseEvent('mousedown',    init));
+      el.dispatchEvent(new MouseEvent('mouseup',      init));
+      el.dispatchEvent(new MouseEvent('contextmenu',  init));
       entry.success();
     } catch (error: any) {
       entry.fail(error?.message ?? String(error));

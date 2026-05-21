@@ -45,6 +45,7 @@ interface Locator {
   // ── Actions ─────────────────────────────────────────────────────────────────
   click(opts?: { force?: boolean; timeout?: number }): Promise<void>;
   dblclick(opts?: TxTimeoutOptions): Promise<void>;
+  rightClick(opts?: TxTimeoutOptions): Promise<void>;
   fill(value: string, opts?: TxFillOptions): Promise<void>;
   clear(opts?: TxTimeoutOptions): Promise<void>;
   type(text: string, opts?: { delay?: number; timeout?: number }): Promise<void>;
