@@ -75,8 +75,108 @@ describe('Playground', () => {
     });
 
     it('select file', async () => {
-        const select = page.locator('#fileInput');
-        await select.setInputFiles('path/to/file.txt');
-        await expect(select).toHaveValue('path/to/file.txt');
+        const select = page.locator('#fileUpload');
+        await select.setInputFiles('test/specs/playground.spec.ts');
+        await expect(select).toHaveValue('test/specs/playground.spec.ts');
+    });
+
+    it('drag and drop', async () => {
+        await page.evaluate(() => {
+            const dragItem = document.getElementById('dragItem')!;
+            const dropZone = document.getElementById('dropZone')!;
+            const dt = new DataTransfer();
+            dragItem.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+            dropZone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            dropZone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            dragItem.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+        });
+        await expect(page.locator('#dragResult')).toHaveText('Dropped successfully');
+    });
+
+    it('scroll into view', async () => {
+        const scrollTarget = page.locator('#scrollTarget');
+        await scrollTarget.scrollIntoViewIfNeeded();
+        await expect(scrollTarget).toBeVisible();
+    });
+
+    it('alert dialog', async () => {
+        let message = '';
+        page.once('dialog', dialog => {
+            message = dialog.message();
+            dialog.accept();
+        });
+        await page.getByRole('button', { name: 'Alert' }).click();
+        expect(message).toBe('Alert dialog');
+    });
+
+    it('confirm dialog', async () => {
+        let message = '';
+        page.once('dialog', dialog => {
+            message = dialog.message();
+            dialog.accept();
+        });
+        await page.getByRole('button', { name: 'Confirm' }).click();
+        expect(message).toBe('Confirm dialog?');
+    });
+
+    it('prompt dialog', async () => {
+        let message = '';
+        page.once('dialog', dialog => {
+            message = dialog.message();
+            dialog.accept('my answer');
+        });
+        await page.getByRole('button', { name: 'Prompt' }).click();
+        expect(message).toBe('Enter text');
+    });
+
+    it('toggle visibility', async () => {
+        const target = page.locator('#visibilityTarget');
+        await expect(target).toBeVisible();
+        await page.locator('#toggleVisibility').click();
+        await expect(target).toBeHidden();
+        await page.locator('#toggleVisibility').click();
+        await expect(target).toBeVisible();
+    });
+
+    it('toggle enabled', async () => {
+        const btn = page.locator('#disabledBtn');
+        await expect(btn).toBeDisabled();
+        await page.locator('#toggleEnabled').click();
+        await expect(btn).toBeEnabled();
+    });
+
+    it('iframe button', async () => {
+        const frame = page.frameLocator('iframe');
+        await frame.locator('#frameBtn').click();
+        const clicked = await page.evaluate(() => {
+            const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+            return iframe?.contentDocument?.body.dataset.clicked;
+        });
+        expect(clicked).toBe('true');
+    });
+
+    it('link navigation', async () => {
+        await page.locator('#linkNav').click();
+        await expect(page.locator('#bottom')).toBeVisible();
+    });
+
+    it('page reload', async () => {
+        await page.locator('#clickBtn').click();
+        await expect(page.locator('#mouseResult')).toHaveText('Clicked');
+        await page.reload();
+        await expect(page.locator('#mouseResult')).toHaveText('', { exact: true });
+    });
+
+    it('delayed element appears', async () => {
+        const delayed = page.locator('#delayedElement');
+        await expect(delayed).toBeHidden();
+        await page.locator('#showDelayed').click();
+        await delayed.waitFor({ state: 'visible', timeout: 3000 });
+        await expect(delayed).toBeVisible();
+    });
+
+    it('keyboard press', async () => {
+        await page.locator('#textInput').press('Tab');
+        await expect(page.locator('#lastKey')).toHaveText('Tab');
     });
 });

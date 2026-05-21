@@ -342,7 +342,7 @@ function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail', durat
 }
 
 const _snapshotCommands = new Set([
-  'click', 'dblclick', 'rightClick', 'fill', 'type', 'press', 'select', 'check', 'uncheck', 'focus', 'hover', 'scroll', 'goto', 'reload', 'waitForURL'
+  'click', 'dblclick', 'rightClick', 'fill', 'type', 'press', 'select', 'check', 'uncheck', 'focus', 'hover', 'scroll', 'goto', 'reload', 'waitForURL', 'setInputFiles'
 ]);
 
 export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string, duration?: number) {
@@ -428,11 +428,22 @@ export class Locator {
 
   _isVisibleElement(el: Element | null): boolean {
     if (!el) return false;
+    const htmlEl = el as HTMLElement;
+    // checkVisibility walks the full ancestor chain (display, visibility, opacity,
+    // content-visibility) — the same logic Playwright uses. Available in all
+    // modern Chromium/Firefox/Safari builds.
+    if (typeof (htmlEl as any).checkVisibility === 'function') {
+      console.warn(htmlEl, (htmlEl as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+      return (htmlEl as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+    }
+    console.warn('fallback to older envs')
+    // Fallback for older environments
     const win = iframeWin();
     if (!win) return false;
-    const s = win.getComputedStyle(el as HTMLElement);
-    return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0'
-      && (el as HTMLElement).offsetParent !== null;
+    const s = win.getComputedStyle(htmlEl);
+    if (s.visibility === 'hidden' || s.opacity === '0') return false;
+    const rect = htmlEl.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   }
 
   _receivesEvents(el: HTMLElement): boolean {
@@ -556,6 +567,11 @@ export class Locator {
     try {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'click');
+      const init: MouseEventInit = { bubbles: true, cancelable: true, button: 0, buttons: 1 };
+      el.dispatchEvent(new MouseEvent('mouseover',  init));
+      el.dispatchEvent(new MouseEvent('mouseenter', { ...init, bubbles: false }));
+      el.dispatchEvent(new MouseEvent('mousedown',  init));
+      el.dispatchEvent(new MouseEvent('mouseup',    init));
       el.click();
       entry.success();
     } catch (error: any) {
@@ -777,6 +793,39 @@ export class Locator {
     }
   }
 
+  async setInputFiles(
+    files: string | string[] | { name: string; mimeType: string; buffer: Buffer } | { name: string; mimeType: string; buffer: Buffer }[],
+    opts?: { timeout?: number }
+  ): Promise<void> {
+    const arr = Array.isArray(files) ? files : [files];
+    const names = arr.map(f => (typeof f === 'string' ? f.split('/').pop() ?? f : f.name)).join(', ');
+    const entry = logCommand(this._desc ? `${this._desc}  ${names}` : names, 'setInputFiles');
+    try {
+      await _checkLocatorHandlers();
+      const el  = await this._waitForEl(opts?.timeout) as HTMLInputElement;
+      const win = iframeWin() as any;
+      const DT  = (win?.DataTransfer ?? DataTransfer) as typeof DataTransfer;
+      const F   = (win?.File        ?? File)          as typeof File;
+      const dt  = new DT();
+      for (const f of arr) {
+        if (typeof f === 'string') {
+          dt.items.add(new F([], f.split('/').pop() ?? f));
+        } else {
+          dt.items.add(new F([f.buffer as any], f.name, { type: f.mimeType }));
+        }
+      }
+      const valueStr = typeof arr[0] === 'string' ? arr[0] as string : (arr[0] as { name: string }).name;
+      Object.defineProperty(el, 'files', { value: dt.files, configurable: true, writable: false });
+      Object.defineProperty(el, 'value', { value: valueStr, configurable: true, writable: true });
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      entry.success();
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
+  }
+
   // ── Queries ───────────────────────────────────────────────────────────────
 
   async textContent(): Promise<string | null> {
@@ -792,12 +841,17 @@ export class Locator {
     return this._el()?.getAttribute(name) ?? null;
   }
   async isVisible(): Promise<boolean> {
-    const el = this._el();
+    const el = this._el() as HTMLElement | null;
+    if (!el) return false;
+    if (typeof (el as any).checkVisibility === 'function') {
+      return (el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+    }
     const win = iframeWin();
-    if (!el || !win) return false;
+    if (!win) return false;
     const s = win.getComputedStyle(el);
-    return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0'
-      && (el as HTMLElement).offsetParent !== null;
+    if (s.visibility === 'hidden' || s.opacity === '0') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   }
   async isHidden(): Promise<boolean>  { return !(await this.isVisible()); }
   async isEnabled(): Promise<boolean> {
@@ -1223,6 +1277,154 @@ const ROLE_SELECTORS: Record<string, string> = {
   contentinfo: 'footer,[role="contentinfo"]',
 };
 
+// ── FrameLocator ─────────────────────────────────────────────────────────────
+
+export class FrameLocator {
+  constructor(
+    private readonly _selector: string,
+    private readonly _getParentDoc: () => Document | null,
+  ) {}
+
+  private _frameDoc(): Document | null {
+    const doc = this._getParentDoc();
+    if (!doc) return null;
+    const frame = doc.querySelector(this._selector) as HTMLIFrameElement | null;
+    if (!frame) return null;
+    try { return frame.contentDocument; } catch { return null; }
+  }
+
+  locator(selector: string): Locator {
+    return new Locator(() => {
+      const doc = this._frameDoc();
+      if (!doc) return [];
+      const parts = resolveSelector(selector);
+      const seen = new Set<Element>();
+      const out: Element[] = [];
+      for (const { base, hasText } of parts) {
+        for (const el of Array.from(doc.querySelectorAll(base))) {
+          if (hasText && !textMatches(el, hasText)) continue;
+          if (!seen.has(el)) { seen.add(el); out.push(el); }
+        }
+      }
+      return out;
+    }, `frame(${this._selector}) >> ${selector}`);
+  }
+
+  getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator {
+    const exact = opts?.exact ?? false;
+    const desc = `frame(${this._selector}) >> text(${text instanceof RegExp ? text : `"${text}"`})`;
+    return new Locator(() => {
+      const doc = this._frameDoc();
+      if (!doc) return [];
+      const leafs = Array.from(doc.querySelectorAll('*')).filter(
+        el => el.children.length === 0 && textMatches(el, text, exact)
+      );
+      if (leafs.length) return leafs;
+      return Array.from(doc.querySelectorAll('*')).filter(el => textMatches(el, text, exact));
+    }, desc);
+  }
+
+  getByRole(role: string, opts?: { name?: string | RegExp; exact?: boolean }): Locator {
+    const desc = opts?.name
+      ? `frame(${this._selector}) >> role=${role}[name="${opts.name}"]`
+      : `frame(${this._selector}) >> role=${role}`;
+    return new Locator(() => {
+      const doc = this._frameDoc();
+      if (!doc) return [];
+      const sel = ROLE_SELECTORS[role] ?? `[role="${role}"]`;
+      let els = Array.from(doc.querySelectorAll(sel));
+      if (opts?.name) {
+        const name = opts.name;
+        const exact = opts.exact ?? false;
+        els = els.filter(el => {
+          const labelledById = el.getAttribute('aria-labelledby');
+          const labelled = labelledById ? doc.getElementById(labelledById) : null;
+          const acc = (
+            el.getAttribute('aria-label') ??
+            labelled?.textContent ??
+            (el.tagName === 'INPUT' ? el.getAttribute('value') : null) ??
+            el.textContent ?? ''
+          ).trim();
+          return name instanceof RegExp ? name.test(acc) : exact ? acc === name : acc.includes(name);
+        });
+      }
+      return els;
+    }, desc);
+  }
+
+  getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator {
+    const exact = opts?.exact ?? false;
+    const desc = `frame(${this._selector}) >> label(${text instanceof RegExp ? text : `"${text}"`})`;
+    return new Locator(() => {
+      const doc = this._frameDoc();
+      if (!doc) return [];
+      const results: Element[] = [];
+      for (const label of Array.from(doc.querySelectorAll<HTMLLabelElement>('label'))) {
+        if (!textMatches(label, text, exact)) continue;
+        const target = label.htmlFor
+          ? doc.getElementById(label.htmlFor)
+          : label.querySelector('input,select,textarea');
+        if (target && !results.includes(target)) results.push(target);
+      }
+      for (const el of Array.from(doc.querySelectorAll('[aria-label]'))) {
+        const lbl = el.getAttribute('aria-label') ?? '';
+        const ok = text instanceof RegExp ? text.test(lbl) : exact ? lbl === text : lbl.includes(text as string);
+        if (ok && !results.includes(el)) results.push(el);
+      }
+      return results;
+    }, desc);
+  }
+
+  getByPlaceholder(text: string | RegExp): Locator {
+    const desc = `frame(${this._selector}) >> placeholder(${text instanceof RegExp ? text : `"${text}"`})`;
+    return new Locator(() => {
+      const doc = this._frameDoc();
+      if (!doc) return [];
+      return Array.from(doc.querySelectorAll('[placeholder]')).filter(el => {
+        const p = el.getAttribute('placeholder') ?? '';
+        return text instanceof RegExp ? text.test(p) : p.includes(text as string);
+      });
+    }, desc);
+  }
+
+  getByTestId(id: string): Locator {
+    const q = id.replace(/"/g, '\\"');
+    return new Locator(() => {
+      const doc = this._frameDoc();
+      if (!doc) return [];
+      return Array.from(doc.querySelectorAll(`[data-testid="${q}"],[data-test="${q}"]`));
+    }, `frame(${this._selector}) >> [data-testid="${id}"]`);
+  }
+
+  getByAltText(text: string | RegExp): Locator {
+    const desc = `frame(${this._selector}) >> alt(${text instanceof RegExp ? text : `"${text}"`})`;
+    return new Locator(() => {
+      const doc = this._frameDoc();
+      if (!doc) return [];
+      return Array.from(doc.querySelectorAll('[alt]')).filter(el => {
+        const a = el.getAttribute('alt') ?? '';
+        return text instanceof RegExp ? text.test(a) : a.includes(text as string);
+      });
+    }, desc);
+  }
+
+  getByTitle(text: string | RegExp): Locator {
+    const desc = `frame(${this._selector}) >> title(${text instanceof RegExp ? text : `"${text}"`})`;
+    return new Locator(() => {
+      const doc = this._frameDoc();
+      if (!doc) return [];
+      return Array.from(doc.querySelectorAll('[title]')).filter(el => {
+        const t = el.getAttribute('title') ?? '';
+        return text instanceof RegExp ? text.test(t) : t.includes(text as string);
+      });
+    }, desc);
+  }
+
+  frameLocator(selector: string): FrameLocator {
+    return new FrameLocator(selector, () => this._frameDoc());
+  }
+}
+
 export const page = {
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -1381,6 +1583,10 @@ export const page = {
         return text instanceof RegExp ? text.test(t) : t.includes(text as string);
       });
     }, desc);
+  },
+
+  frameLocator(selector: string): FrameLocator {
+    return new FrameLocator(selector, iframeDoc);
   },
 
   // ── Page state ─────────────────────────────────────────────────────────────
@@ -1913,6 +2119,7 @@ function _makePopupPage(tabId: string) {
     getByTestId: (id: string) => new Locator(() => { _activate(); return page.getByTestId(id)._els(); }),
     getByAltText: (text: string | RegExp) => new Locator(() => { _activate(); return page.getByAltText(text)._els(); }),
     getByTitle: (text: string | RegExp) => new Locator(() => { _activate(); return page.getByTitle(text)._els(); }),
+    frameLocator: (selector: string) => new FrameLocator(selector, () => { _activate(); return iframeDoc(); }),
     waitForURL: (url: string | RegExp, opts?: any) => { _activate(); return page.waitForURL(url, opts); },
     waitForSelector: (sel: string, opts?: any) => { _activate(); return page.waitForSelector(sel, opts); },
     waitForTimeout: (ms: number) => page.waitForTimeout(ms),

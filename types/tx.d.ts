@@ -15,6 +15,16 @@ interface TxFillOptions    { timeout?: number; delay?: number; }
 interface TxTextOptions    { exact?: boolean;  timeout?: number; }
 interface TxNameOptions    { name?: string | RegExp; exact?: boolean; }
 
+/** A synthetic file descriptor accepted by {@link Locator.setInputFiles}. */
+interface TxFilePayload {
+  /** File name including extension (e.g. `"photo.png"`). */
+  name: string;
+  /** MIME type (e.g. `"image/png"`). */
+  mimeType: string;
+  /** File content. */
+  buffer: Buffer;
+}
+
 /** Handle returned by {@link Page.addInitScript}. Call `dispose()` to stop the script from running on future navigations. */
 interface TxScriptHandle { dispose(): void; }
 
@@ -56,6 +66,7 @@ interface Locator {
   focus(opts?: TxTimeoutOptions): Promise<void>;
   hover(opts?: TxTimeoutOptions): Promise<void>;
   scrollIntoViewIfNeeded(opts?: TxTimeoutOptions): Promise<void>;
+  setInputFiles(files: string | string[] | TxFilePayload | TxFilePayload[], opts?: TxTimeoutOptions): Promise<void>;
 
   // ── State queries ────────────────────────────────────────────────────────────
   textContent(): Promise<string | null>;
@@ -163,6 +174,20 @@ interface TxFrame {
   isMainFrame(): boolean;
 }
 
+// ── FrameLocator ─────────────────────────────────────────────────────────────
+
+interface FrameLocator {
+  locator(selector: string): Locator;
+  getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator;
+  getByRole(role: string, opts?: TxNameOptions): Locator;
+  getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator;
+  getByPlaceholder(text: string | RegExp): Locator;
+  getByTestId(id: string): Locator;
+  getByAltText(text: string | RegExp): Locator;
+  getByTitle(text: string | RegExp): Locator;
+  frameLocator(selector: string): FrameLocator;
+}
+
 // ── PopupPage ─────────────────────────────────────────────────────────────────
 
 interface PopupPage {
@@ -179,6 +204,7 @@ interface PopupPage {
   getByTestId(id: string): Locator;
   getByAltText(text: string | RegExp): Locator;
   getByTitle(text: string | RegExp): Locator;
+  frameLocator(selector: string): FrameLocator;
 
   waitForURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   waitForSelector(selector: string, opts?: { state?: 'visible' | 'attached'; timeout?: number }): Promise<Locator>;
@@ -210,6 +236,7 @@ interface Page {
   getByTestId(id: string): Locator;
   getByAltText(text: string | RegExp): Locator;
   getByTitle(text: string | RegExp): Locator;
+  frameLocator(selector: string): FrameLocator;
 
   // ── Waits ─────────────────────────────────────────────────────────────────────
   waitForURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
@@ -368,10 +395,10 @@ declare function afterEach(fn: () => void | Promise<void>): void;
 // ── 'tx' module — available via require('tx') or import from 'tx' ─────────────
 
 declare module 'tx' {
-  export { Locator, Page, PopupPage, Browser };
+  export { Locator, FrameLocator, Page, PopupPage, Browser };
   export { LocatorAssertions, ValueAssertions };
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
-  export { TxScriptHandle, TxLocatorHandlerOptions };
+  export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory };
 
   export const page: Page;
