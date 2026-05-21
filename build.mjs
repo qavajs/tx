@@ -26,11 +26,11 @@ await esbuild.build({
 
 await esbuild.build({
   ...sharedOpts,
-  entryPoints: ['src/panel.ts'],
+  entryPoints: ['src/controller.ts'],
   bundle: true,
   platform: 'browser',
   format: 'iife',
-  outfile: 'dist/panel.js',
+  outfile: 'dist/controller.js',
   minify: !watch,
 });
 

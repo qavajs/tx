@@ -81,17 +81,17 @@ export class TestServer {
           return;
         }
 
-        if (req.url === '/panel.js' && req.method === 'GET') {
-          // When bundled (node dist/index.js) __dirname = dist/, panel.js is alongside.
+        if (req.url === '/controller.js' && req.method === 'GET') {
+          // When bundled (node dist/index.js) __dirname = dist/, controller.js is alongside.
           // When running via ts-node from root, look in dist/.
           const candidates = [
-            path.join(__dirname, 'panel.js'),
-            path.join(__dirname, 'dist', 'panel.js'),
+            path.join(__dirname, 'controller.js'),
+            path.join(__dirname, 'dist', 'controller.js'),
           ];
           const panelPath = candidates.find(p => fs.existsSync(p));
           if (!panelPath) {
             res.writeHead(503, { 'Content-Type': 'text/plain' });
-            res.end('panel.js not found — run: npm run build');
+            res.end('controller.js not found — run: npm run build');
             return;
           }
           res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });

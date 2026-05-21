@@ -1470,7 +1470,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             port: ${controlPanelPort}${viewport ? `,\n            viewport: { width: ${viewport.width}, height: ${viewport.height} }` : ''}${testMode ? `,\n            autorun: true` : ''}${snapshot ? `,\n            snapshot: true` : ''}${grep ? `,\n            grep: ${JSON.stringify(grep.source)},\n            grepFlags: ${JSON.stringify(grep.flags)}` : ''}${actionTimeout != null ? `,\n            actionTimeout: ${actionTimeout}` : ''}${expectTimeout != null ? `,\n            expectTimeout: ${expectTimeout}` : ''}${testTimeout != null ? `,\n            testTimeout: ${testTimeout}` : ''}
         };
     </script>
-    <script src="/panel.js"></script>
+    <script src="/controller.js"></script>
 </body>
 </html>`;
 }
