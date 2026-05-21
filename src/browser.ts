@@ -156,6 +156,7 @@ export function onSnapshotsChanged(fn: () => void): () => void {
 }
 
 export function fromProxiedUrl(url: string): string {
+  if (!url) return url ?? '';
   if (_proxyPrefix && url.startsWith(_proxyPrefix)) return url.slice(_proxyPrefix.length);
   return url;
 }
@@ -990,9 +991,21 @@ function _bridgeFetch(win: any): void {
   if (typeof win.fetch !== 'function') return;
   const origFetch = (win.fetch as typeof fetch).bind(win);
   win.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url    = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
-    const method = ((init?.method) ?? (typeof input === 'object' && !(input instanceof URL) ? (input as Request).method : undefined) ?? 'GET').toUpperCase();
-    const reqHeaders = _normalizeHeaders(init?.headers ?? (typeof input === 'object' && !(input instanceof URL) ? (input as Request).headers : undefined));
+    // Use duck-typing instead of `instanceof URL` to work across iframe/window boundaries
+    let url = typeof input === 'string' ? input
+      : (input && typeof (input as any).href === 'string') ? (input as any).href
+      : (input && typeof (input as any).url  === 'string') ? (input as any).url
+      : '';
+    // Resolve relative URLs to absolute using the real (non-proxy) page URL
+    if (url && !/^https?:\/\//.test(url)) {
+      try {
+        const base = fromProxiedUrl(win.location?.href ?? '');
+        if (base) url = new URL(url, base).href;
+      } catch { /* keep original */ }
+    }
+    const isReqObj = input != null && typeof input === 'object' && typeof (input as any).href !== 'string';
+    const method = ((init?.method) ?? (isReqObj ? (input as any).method : undefined) ?? 'GET').toUpperCase();
+    const reqHeaders = _normalizeHeaders(init?.headers ?? (isReqObj ? (input as any).headers : undefined));
     const req    = { url: () => url, method: () => method, headers: () => reqHeaders, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
     _emitPage('request', req);
     try {
@@ -1022,7 +1035,14 @@ function _bridgeXHR(win: any): void {
   const origSend    = proto.send as Function;
   proto.open = function (method: string, url: string | URL, ...rest: any[]) {
     (this as any)._xMethod = method;
-    (this as any)._xUrl    = String(url);
+    let xUrl = String(url);
+    if (xUrl && !/^https?:\/\//.test(xUrl)) {
+      try {
+        const base = fromProxiedUrl(win.location?.href ?? '');
+        if (base) xUrl = new URL(xUrl, base).href;
+      } catch { /* keep original */ }
+    }
+    (this as any)._xUrl = xUrl;
     return origOpen.call(this, method, url, ...rest);
   };
   proto.send = function (body?: XMLHttpRequestBodyInit | Document | null) {
@@ -1173,8 +1193,11 @@ function _installEventBridges(): void {
     _bridgeWorker(win);
   }
 
-  // Document-level bridges are re-installed on every navigation
-  _bridgeDocumentEvents(doc);
+  // Document-level bridges: guarded per document to prevent duplicate listeners
+  if (!(doc as any).__cyDocBridges) {
+    (doc as any).__cyDocBridges = true;
+    _bridgeDocumentEvents(doc);
+  }
 }
 
 // ── Playwright-style page ─────────────────────────────────────────────────────
@@ -1904,6 +1927,40 @@ function _makePopupPage(tabId: string) {
 
 export type PopupPage = ReturnType<typeof _makePopupPage>;
 
+// ── Early bridge watcher ──────────────────────────────────────────────────────
+// Polls via rAF to detect new iframe windows as soon as they appear — well
+// before the outer `load` event fires — so requests made during page init
+// are captured.
+
+let _earlyWatcherStarted = false;
+
+function _startEarlyBridgeWatcher(): void {
+  if (_earlyWatcherStarted) return;
+  _earlyWatcherStarted = true;
+  let lastWin: object | null = null;
+  const tick = () => {
+    try {
+      const win = iframeWin() as any;
+      if (win && win !== lastWin) {
+        lastWin = win;
+        if (!win.__cyEventBridges) {
+          win.__cyEventBridges = true;
+          _bridgeConsole(win);
+          _bridgeErrors(win);
+          _bridgeDialogs(win);
+          _bridgePopup(win);
+          _bridgeFetch(win);
+          _bridgeXHR(win);
+          _bridgeWebSocket(win);
+          _bridgeWorker(win);
+        }
+      }
+    } catch { /* cross-origin — ignore */ }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 // ── iframe init ───────────────────────────────────────────────────────────────
 
 export function initIframe() {
@@ -1918,6 +1975,7 @@ export function initIframe() {
     const { width, height } = window.__CONFIG__.viewport;
     viewportW = width; viewportH = height;
   }
+  _startEarlyBridgeWatcher();
   createTab();
 }
 

@@ -169,10 +169,13 @@
   <div id="bottom"><h2>Bottom of page</h2></div>
 
   <script>
+    console.log('Test page loaded');
     const result = document.getElementById('mouseResult');
 
     document.getElementById('clickBtn').onclick = () => {
       result.textContent = 'Clicked';
+      console.info('Click button was clicked');
+      console.warn('This is a warning');
     };
 
     document.getElementById('dblClickBtn').ondblclick = () => {

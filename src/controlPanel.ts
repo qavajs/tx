@@ -923,29 +923,49 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-network-resize-handle:hover::before,
         .tx-network-resize-handle.dragging::before { background: var(--jade); height: 2px; }
 
-        .tx-network-toolbar {
+        .tx-devtools-tabs {
             display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 4px 12px;
+            align-items: stretch;
             background: var(--bg-topbar);
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
+            padding: 0 6px;
+            gap: 2px;
         }
-        .tx-network-title {
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-            color: var(--text-dim);
-        }
-        .tx-network-count {
-            font-size: 11px;
+        .tx-devtools-tab {
+            padding: 5px 10px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
             color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: -1px;
+            transition: color 0.1s;
+            flex-shrink: 0;
         }
+        .tx-devtools-tab:hover { color: var(--text); }
+        .tx-devtools-tab.active { color: var(--text); border-bottom-color: var(--jade); }
+        .tx-devtools-tab-count {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 8px;
+            background: var(--bg-card);
+            color: var(--text-muted);
+            min-width: 18px;
+            text-align: center;
+        }
+        .tx-devtools-tab-count.has-errors { background: var(--fail-bg); color: var(--fail); }
+        .tx-devtools-tab-count:empty { display: none; }
+        .tx-devtools-spacer { flex: 1; }
         .tx-network-clear-btn {
-            margin-left: auto;
             padding: 2px 8px;
+            align-self: center;
             background: transparent;
             border: 1px solid var(--border-s);
             border-radius: 3px;
@@ -953,8 +973,66 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             font-size: 11px;
             cursor: pointer;
             transition: all 0.1s;
+            flex-shrink: 0;
         }
         .tx-network-clear-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+        .tx-devtab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+        .tx-devtab-content.active { display: flex; }
+
+        .tx-console-body {
+            flex: 1;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+        .tx-console-body::-webkit-scrollbar { width: 3px; }
+        .tx-console-body::-webkit-scrollbar-thumb { background: var(--border-s); }
+
+        .tx-console-row {
+            display: flex;
+            align-items: baseline;
+            padding: 2px 10px;
+            gap: 8px;
+            line-height: 1.6;
+            border-bottom: 1px solid var(--border);
+            border-left: 2px solid transparent;
+            cursor: default;
+            transition: background 0.08s;
+        }
+        .tx-console-row:hover { background: var(--bg-hover); }
+        .tx-console-row.log   { color: var(--text-dim); }
+        .tx-console-row.debug { color: var(--text-muted); }
+        .tx-console-row.info  { color: #60a5fa; border-left-color: #60a5fa; }
+        .tx-console-row.warning { color: var(--warn); background: rgba(245,158,11,0.05); border-left-color: var(--warn); }
+        .tx-console-row.error,
+        .tx-console-row.pageerror { color: var(--fail); background: var(--fail-bg); border-left-color: var(--fail); }
+        .tx-console-row.trace { color: var(--text-muted); }
+
+        .tx-con-level {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            flex-shrink: 0;
+            min-width: 40px;
+        }
+        .tx-con-text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: pre;
+            min-width: 0;
+        }
+        .tx-con-url {
+            font-size: 10px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
 
         .tx-network-header {
             display: grid;
@@ -1210,7 +1288,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                     <button class="tx-go-btn" onclick="window.testApi && window.testApi.visit(document.getElementById('navUrl').value)">Go</button>
                 </div>
                 <span class="tx-viewport-tag" id="viewportTag">—</span>
-                <button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle network panel">Network</button>
+                <button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle DevTools panel">DevTools <span id="consoleErrorBadge" style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:var(--fail-bg);color:var(--fail);display:none"></span></button>
             </div>
             <div class="tx-tab-bar" id="tabBar"></div>
             <div class="tx-browser-main">
@@ -1233,30 +1311,38 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             </div>
             <div class="tx-network" id="networkPanel">
                 <div class="tx-network-resize-handle" id="networkResizeHandle"></div>
-                <div class="tx-network-toolbar">
-                    <span class="tx-network-title">Network</span>
-                    <span class="tx-network-count" id="networkCount"></span>
-                    <button class="tx-network-clear-btn" onclick="window.clearNetwork && window.clearNetwork()">Clear</button>
+                <div class="tx-devtools-tabs">
+                    <button class="tx-devtools-tab active" id="devTabNetwork" onclick="window.switchDevTab && window.switchDevTab('network')">Network <span class="tx-devtools-tab-count" id="networkCount"></span></button>
+                    <button class="tx-devtools-tab" id="devTabConsole" onclick="window.switchDevTab && window.switchDevTab('console')">Console <span class="tx-devtools-tab-count" id="consoleCount"></span></button>
+                    <div class="tx-devtools-spacer"></div>
+                    <button class="tx-network-clear-btn" id="devClearBtn" onclick="window.clearDevTab && window.clearDevTab()">Clear</button>
                 </div>
-                <div class="tx-network-content">
-                    <div class="tx-network-list">
-                        <div class="tx-network-header">
-                            <span>Method</span>
-                            <span>Status</span>
-                            <span>Type</span>
-                            <span>URL</span>
-                            <span>Duration</span>
+                <div class="tx-devtab-content active" id="devTabContentNetwork">
+                    <div class="tx-network-content">
+                        <div class="tx-network-list">
+                            <div class="tx-network-header">
+                                <span>Method</span>
+                                <span>Status</span>
+                                <span>Type</span>
+                                <span>URL</span>
+                                <span>Duration</span>
+                            </div>
+                            <div class="tx-network-body" id="networkList">
+                                <div class="tx-empty-network">No requests yet</div>
+                            </div>
                         </div>
-                        <div class="tx-network-body" id="networkList">
-                            <div class="tx-empty-network">No requests yet</div>
+                        <div class="tx-network-detail" id="networkDetail">
+                            <div class="tx-network-detail-toolbar">
+                                <span class="tx-network-detail-title" id="networkDetailTitle">Details</span>
+                                <button class="tx-network-detail-close" onclick="window.closeNetworkDetail && window.closeNetworkDetail()" title="Close">×</button>
+                            </div>
+                            <div class="tx-network-detail-body" id="networkDetailBody"></div>
                         </div>
                     </div>
-                    <div class="tx-network-detail" id="networkDetail">
-                        <div class="tx-network-detail-toolbar">
-                            <span class="tx-network-detail-title" id="networkDetailTitle">Details</span>
-                            <button class="tx-network-detail-close" onclick="window.closeNetworkDetail && window.closeNetworkDetail()" title="Close">×</button>
-                        </div>
-                        <div class="tx-network-detail-body" id="networkDetailBody"></div>
+                </div>
+                <div class="tx-devtab-content" id="devTabContentConsole">
+                    <div class="tx-console-body" id="consoleList">
+                        <div class="tx-empty-network">No console output yet</div>
                     </div>
                 </div>
             </div>

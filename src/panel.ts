@@ -973,15 +973,113 @@ function _openNetworkDetail(id: number) {
   _updateNetworkCount();
 };
 
-(window as any).toggleNetworkPanel = () => {
+// ── Console panel ─────────────────────────────────────────────────────────────
+
+interface ConsoleEntry {
+  id: number;
+  level: string;
+  text: string;
+  url: string;
+  timestamp: number;
+}
+
+const _consoleEntries: ConsoleEntry[] = [];
+let _consoleCounter = 0;
+let _consoleErrorCount = 0;
+const _MAX_CONSOLE = 1000;
+
+function _updateConsoleBadge() {
+  const count = document.getElementById('consoleCount');
+  const badge = document.getElementById('consoleErrorBadge');
   const panel = document.getElementById('networkPanel');
-  const btn = document.getElementById('networkToggleBtn');
+  const isConsoleTab = panel?.dataset.activeTab === 'console';
+  if (count) {
+    count.textContent = _consoleEntries.length ? String(_consoleEntries.length) : '';
+    count.classList.toggle('has-errors', _consoleErrorCount > 0);
+  }
+  if (badge) {
+    if (_consoleErrorCount > 0 && !isConsoleTab) {
+      badge.textContent = String(_consoleErrorCount);
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+function _appendConsoleEntry(entry: ConsoleEntry) {
+  const list = document.getElementById('consoleList');
+  if (!list) return;
+  const empty = list.querySelector('.tx-empty-network');
+  if (empty) empty.remove();
+  const wasAtBottom = list.scrollHeight - list.scrollTop <= list.clientHeight + 30;
+  const row = document.createElement('div');
+  row.className = 'tx-console-row ' + entry.level;
+  const shortUrl = entry.url ? (() => { try { const u = new URL(fromProxiedUrl(entry.url)); return u.host + u.pathname; } catch { return entry.url; } })() : '';
+  row.innerHTML =
+    '<span class="tx-con-level">' + escHtml(entry.level) + '</span>' +
+    '<span class="tx-con-text" title="' + escHtml(entry.text) + '">' + escHtml(entry.text) + '</span>' +
+    (shortUrl ? '<span class="tx-con-url" title="' + escHtml(entry.url) + '">' + escHtml(shortUrl) + '</span>' : '');
+  list.appendChild(row);
+  if (wasAtBottom) list.scrollTop = list.scrollHeight;
+  _updateConsoleBadge();
+}
+
+// ── Dev panel tab / toggle ────────────────────────────────────────────────────
+
+let _activeDevTab: 'network' | 'console' = 'network';
+
+function _openDevPanel(tab: 'network' | 'console') {
+  const panel = document.getElementById('networkPanel');
   if (!panel) return;
-  const open = panel.classList.toggle('open');
-  btn?.classList.toggle('active', open);
-  if (open) {
+  const alreadyOpen = panel.classList.contains('open');
+  if (alreadyOpen && _activeDevTab === tab) {
+    panel.classList.remove('open');
+    document.getElementById('networkToggleBtn')?.classList.remove('active');
+    document.getElementById('consoleToggleBtn')?.classList.remove('active');
+    return;
+  }
+  if (!alreadyOpen) {
+    panel.classList.add('open');
     const savedH = Number(localStorage.getItem('tx-network-h') || 0);
     if (savedH) panel.style.height = savedH + 'px';
+  }
+  _switchDevTabInternal(tab);
+}
+
+function _switchDevTabInternal(tab: 'network' | 'console') {
+  const panel = document.getElementById('networkPanel');
+  if (!panel) return;
+  _activeDevTab = tab;
+  panel.dataset.activeTab = tab;
+  document.getElementById('devTabNetwork')?.classList.toggle('active', tab === 'network');
+  document.getElementById('devTabConsole')?.classList.toggle('active', tab === 'console');
+  document.getElementById('devTabContentNetwork')?.classList.toggle('active', tab === 'network');
+  document.getElementById('devTabContentConsole')?.classList.toggle('active', tab === 'console');
+  document.getElementById('networkToggleBtn')?.classList.toggle('active', tab === 'network' && panel.classList.contains('open'));
+  document.getElementById('consoleToggleBtn')?.classList.toggle('active', tab === 'console' && panel.classList.contains('open'));
+  if (tab === 'console') {
+    _consoleErrorCount = 0;
+    _updateConsoleBadge();
+  }
+}
+
+(window as any).switchDevTab = (tab: 'network' | 'console') => _openDevPanel(tab);
+
+(window as any).toggleNetworkPanel = () => _openDevPanel('network');
+
+(window as any).toggleConsolePanel = () => _openDevPanel('console');
+
+(window as any).clearDevTab = () => {
+  if (_activeDevTab === 'network') {
+    (window as any).clearNetwork();
+  } else {
+    _consoleEntries.length = 0;
+    _consoleCounter = 0;
+    _consoleErrorCount = 0;
+    const list = document.getElementById('consoleList');
+    if (list) list.innerHTML = '<div class="tx-empty-network">No console output yet</div>';
+    _updateConsoleBadge();
   }
 };
 
@@ -1025,9 +1123,9 @@ function initNetworkListeners() {
       : String(rawBody);
     const entry: NetworkEntry = {
       id: ++_networkCounter,
-      url: req.url(),
-      method: req.method(),
-      type: req.resourceType(),
+      url: req.url() ?? '',
+      method: req.method() ?? 'GET',
+      type: req.resourceType() ?? '',
       requestHeaders: req.headers() ?? {},
       requestBody,
       status: null,
@@ -1077,12 +1175,42 @@ function initNetworkListeners() {
     const id = Number(row.getAttribute('data-net-id'));
     if (id) _openNetworkDetail(id);
   });
+
+  page.on('console', (msg: any) => {
+    const level = msg.type?.() ?? 'log';
+    const entry: ConsoleEntry = {
+      id: ++_consoleCounter,
+      level,
+      text: msg.text?.() ?? '',
+      url: msg.location?.()?.url ?? '',
+      timestamp: Date.now(),
+    };
+    if (_consoleEntries.length >= _MAX_CONSOLE) _consoleEntries.shift();
+    _consoleEntries.push(entry);
+    _appendConsoleEntry(entry);
+  });
+
+  page.on('pageerror', (err: Error) => {
+    const entry: ConsoleEntry = {
+      id: ++_consoleCounter,
+      level: 'pageerror',
+      text: err?.stack || err?.message || String(err),
+      url: '',
+      timestamp: Date.now(),
+    };
+    if (_consoleEntries.length >= _MAX_CONSOLE) _consoleEntries.shift();
+    _consoleEntries.push(entry);
+    _consoleErrorCount++;
+    _appendConsoleEntry(entry);
+    _updateConsoleBadge();
+  });
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
   setOnTabsChanged(renderTabBar);
+  initNetworkListeners();
   initIframe();
   renderTabBar();
   renderBrowserView();
@@ -1094,7 +1222,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   initResizers();
   initNetworkResizer();
-  initNetworkListeners();
   const snapshotWrapper = document.getElementById('snapshotViewportWrapper');
   if (snapshotWrapper) {
     new ResizeObserver(() => { if (_activeBrowserView === 'snapshot') applySnapshotViewport(); })
