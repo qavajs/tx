@@ -1109,8 +1109,7 @@ function _switchDevTabInternal(tab: 'network' | 'console' | 'selector') {
   document.getElementById('devTabContentNetwork')?.classList.toggle('active', tab === 'network');
   document.getElementById('devTabContentConsole')?.classList.toggle('active', tab === 'console');
   document.getElementById('devTabContentSelector')?.classList.toggle('active', tab === 'selector');
-  document.getElementById('networkToggleBtn')?.classList.toggle('active', tab === 'network' && panel.classList.contains('open'));
-  document.getElementById('consoleToggleBtn')?.classList.toggle('active', tab === 'console' && panel.classList.contains('open'));
+  document.getElementById('networkToggleBtn')?.classList.toggle('active', panel.classList.contains('open'));
   if (tab === 'console') {
     _consoleErrorCount = 0;
     _updateConsoleBadge();
@@ -1122,9 +1121,28 @@ function _switchDevTabInternal(tab: 'network' | 'console' | 'selector') {
   }
 }
 
-(window as any).switchDevTab = (tab: 'network' | 'console' | 'selector') => _openDevPanel(tab);
+(window as any).switchDevTab = (tab: 'network' | 'console' | 'selector') => {
+  const panel = document.getElementById('networkPanel');
+  if (!panel) return;
+  if (!panel.classList.contains('open')) {
+    panel.classList.add('open');
+    const savedH = Number(localStorage.getItem('tx-network-h') || 0);
+    if (savedH) panel.style.height = savedH + 'px';
+  }
+  _switchDevTabInternal(tab);
+};
 
-(window as any).toggleNetworkPanel = () => _openDevPanel('network');
+(window as any).toggleNetworkPanel = () => {
+  const panel = document.getElementById('networkPanel');
+  if (panel?.classList.contains('open')) {
+    panel.classList.remove('open');
+    document.getElementById('networkToggleBtn')?.classList.remove('active');
+    document.getElementById('consoleToggleBtn')?.classList.remove('active');
+    _clearSelectorHighlights();
+  } else {
+    _openDevPanel(_activeDevTab);
+  }
+};
 
 (window as any).toggleConsolePanel = () => _openDevPanel('console');
 
