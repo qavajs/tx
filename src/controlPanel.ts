@@ -2,7 +2,7 @@
  * Control Panel - Tx HTML UI
  */
 
-export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: number = 3000, viewport?: { width: number; height: number }, testMode?: boolean, snapshot?: boolean, grep?: RegExp): string {
+export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: number = 3000, viewport?: { width: number; height: number }, testMode?: boolean, snapshot?: boolean, grep?: RegExp, actionTimeout?: number, expectTimeout?: number, testTimeout?: number): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1446,7 +1446,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
     <script>
         window.__CONFIG__ = {
             proxyUrl: "${proxyUrl}",
-            port: ${controlPanelPort}${viewport ? `,\n            viewport: { width: ${viewport.width}, height: ${viewport.height} }` : ''}${testMode ? `,\n            autorun: true` : ''}${snapshot ? `,\n            snapshot: true` : ''}${grep ? `,\n            grep: ${JSON.stringify(grep.source)},\n            grepFlags: ${JSON.stringify(grep.flags)}` : ''}
+            port: ${controlPanelPort}${viewport ? `,\n            viewport: { width: ${viewport.width}, height: ${viewport.height} }` : ''}${testMode ? `,\n            autorun: true` : ''}${snapshot ? `,\n            snapshot: true` : ''}${grep ? `,\n            grep: ${JSON.stringify(grep.source)},\n            grepFlags: ${JSON.stringify(grep.flags)}` : ''}${actionTimeout != null ? `,\n            actionTimeout: ${actionTimeout}` : ''}${expectTimeout != null ? `,\n            expectTimeout: ${expectTimeout}` : ''}${testTimeout != null ? `,\n            testTimeout: ${testTimeout}` : ''}
         };
     </script>
     <script src="/panel.js"></script>

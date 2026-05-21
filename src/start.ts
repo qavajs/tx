@@ -218,7 +218,10 @@ async function main() {
         headless:         cliConfig.headless         ?? fileConfig.headless         ?? (process.env.HEADLESS === 'true'),
         viewport:         fileConfig.viewport,
         testMode:         cliConfig.testMode         ?? fileConfig.testMode         ?? false,
-        snapshot:         fileConfig.snapshot         ?? false,
+        snapshot:         fileConfig.snapshot        ?? false,
+        actionTimeout:    fileConfig.actionTimeout,
+        expectTimeout:    fileConfig.expectTimeout,
+        testTimeout:      fileConfig.testTimeout,
     };
 
     // Resolve testFiles into absolute paths

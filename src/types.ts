@@ -45,6 +45,15 @@ export interface TxConfig {
 
   /** Capture DOM snapshots after each command (default: false) */
   snapshot?: boolean;
+
+  /** Default timeout for actions like click(), fill(), locator waits in ms (default: 5000) */
+  actionTimeout?: number;
+
+  /** Default timeout for expect() assertion retry loop in ms (default: 5000) */
+  expectTimeout?: number;
+
+  /** Maximum time a single test function may run in ms (default: 30000) */
+  testTimeout?: number;
 }
 
 export interface WaitOptions {

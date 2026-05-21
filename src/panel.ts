@@ -379,11 +379,14 @@ async function executeTests(
         if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
         else await Promise.resolve(hook.fn());
       }
-      if (t.expectsFixtures) {
-        await runWithFixtures(t.fixtureDefs, t.fn);
-      } else {
-        await Promise.resolve(t.fn());
-      }
+      const runTestFn = t.expectsFixtures
+        ? () => runWithFixtures(t.fixtureDefs, t.fn)
+        : () => Promise.resolve(t.fn());
+      const testTimeout = (window as any).__CONFIG__?.testTimeout ?? 30000;
+      await Promise.race([
+        runTestFn(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Test timed out after ${testTimeout}ms`)), testTimeout)),
+      ]);
       for (const hook of t.afterEachs) {
         if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
         else await Promise.resolve(hook.fn());

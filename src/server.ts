@@ -23,10 +23,13 @@ export class TestServer {
   private snapshot: boolean;
   private tasks: Record<string, TaskHandler>;
   private grep: RegExp | undefined;
+  private actionTimeout: number | undefined;
+  private expectTimeout: number | undefined;
+  private testTimeout: number | undefined;
   private _doneResolve: ((r: { passed: number; failed: number }) => void) | null = null;
   private _donePromise: Promise<{ passed: number; failed: number }>;
 
-  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean, tasks?: Record<string, TaskHandler>, grep?: RegExp) {
+  constructor(port: number = 3000, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean, tasks?: Record<string, TaskHandler>, grep?: RegExp, actionTimeout?: number, expectTimeout?: number, testTimeout?: number) {
     this.port = port;
     this.reporters = reporters ?? [];
     this.emitter = new ReporterEmitter();
@@ -41,6 +44,9 @@ export class TestServer {
     this.snapshot = snapshot ?? false;
     this.tasks = tasks ?? {};
     this.grep = grep;
+    this.actionTimeout = actionTimeout;
+    this.expectTimeout = expectTimeout;
+    this.testTimeout = testTimeout;
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 
@@ -69,7 +75,7 @@ export class TestServer {
         }
 
         if (req.url === '/' && req.method === 'GET') {
-          const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode, this.snapshot, this.grep);
+          const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode, this.snapshot, this.grep, this.actionTimeout, this.expectTimeout, this.testTimeout);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(html);
           return;

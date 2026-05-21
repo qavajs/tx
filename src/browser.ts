@@ -2,7 +2,7 @@
 
 declare global {
   interface Window {
-    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number }; autorun?: boolean; snapshot?: boolean; grep?: string; grepFlags?: string };
+    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number }; autorun?: boolean; snapshot?: boolean; grep?: string; grepFlags?: string; actionTimeout?: number; expectTimeout?: number; testTimeout?: number };
   }
 }
 
@@ -398,14 +398,15 @@ export class Locator {
   _els(): Element[]      { return this._query(); }
   _el():  Element | null { return this._els()[0] ?? null; }
 
-  async _waitForEl(timeout = 5000): Promise<HTMLElement> {
+  async _waitForEl(timeout?: number): Promise<HTMLElement> {
+    const _timeout = timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
     const t0 = Date.now();
-    while (Date.now() - t0 < timeout) {
+    while (Date.now() - t0 < _timeout) {
       const el = this._el() as HTMLElement | null;
       if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); return el; }
       await new Promise(r => setTimeout(r, 50));
     }
-    throw new Error(`Locator timed out after ${timeout}ms — element not found`);
+    throw new Error(`Locator timed out after ${_timeout}ms — element not found`);
   }
 
   _isVisibleElement(el: Element | null): boolean {
@@ -444,7 +445,7 @@ export class Locator {
   }
 
   async _waitForActionableEl(opts: { timeout?: number; force?: boolean } = {}, action?: 'click' | 'dblclick' | 'rightClick' | 'check' | 'uncheck' | 'fill' | 'clear' | 'selectOption' | 'hover' | 'type'): Promise<HTMLElement> {
-    const timeout = opts.timeout ?? 5000;
+    const timeout = opts.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
     const force = !!opts.force;
     const needsStable = action === 'click' || action === 'dblclick' || action === 'rightClick' || action === 'check' || action === 'uncheck' || action === 'hover';
     const needsEditable = action === 'fill' || action === 'clear' || action === 'selectOption' || action === 'type';
@@ -891,7 +892,7 @@ export class Locator {
 
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
     const state   = opts?.state   ?? 'visible';
-    const timeout = opts?.timeout ?? 5000;
+    const timeout = opts?.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
     const entry = logCommand(this._desc ? `${this._desc}  ${state}` : state, 'waitFor');
     const t0 = Date.now();
     try {
@@ -2103,7 +2104,7 @@ export const page = {
 
   async waitForURL(url: string | RegExp, opts?: { timeout?: number }): Promise<void> {
     const entry = logCommand(String(url), 'waitForURL');
-    const timeout = opts?.timeout ?? 5000;
+    const timeout = opts?.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
     const re = typeof url === 'string' ? new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : url;
     const t0 = Date.now();
     try {
@@ -2335,10 +2336,11 @@ export const page = {
 
 // ── Playwright-style expect ───────────────────────────────────────────────────
 
-async function _retry(fn: () => Promise<void>, timeout = 5000): Promise<void> {
+async function _retry(fn: () => Promise<void>, timeout?: number): Promise<void> {
+  const _timeout = timeout ?? window.__CONFIG__?.expectTimeout ?? 5000;
   const t0 = Date.now();
   let last: Error = new Error('Timeout');
-  while (Date.now() - t0 < timeout) {
+  while (Date.now() - t0 < _timeout) {
     try { await fn(); return; } catch (e: any) { last = e; }
     await new Promise(r => setTimeout(r, 50));
   }
@@ -2346,7 +2348,7 @@ async function _retry(fn: () => Promise<void>, timeout = 5000): Promise<void> {
 }
 
 export function expect(target: any) {
-  const t = (ms?: number) => ms ?? 5000;
+  const t = (ms?: number) => ms ?? window.__CONFIG__?.expectTimeout ?? 5000;
   const locDesc = (target instanceof Locator) ? (target as Locator)._desc : '';
 
   // la = async matcher log helper, ls = sync matcher log helper

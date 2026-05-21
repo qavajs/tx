@@ -8,6 +8,9 @@ module.exports = {
   //grep: 'login',
   viewport: { width: 1600, height: 900 },
   //snapshot: true,
+  actionTimeout: 10000,   // 10s for actions
+  expectTimeout: 8000,    // 8s for expect assertions
+  testTimeout: 3000,     // 30s per test
   reporters: [
     ['./ConsoleReporter.ts', {}],
     ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
