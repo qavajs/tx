@@ -342,7 +342,8 @@ function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail', durat
 }
 
 const _snapshotCommands = new Set([
-  'click', 'dblclick', 'rightClick', 'fill', 'type', 'press', 'select', 'check', 'uncheck', 'focus', 'hover', 'scroll', 'goto', 'reload', 'waitForURL', 'setInputFiles'
+  'click', 'dblclick', 'rightClick', 'fill', 'type', 'press', 'select', 'check', 'uncheck', 'focus', 'hover', 'scroll', 'goto', 'reload', 'waitForURL', 'setInputFiles',
+  'mouse.click', 'mouse.dblclick',
 ]);
 
 export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string, duration?: number) {
@@ -533,11 +534,12 @@ export class Locator {
   last():  Locator {
     return new Locator(() => { const a = this._els(); return a.length ? [a[a.length - 1]] : []; }, `${this._desc}:last`);
   }
-  filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp }): Locator {
-    const tag = opts.hasText ? `[has-text: ${opts.hasText}]` : opts.hasNotText ? `[not-text: ${opts.hasNotText}]` : '[filtered]';
+  filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp; visible?: boolean }): Locator {
+    const tag = opts.hasText ? `[has-text: ${opts.hasText}]` : opts.hasNotText ? `[not-text: ${opts.hasNotText}]` : opts.visible !== undefined ? `[visible: ${opts.visible}]` : '[filtered]';
     return new Locator(() => this._els().filter(el => {
       if (opts.hasText    && !textMatches(el, opts.hasText))    return false;
       if (opts.hasNotText &&  textMatches(el, opts.hasNotText)) return false;
+      if (opts.visible !== undefined && this._isVisibleElement(el) !== opts.visible) return false;
       return true;
     }), `${this._desc}${tag}`);
   }
@@ -565,12 +567,20 @@ export class Locator {
     try {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'click');
-      const init: MouseEventInit = { bubbles: true, cancelable: true, button: 0, buttons: 1 };
-      el.dispatchEvent(new MouseEvent('mouseover',  init));
-      el.dispatchEvent(new MouseEvent('mouseenter', { ...init, bubbles: false }));
-      el.dispatchEvent(new MouseEvent('mousedown',  init));
-      el.dispatchEvent(new MouseEvent('mouseup',    init));
-      el.click();
+      // Resolve the actual hit-target at the element's center, matching real Playwright behaviour
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const doc = iframeDoc();
+      const target = (doc?.elementFromPoint(cx, cy) as HTMLElement | null) ?? el;
+      const win = iframeWin() as any;
+      const ME = (win?.MouseEvent ?? MouseEvent) as typeof MouseEvent;
+      const init: MouseEventInit = { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: cx, clientY: cy };
+      target.dispatchEvent(new ME('mouseover',  init));
+      target.dispatchEvent(new ME('mouseenter', { ...init, bubbles: false }));
+      target.dispatchEvent(new ME('mousedown',  init));
+      target.dispatchEvent(new ME('mouseup',    init));
+      target.click();
       entry.success();
     } catch (error: any) {
       entry.fail(error?.message ?? String(error));
@@ -875,6 +885,27 @@ export class Locator {
     return el ? !el.readOnly && !el.disabled : false;
   }
   async count(): Promise<number> { return this._els().length; }
+
+  async evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T> {
+    const entry = logCommand(this._desc, 'evaluate');
+    try {
+      const el = await this._waitForEl();
+      let result: T;
+      if (typeof pageFunction === 'function') {
+        result = await Promise.resolve(arg !== undefined ? pageFunction(el, arg) : pageFunction(el));
+      } else {
+        const win = iframeWin() as any;
+        if (!win) throw new Error('no active page');
+        const fn = win.eval(`(${pageFunction})`);
+        result = await Promise.resolve(arg !== undefined ? fn(el, arg) : fn(el));
+      }
+      entry.success();
+      return result;
+    } catch (error: any) {
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
+  }
 
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
     const state   = opts?.state   ?? 'visible';
@@ -1437,6 +1468,481 @@ export class FrameLocator {
   }
 }
 
+// ── Mouse ─────────────────────────────────────────────────────────────────────
+
+type MouseButton = 'left' | 'middle' | 'right';
+
+class Mouse {
+  private _x = 0;
+  private _y = 0;
+
+  private _buttons = 0;
+  private _clickCount = 0;
+
+  // Current hovered ancestry path:
+  // [target, parent, body, html]
+  private _hoverPath: Element[] = [];
+
+  private get _doc(): Document | null {
+    return iframeDoc();
+  }
+
+  private _buttonCode(button?: MouseButton): number {
+    switch (button) {
+      case 'middle':
+        return 1;
+      case 'right':
+        return 2;
+      default:
+        return 0;
+    }
+  }
+
+  private _buttonMask(button: number): number {
+    switch (button) {
+      case 1:
+        return 4;
+      case 2:
+        return 2;
+      default:
+        return 1;
+    }
+  }
+
+  private _target(): HTMLElement | null {
+    return this._doc?.elementFromPoint(
+      this._x,
+      this._y,
+    ) as HTMLElement | null;
+  }
+
+  private _path(el: Element | null): Element[] {
+    const path: Element[] = [];
+
+    let current = el;
+
+    while (current) {
+      path.push(current);
+      current = current.parentElement;
+    }
+
+    return path;
+  }
+
+  private _dispatch(
+    target: EventTarget | null,
+    type: string,
+    init: MouseEventInit = {},
+  ): void {
+    if (!target) return;
+
+    const eventInit: MouseEventInit = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+
+      clientX: this._x,
+      clientY: this._y,
+      screenX: this._x,
+      screenY: this._y,
+
+      buttons: this._buttons,
+
+      ...init,
+    };
+
+    // pointer event
+    if (type.startsWith('pointer')) {
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+          ...eventInit,
+        }),
+      );
+      return;
+    }
+
+    target.dispatchEvent(
+      new MouseEvent(type, eventInit),
+    );
+  }
+
+  private _emitBoundaryEvents(
+    prevTarget: Element | null,
+    nextTarget: Element | null,
+  ): void {
+    const prevPath = this._hoverPath;
+    const nextPath = this._path(nextTarget);
+
+    const prevSet = new Set(prevPath);
+    const nextSet = new Set(nextPath);
+
+    const leaving = prevPath.filter(
+      el => !nextSet.has(el),
+    );
+
+    const entering = nextPath.filter(
+      el => !prevSet.has(el),
+    );
+
+    // ---- LEAVE ----
+    for (const el of leaving) {
+      this._dispatch(el, 'pointerout', {
+        relatedTarget: nextTarget,
+      });
+
+      this._dispatch(el, 'mouseout', {
+        relatedTarget: nextTarget,
+      });
+
+      this._dispatch(el, 'pointerleave', {
+        bubbles: false,
+        relatedTarget: nextTarget,
+      });
+
+      this._dispatch(el, 'mouseleave', {
+        bubbles: false,
+        relatedTarget: nextTarget,
+      });
+    }
+
+    // ---- ENTER ----
+    // browser order: outer → inner
+    for (const el of [...entering].reverse()) {
+      this._dispatch(el, 'pointerover', {
+        relatedTarget: prevTarget,
+      });
+
+      this._dispatch(el, 'mouseover', {
+        relatedTarget: prevTarget,
+      });
+
+      this._dispatch(el, 'pointerenter', {
+        bubbles: false,
+        relatedTarget: prevTarget,
+      });
+
+      this._dispatch(el, 'mouseenter', {
+        bubbles: false,
+        relatedTarget: prevTarget,
+      });
+    }
+
+    this._hoverPath = nextPath;
+  }
+
+  private _emitMove(target: Element | null): void {
+    this._dispatch(target, 'pointermove');
+    this._dispatch(target, 'mousemove');
+  }
+
+  async move(
+    x: number,
+    y: number,
+    opts?: { steps?: number },
+  ): Promise<void> {
+    const entry = logCommand(
+      `${x}, ${y}`,
+      'mouse.move',
+    );
+
+    try {
+      const steps = Math.max(
+        1,
+        opts?.steps ?? 1,
+      );
+
+      const startX = this._x;
+      const startY = this._y;
+
+      for (let i = 1; i <= steps; i++) {
+        this._x =
+          startX + ((x - startX) * i) / steps;
+
+        this._y =
+          startY + ((y - startY) * i) / steps;
+
+        const prevTarget =
+          this._hoverPath[0] ?? null;
+
+        const nextTarget =
+          this._target();
+
+        if (prevTarget !== nextTarget) {
+          this._emitBoundaryEvents(
+            prevTarget,
+            nextTarget,
+          );
+        }
+
+        this._emitMove(nextTarget);
+
+        if (i < steps) {
+          await new Promise(r =>
+            setTimeout(r, 0),
+          );
+        }
+      }
+
+      entry.success();
+    } catch (error: any) {
+      entry.fail(
+        error?.message ?? String(error),
+      );
+      throw error;
+    }
+  }
+
+  async down(
+    opts?: { button?: MouseButton },
+  ): Promise<void> {
+    const entry = logCommand(
+      `${this._x}, ${this._y}`,
+      'mouse.down',
+    );
+
+    try {
+      const button =
+        this._buttonCode(opts?.button);
+
+      this._buttons |=
+        this._buttonMask(button);
+
+      const target = this._target();
+
+      this._dispatch(
+        target,
+        'pointerdown',
+        { button },
+      );
+
+      this._dispatch(
+        target,
+        'mousedown',
+        {
+          button,
+          detail:
+            this._clickCount + 1,
+        },
+      );
+
+      entry.success();
+    } catch (error: any) {
+      entry.fail(
+        error?.message ?? String(error),
+      );
+      throw error;
+    }
+  }
+
+  async up(
+    opts?: { button?: MouseButton },
+  ): Promise<void> {
+    const entry = logCommand(
+      `${this._x}, ${this._y}`,
+      'mouse.up',
+    );
+
+    try {
+      const button =
+        this._buttonCode(opts?.button);
+
+      const mask =
+        this._buttonMask(button);
+
+      const target = this._target();
+
+      this._dispatch(
+        target,
+        'pointerup',
+        { button },
+      );
+
+      this._dispatch(
+        target,
+        'mouseup',
+        {
+          button,
+          detail:
+            this._clickCount + 1,
+        },
+      );
+
+      this._buttons &= ~mask;
+
+      entry.success();
+    } catch (error: any) {
+      entry.fail(
+        error?.message ?? String(error),
+      );
+      throw error;
+    }
+  }
+
+  async click(
+    x: number,
+    y: number,
+    opts?: {
+      button?: MouseButton;
+      clickCount?: number;
+      delay?: number;
+    },
+  ): Promise<void> {
+    const entry = logCommand(
+      `${x}, ${y}`,
+      'mouse.click',
+    );
+
+    try {
+      await this.move(x, y);
+
+      this._clickCount =
+        opts?.clickCount ??
+        this._clickCount + 1;
+
+      await this.down(opts);
+
+      if (opts?.delay) {
+        await new Promise(r =>
+          setTimeout(r, opts.delay),
+        );
+      }
+
+      await this.up(opts);
+
+      const target =
+        this._target();
+
+      const button =
+        this._buttonCode(
+          opts?.button,
+        );
+
+      this._dispatch(
+        target,
+        'click',
+        {
+          button,
+          detail:
+            this._clickCount,
+        },
+      );
+
+      if (button === 2) {
+        this._dispatch(
+          target,
+          'contextmenu',
+          { button: 2 },
+        );
+      }
+
+      entry.success();
+    } catch (error: any) {
+      entry.fail(
+        error?.message ?? String(error),
+      );
+      throw error;
+    }
+  }
+
+  async dblclick(
+    x: number,
+    y: number,
+    opts?: {
+      button?: MouseButton;
+      delay?: number;
+    },
+  ): Promise<void> {
+    const entry = logCommand(
+      `${x}, ${y}`,
+      'mouse.dblclick',
+    );
+
+    try {
+      await this.click(x, y, {
+        ...opts,
+        clickCount: 1,
+      });
+
+      if (opts?.delay) {
+        await new Promise(r =>
+          setTimeout(r, opts.delay),
+        );
+      }
+
+      await this.click(x, y, {
+        ...opts,
+        clickCount: 2,
+      });
+
+      const target =
+        this._target();
+
+      this._dispatch(
+        target,
+        'dblclick',
+        {
+          button:
+            this._buttonCode(
+              opts?.button,
+            ),
+          detail: 2,
+        },
+      );
+
+      entry.success();
+    } catch (error: any) {
+      entry.fail(
+        error?.message ?? String(error),
+      );
+      throw error;
+    }
+  }
+
+  async wheel(
+    deltaX: number,
+    deltaY: number,
+  ): Promise<void> {
+    const entry = logCommand(
+      `Δ${deltaX}, ${deltaY}`,
+      'mouse.wheel',
+    );
+
+    try {
+      const target =
+        this._target();
+
+      target?.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+
+          clientX: this._x,
+          clientY: this._y,
+
+          screenX: this._x,
+          screenY: this._y,
+
+          deltaX,
+          deltaY,
+          deltaMode:
+            WheelEvent
+              .DOM_DELTA_PIXEL,
+        }),
+      );
+
+      entry.success();
+    } catch (error: any) {
+      entry.fail(
+        error?.message ?? String(error),
+      );
+      throw error;
+    }
+  }
+}
+
 export const page = {
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -1693,6 +2199,10 @@ export const page = {
       }
     },
   },
+
+  // ── Mouse ──────────────────────────────────────────────────────────────────
+
+  mouse: new Mouse(),
 
   // ── Viewport ───────────────────────────────────────────────────────────────
 

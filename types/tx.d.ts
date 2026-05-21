@@ -49,7 +49,7 @@ interface Locator {
   nth(n: number): Locator;
   first(): Locator;
   last(): Locator;
-  filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp }): Locator;
+  filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp; visible?: boolean }): Locator;
   locator(selector: string): Locator;
 
   // ── Actions ─────────────────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ interface Locator {
   isChecked(): Promise<boolean>;
   isEditable(): Promise<boolean>;
   count(): Promise<number>;
+  evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T>;
   waitFor(opts?: { state?: 'visible' | 'hidden' | 'attached' | 'detached'; timeout?: number }): Promise<void>;
 }
 
@@ -222,6 +223,20 @@ interface PopupPage {
   close(): Promise<void>;
 }
 
+// ── Mouse ─────────────────────────────────────────────────────────────────────
+
+interface TxMouseClickOptions { button?: 'left' | 'right' | 'middle'; clickCount?: number; delay?: number; }
+interface TxMouseButton { button?: 'left' | 'right' | 'middle'; }
+
+interface Mouse {
+  click(x: number, y: number, opts?: TxMouseClickOptions): Promise<void>;
+  dblclick(x: number, y: number, opts?: { button?: 'left' | 'right' | 'middle'; delay?: number }): Promise<void>;
+  down(opts?: TxMouseButton): Promise<void>;
+  move(x: number, y: number, opts?: { steps?: number }): Promise<void>;
+  up(opts?: TxMouseButton): Promise<void>;
+  wheel(deltaX: number, deltaY: number): Promise<void>;
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 interface Page {
@@ -252,6 +267,9 @@ interface Page {
     press(key: string): Promise<void>;
     type(text: string, opts?: { delay?: number }): Promise<void>;
   };
+
+  // ── Mouse ─────────────────────────────────────────────────────────────────────
+  mouse: Mouse;
 
   // ── Viewport ──────────────────────────────────────────────────────────────────
   setViewportSize(size: { width: number; height: number }): void;
@@ -411,6 +429,7 @@ declare module 'tx' {
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory };
+  export { Mouse, TxMouseClickOptions, TxMouseButton };
 
   export const page: Page;
   export const browser: Browser;

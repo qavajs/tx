@@ -180,3 +180,45 @@ describe('Playground', () => {
         await expect(page.locator('#lastKey')).toHaveText('Tab');
     });
 });
+
+describe('nth/first/last verify', () => {
+    beforeEach(async () => {
+        const dirname = await browser.task('dirname');
+        await page.goto(`file://${dirname}/app/testPage.html`);
+    });
+
+    it('first() returns the first card heading', async () => {
+        const first = page.locator('.card h2').first();
+        await expect(first).toHaveText('Mouse / Pointer');
+    });
+
+    it('last() returns the last card heading', async () => {
+        const last = page.locator('.card h2').last();
+        await expect(last).toHaveText('Hidden / Dynamic Element');
+    });
+
+    it('nth(0) is same as first()', async () => {
+        const byNth = page.locator('.card h2').nth(0);
+        await expect(byNth).toHaveText('Mouse / Pointer');
+    });
+
+    it('nth(1) returns the second card heading', async () => {
+        const second = page.locator('.card h2').nth(1);
+        await expect(second).toHaveText('Keyboard & Inputs');
+    });
+
+    it('nth(2) returns the third card heading', async () => {
+        const third = page.locator('.card h2').nth(2);
+        await expect(third).toHaveText('Form Controls');
+    });
+
+    it('nth() out of range returns empty (count = 0)', async () => {
+        const oob = page.locator('.card h2').nth(999);
+        await expect(oob).toHaveCount(0);
+    });
+
+    it('count() matches total cards', async () => {
+        const all = page.locator('.card h2');
+        await expect(all).toHaveCount(10);
+    });
+});
