@@ -8,11 +8,15 @@
 
 - [Configuration](#configuration)
 - [Writing Tests](#writing-tests)
+  - [Fixtures](#fixtures)
 - [page](#page)
 - [browser](#browser)
   - [browser.newPage](#browsernewpage)
   - [browser.pages](#browserpages)
   - [browser.task](#browsertask)
+- [request](#request)
+  - [request.fetch](#requestfetch)
+  - [APIResponse](#apiresponse)
 - [Locator](#locator)
 - [expect](#expect)
 - [page Events](#page-events)
@@ -115,8 +119,70 @@ describe('Suite name', () => {
 | `afterEach`   | Hook run after each test in the nearest `describe`       |
 | `page`        | Playwright-style page object (see [page](#page))         |
 | `browser`     | Multi-tab browser object (see [browser](#browser))       |
+| `request`     | HTTP request context (see [request](#request))           |
 | `expect`      | Assertion function (see [expect](#expect))               |
 | `log`         | `(message, type?) => void` — write to the panel console  |
+
+### Fixtures
+
+`test.extend()` creates a custom test function with additional fixtures injected into each test. Built-in fixtures (`page`, `browser`, `request`, `expect`) are always available without extending.
+
+```js
+const myTest = test.extend({
+  // Static fixture — value computed once, passed to every test
+  credentials: async ({}, use) => {
+    await use({ username: 'admin', password: 's3cret' });
+  },
+
+  // Fixture that depends on another fixture
+  apiToken: async ({ request }, use) => {
+    const resp = await request.fetch('https://auth.example.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: 'test' }),
+    });
+    const { token } = await resp.json();
+    await use(token);
+  },
+
+  // Page fixture — navigate before each test, clean up after
+  loggedInPage: async ({ page, credentials }, use) => {
+    await page.goto('https://app.example.com/login');
+    await page.getByTestId('username').fill(credentials.username);
+    await page.getByTestId('password').fill(credentials.password);
+    await page.getByTestId('login-button').click();
+    await page.waitForURL(/dashboard/);
+    await use(page);
+    await page.goto('https://app.example.com/logout');
+  },
+
+  // Node.js fixture — read from disk via browser.task
+  serverData: async ({ browser }, use) => {
+    const raw = await browser.task('readFile', { path: './fixtures/data.json' });
+    await use(JSON.parse(raw));
+  },
+});
+
+myTest('dashboard shows username', async ({ loggedInPage, credentials }) => {
+  await expect(loggedInPage.getByTestId('welcome')).toHaveText(credentials.username);
+});
+
+myTest('api token is returned', async ({ apiToken }) => {
+  expect(apiToken).toBeTruthy();
+});
+```
+
+**Fixture teardown** — code after `await use(value)` runs after the test completes, making fixtures self-cleaning:
+
+```js
+const myTest = test.extend({
+  dbRecord: async ({}, use) => {
+    const id = await db.insert({ name: 'test' });
+    await use(id);
+    await db.delete(id); // runs after test, pass or fail
+  },
+});
+```
 
 ---
 
@@ -508,6 +574,91 @@ it('manual multi-tab', async () => {
 
   await tab1.bringToFront();           // switch UI to tab1
   await tab2.close();
+});
+```
+
+---
+
+## request
+
+An `APIRequestContext` available as the `request` global in every test file and as a built-in fixture. Makes HTTP requests directly from the panel process (not through the proxied iframe), so there are no iframe-imposed CORS restrictions. All requests appear in the **Network** tab alongside iframe requests.
+
+### request.fetch
+
+```js
+await request.fetch(url: string, options?: RequestInit): Promise<APIResponse>
+```
+
+Fetch `url` using the native `fetch` API. `options` accepts the full standard [`RequestInit`](https://developer.mozilla.org/en-US/docs/Web/API/RequestInit) object (`method`, `headers`, `body`, `credentials`, etc.).
+
+### APIResponse
+
+| Method | Returns | Description |
+|---|---|---|
+| `ok()` | `boolean` | `true` when status is 200–299 |
+| `status()` | `number` | HTTP status code |
+| `statusText()` | `string` | HTTP status text |
+| `headers()` | `Record<string, string>` | Response headers (lowercased keys) |
+| `url()` | `string` | Final response URL (after redirects) |
+| `json<T>()` | `Promise<T>` | Parse body as JSON |
+| `text()` | `Promise<string>` | Body as a string |
+| `body()` | `Promise<ArrayBuffer>` | Raw body bytes |
+
+**Examples:**
+
+```js
+// GET
+const resp = await request.fetch('https://api.example.com/users');
+expect(resp.status()).toBe(200);
+const users = await resp.json();
+
+// POST with JSON body
+const resp = await request.fetch('https://api.example.com/users', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'Alice' }),
+});
+expect(resp.ok()).toBe(true);
+
+// DELETE
+const resp = await request.fetch('https://api.example.com/users/42', {
+  method: 'DELETE',
+  headers: { Authorization: `Bearer ${token}` },
+});
+expect(resp.status()).toBe(204);
+```
+
+**Using `request` as a fixture:**
+
+```js
+test('status endpoint is healthy', async ({ request }) => {
+  const resp = await request.fetch('https://api.example.com/health');
+  expect(resp.status()).toBe(200);
+  const body = await resp.json();
+  expect(body.status).toBe('ok');
+});
+```
+
+**Combining with other fixtures:**
+
+```js
+const myTest = test.extend({
+  authToken: async ({ request }, use) => {
+    const resp = await request.fetch('https://api.example.com/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'secret' }),
+    });
+    const { token } = await resp.json();
+    await use(token);
+  },
+});
+
+myTest('authenticated request succeeds', async ({ request, authToken }) => {
+  const resp = await request.fetch('https://api.example.com/protected', {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  expect(resp.status()).toBe(200);
 });
 ```
 

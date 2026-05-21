@@ -166,7 +166,7 @@ describe('windows', () => {
         await iframe.locator('#iframe-input').fill('iframe input');
     });
 
-        test('nested iframe', async ({ browser, page, expect }) => {
+    test('nested iframe', async ({ browser, page, expect }) => {
         const outerIframe = page.frameLocator('[title="Nested Iframe"]');
         const iframe = outerIframe.frameLocator('#inner-iframe');
         await iframe.locator('#iframe-btn').click();
