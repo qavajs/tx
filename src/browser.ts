@@ -155,6 +155,11 @@ export function onSnapshotsChanged(fn: () => void): () => void {
   return () => { _snapshotListeners.delete(fn); };
 }
 
+export function fromProxiedUrl(url: string): string {
+  if (_proxyPrefix && url.startsWith(_proxyPrefix)) return url.slice(_proxyPrefix.length);
+  return url;
+}
+
 export function toProxiedUrl(url: string): string {
   if (!_proxyPrefix) return removeTrailingSlash(url);
   if (url.startsWith(_proxyPrefix)) return removeTrailingSlash(url);
@@ -961,17 +966,46 @@ function _bridgePopup(win: any): void {
   };
 }
 
+function _normalizeHeaders(h: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!h) return out;
+  try {
+    if (typeof h.forEach === 'function') {
+      h.forEach((val: string, key: string) => { out[key.toLowerCase()] = val; });
+    } else if (Array.isArray(h)) {
+      for (const [k, v] of h as [string, string][]) out[(k as string).toLowerCase()] = String(v);
+    } else if (typeof h === 'object') {
+      for (const [k, v] of Object.entries(h)) out[k.toLowerCase()] = String(v);
+    }
+  } catch { /* ignore */ }
+  return out;
+}
+
+function _isTextContent(contentType: string): boolean {
+  const ct = contentType.toLowerCase();
+  return ct.includes('text') || ct.includes('json') || ct.includes('xml') || ct.includes('javascript') || ct.includes('form');
+}
+
 function _bridgeFetch(win: any): void {
   if (typeof win.fetch !== 'function') return;
   const origFetch = (win.fetch as typeof fetch).bind(win);
   win.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url    = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
     const method = ((init?.method) ?? (typeof input === 'object' && !(input instanceof URL) ? (input as Request).method : undefined) ?? 'GET').toUpperCase();
-    const req    = { url: () => url, method: () => method, headers: () => init?.headers ?? {}, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
+    const reqHeaders = _normalizeHeaders(init?.headers ?? (typeof input === 'object' && !(input instanceof URL) ? (input as Request).headers : undefined));
+    const req    = { url: () => url, method: () => method, headers: () => reqHeaders, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
     _emitPage('request', req);
     try {
       const resp = await origFetch(input, init);
-      _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, request: () => req });
+      const respHeaders = _normalizeHeaders(resp.headers);
+      let respBody: string | null = null;
+      if (_isTextContent(resp.headers.get('content-type') ?? '')) {
+        try {
+          const text = await resp.clone().text();
+          respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text;
+        } catch { /* ignore */ }
+      }
+      _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, headers: () => respHeaders, body: () => respBody, request: () => req });
       _emitPage('requestfinished', req);
       return resp;
     } catch (err) {
@@ -995,7 +1029,25 @@ function _bridgeXHR(win: any): void {
     const self = this as any;
     const req  = { url: () => self._xUrl ?? '', method: () => (self._xMethod ?? 'GET').toUpperCase(), headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
     _emitPage('request', req);
-    this.addEventListener('load',  () => { _emitPage('response', { url: () => self._xUrl, status: () => self.status, statusText: () => self.statusText, ok: () => self.status >= 200 && self.status < 300, request: () => req }); _emitPage('requestfinished', req); });
+    this.addEventListener('load', () => {
+      const respHeaders: Record<string, string> = {};
+      try {
+        const raw = (self.getAllResponseHeaders() as string) ?? '';
+        for (const line of raw.trim().split('\r\n')) {
+          const idx = line.indexOf(':');
+          if (idx > 0) respHeaders[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+        }
+      } catch { /* ignore */ }
+      let respBody: string | null = null;
+      if (_isTextContent(self.getResponseHeader?.('content-type') ?? '')) {
+        try {
+          const text = String(self.responseText ?? '');
+          respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text;
+        } catch { /* ignore */ }
+      }
+      _emitPage('response', { url: () => self._xUrl, status: () => self.status, statusText: () => self.statusText, ok: () => self.status >= 200 && self.status < 300, headers: () => respHeaders, body: () => respBody, request: () => req });
+      _emitPage('requestfinished', req);
+    });
     this.addEventListener('error', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Network error' }) }));
     this.addEventListener('abort', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Request aborted' }) }));
     return origSend.call(this, body);

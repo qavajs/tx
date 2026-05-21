@@ -970,12 +970,140 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             flex-shrink: 0;
         }
 
+        .tx-network-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .tx-network-list {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex: 1;
+            min-width: 180px;
+        }
+
         .tx-network-body {
             flex: 1;
             overflow-y: auto;
         }
         .tx-network-body::-webkit-scrollbar { width: 3px; }
         .tx-network-body::-webkit-scrollbar-thumb { background: var(--border-s); }
+
+        .tx-network-detail {
+            display: none;
+            width: 360px;
+            min-width: 240px;
+            flex-shrink: 0;
+            border-left: 1px solid var(--border);
+            background: var(--bg-app);
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .tx-network-detail.open { display: flex; }
+
+        .tx-network-detail-toolbar {
+            display: flex;
+            align-items: center;
+            padding: 4px 8px 4px 10px;
+            background: var(--bg-topbar);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            gap: 6px;
+        }
+        .tx-network-detail-title {
+            flex: 1;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tx-network-detail-close {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.1s;
+        }
+        .tx-network-detail-close:hover { background: var(--fail-bg); color: var(--fail); }
+
+        .tx-network-detail-body {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 12px;
+        }
+        .tx-network-detail-body::-webkit-scrollbar { width: 3px; }
+        .tx-network-detail-body::-webkit-scrollbar-thumb { background: var(--border-s); }
+
+        .tx-nd-section { border-bottom: 1px solid var(--border); padding: 5px 0; }
+        .tx-nd-section-title {
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            padding: 3px 10px 4px;
+        }
+        .tx-nd-row {
+            display: flex;
+            padding: 1px 10px;
+            gap: 8px;
+            font-family: var(--font-mono);
+            font-size: 10.5px;
+            line-height: 1.55;
+            min-width: 0;
+        }
+        .tx-nd-row:hover { background: var(--bg-card); }
+        .tx-nd-key {
+            color: var(--text-muted);
+            flex-shrink: 0;
+            width: 38%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tx-nd-val {
+            color: var(--text);
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .tx-nd-val.wrap { white-space: pre-wrap; word-break: break-all; }
+        .tx-nd-pre {
+            margin: 3px 10px;
+            padding: 6px 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            line-height: 1.5;
+            color: var(--text-dim);
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .tx-nd-pre::-webkit-scrollbar { width: 3px; }
+        .tx-nd-pre::-webkit-scrollbar-thumb { background: var(--border-s); }
+
+        .tx-network-row.selected { background: var(--bg-active); }
 
         .tx-network-row {
             display: grid;
@@ -986,10 +1114,11 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             line-height: 1.6;
             color: var(--text-dim);
             border-bottom: 1px solid var(--border);
-            cursor: default;
+            cursor: pointer;
             transition: background 0.08s;
         }
         .tx-network-row:hover { background: var(--bg-hover); }
+        .tx-network-row.selected { background: var(--bg-active); }
         .tx-network-row.pending { opacity: 0.55; }
         .tx-network-row.failed .tx-net-url { color: var(--fail); }
 
@@ -1109,15 +1238,26 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                     <span class="tx-network-count" id="networkCount"></span>
                     <button class="tx-network-clear-btn" onclick="window.clearNetwork && window.clearNetwork()">Clear</button>
                 </div>
-                <div class="tx-network-header">
-                    <span>Method</span>
-                    <span>Status</span>
-                    <span>Type</span>
-                    <span>URL</span>
-                    <span>Duration</span>
-                </div>
-                <div class="tx-network-body" id="networkList">
-                    <div class="tx-empty-network">No requests yet</div>
+                <div class="tx-network-content">
+                    <div class="tx-network-list">
+                        <div class="tx-network-header">
+                            <span>Method</span>
+                            <span>Status</span>
+                            <span>Type</span>
+                            <span>URL</span>
+                            <span>Duration</span>
+                        </div>
+                        <div class="tx-network-body" id="networkList">
+                            <div class="tx-empty-network">No requests yet</div>
+                        </div>
+                    </div>
+                    <div class="tx-network-detail" id="networkDetail">
+                        <div class="tx-network-detail-toolbar">
+                            <span class="tx-network-detail-title" id="networkDetailTitle">Details</span>
+                            <button class="tx-network-detail-close" onclick="window.closeNetworkDetail && window.closeNetworkDetail()" title="Close">×</button>
+                        </div>
+                        <div class="tx-network-detail-body" id="networkDetailBody"></div>
+                    </div>
                 </div>
             </div>
         </main>

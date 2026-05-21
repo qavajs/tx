@@ -1,4 +1,4 @@
-import { log, setLogContainer, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots } from './browser';
+import { log, setLogContainer, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl } from './browser';
 
 declare global {
   interface Window {
@@ -805,8 +805,12 @@ interface NetworkEntry {
   url: string;
   method: string;
   type: string;
+  requestHeaders: Record<string, string>;
+  requestBody: string | null;
   status: number | null;
   statusText: string;
+  responseHeaders: Record<string, string>;
+  responseBody: string | null;
   startTime: number;
   duration: number | null;
   state: 'pending' | 'complete' | 'failed';
@@ -826,7 +830,8 @@ function _netStatusClass(status: number | null): string {
 }
 
 function _netShortUrl(url: string): string {
-  try { const u = new URL(url); return u.pathname + (u.search || ''); } catch { return url; }
+  const real = fromProxiedUrl(url);
+  try { const u = new URL(real); return u.host + u.pathname + (u.search || ''); } catch { return real; }
 }
 
 function _renderNetworkRow(entry: NetworkEntry): string {
@@ -835,7 +840,8 @@ function _renderNetworkRow(entry: NetworkEntry): string {
     ? (entry.error || 'failed')
     : entry.status != null ? String(entry.status) : '…';
   const dur = entry.duration != null ? entry.duration + 'ms' : '…';
-  return '<div class="tx-network-row ' + entry.state + '" data-net-id="' + entry.id + '" title="' + escHtml(entry.url) + '">' +
+  const realUrl = fromProxiedUrl(entry.url);
+  return '<div class="tx-network-row ' + entry.state + '" data-net-id="' + entry.id + '" title="' + escHtml(realUrl) + '">' +
     '<span class="tx-net-method">' + escHtml(entry.method) + '</span>' +
     '<span class="tx-net-status ' + stClass + '">' + escHtml(statusText) + '</span>' +
     '<span class="tx-net-type">' + escHtml(entry.type) + '</span>' +
@@ -868,13 +874,100 @@ function _refreshNetworkRow(entry: NetworkEntry) {
   if (!row) return;
   const tmp = document.createElement('div');
   tmp.innerHTML = _renderNetworkRow(entry);
-  row.replaceWith(tmp.firstElementChild!);
+  const newRow = tmp.firstElementChild as HTMLElement;
+  if (_selectedNetworkId === entry.id) newRow.classList.add('selected');
+  row.replaceWith(newRow);
   _updateNetworkCount();
+  if (_selectedNetworkId === entry.id) {
+    const detailBody = document.getElementById('networkDetailBody');
+    if (detailBody) detailBody.innerHTML = _renderNetworkDetail(entry);
+  }
 }
+
+// ── Network detail panel ──────────────────────────────────────────────────────
+
+function _formatBody(body: string): string {
+  try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
+}
+
+function _ndRow(key: string, value: string, wrap = false): string {
+  return '<div class="tx-nd-row">' +
+    '<span class="tx-nd-key">' + escHtml(key) + '</span>' +
+    '<span class="tx-nd-val' + (wrap ? ' wrap' : '') + '" title="' + escHtml(value) + '">' + escHtml(value) + '</span>' +
+  '</div>';
+}
+
+function _renderNetworkDetail(entry: NetworkEntry): string {
+  const realUrl = fromProxiedUrl(entry.url);
+  const status = entry.state === 'failed'
+    ? 'Failed — ' + (entry.error || '')
+    : entry.status != null ? entry.status + (entry.statusText ? ' ' + entry.statusText : '') : '—';
+  const dur = entry.duration != null ? entry.duration + 'ms' : '—';
+
+  let html = '<div class="tx-nd-section">' +
+    '<div class="tx-nd-section-title">General</div>' +
+    _ndRow('URL', realUrl, true) +
+    _ndRow('Method', entry.method) +
+    _ndRow('Status', status) +
+    _ndRow('Type', entry.type) +
+    _ndRow('Duration', dur) +
+  '</div>';
+
+  const reqHeaders = Object.entries(entry.requestHeaders);
+  if (reqHeaders.length) {
+    html += '<div class="tx-nd-section"><div class="tx-nd-section-title">Request Headers</div>';
+    for (const [k, v] of reqHeaders) html += _ndRow(k, v);
+    html += '</div>';
+  }
+
+  if (entry.requestBody != null && entry.requestBody !== '') {
+    html += '<div class="tx-nd-section"><div class="tx-nd-section-title">Request Body</div>' +
+      '<pre class="tx-nd-pre">' + escHtml(_formatBody(String(entry.requestBody))) + '</pre></div>';
+  }
+
+  const respHeaders = Object.entries(entry.responseHeaders);
+  if (respHeaders.length) {
+    html += '<div class="tx-nd-section"><div class="tx-nd-section-title">Response Headers</div>';
+    for (const [k, v] of respHeaders) html += _ndRow(k, v);
+    html += '</div>';
+  }
+
+  if (entry.responseBody != null) {
+    html += '<div class="tx-nd-section"><div class="tx-nd-section-title">Response Body</div>' +
+      '<pre class="tx-nd-pre">' + escHtml(_formatBody(entry.responseBody)) + '</pre></div>';
+  }
+
+  return html;
+}
+
+let _selectedNetworkId: number | null = null;
+
+function _openNetworkDetail(id: number) {
+  const entry = _networkEntries.find(e => e.id === id);
+  if (!entry) return;
+  document.querySelectorAll<HTMLElement>('.tx-network-row.selected').forEach(el => el.classList.remove('selected'));
+  document.querySelector<HTMLElement>('[data-net-id="' + id + '"]')?.classList.add('selected');
+  _selectedNetworkId = id;
+  const detail = document.getElementById('networkDetail');
+  const detailTitle = document.getElementById('networkDetailTitle');
+  const detailBody = document.getElementById('networkDetailBody');
+  if (!detail || !detailBody) return;
+  detail.classList.add('open');
+  if (detailTitle) detailTitle.textContent = entry.method + ' ' + _netShortUrl(entry.url);
+  detailBody.innerHTML = _renderNetworkDetail(entry);
+}
+
+(window as any).closeNetworkDetail = () => {
+  document.getElementById('networkDetail')?.classList.remove('open');
+  document.querySelectorAll<HTMLElement>('.tx-network-row.selected').forEach(el => el.classList.remove('selected'));
+  _selectedNetworkId = null;
+};
 
 (window as any).clearNetwork = () => {
   _networkEntries.length = 0;
   _networkCounter = 0;
+  _selectedNetworkId = null;
+  document.getElementById('networkDetail')?.classList.remove('open');
   const list = document.getElementById('networkList');
   if (list) list.innerHTML = '<div class="tx-empty-network">No requests yet</div>';
   _updateNetworkCount();
@@ -924,13 +1017,23 @@ function initNetworkResizer() {
 
 function initNetworkListeners() {
   page.on('request', (req: any) => {
+    const rawBody = req.postData();
+    const requestBody: string | null = rawBody == null ? null
+      : typeof rawBody === 'string' ? rawBody
+      : (rawBody as any) instanceof URLSearchParams ? (rawBody as URLSearchParams).toString()
+      : typeof rawBody === 'object' ? (() => { try { return JSON.stringify(rawBody); } catch { return String(rawBody); } })()
+      : String(rawBody);
     const entry: NetworkEntry = {
       id: ++_networkCounter,
       url: req.url(),
       method: req.method(),
       type: req.resourceType(),
+      requestHeaders: req.headers() ?? {},
+      requestBody,
       status: null,
       statusText: '',
+      responseHeaders: {},
+      responseBody: null,
       startTime: Date.now(),
       duration: null,
       state: 'pending',
@@ -946,6 +1049,8 @@ function initNetworkListeners() {
     if (!entry) return;
     entry.status = resp.status();
     entry.statusText = resp.statusText();
+    entry.responseHeaders = resp.headers?.() ?? {};
+    entry.responseBody = resp.body?.() ?? null;
     _refreshNetworkRow(entry);
   });
 
@@ -964,6 +1069,13 @@ function initNetworkListeners() {
     entry.state = 'failed';
     entry.error = req.failure?.()?.errorText ?? 'Failed';
     _refreshNetworkRow(entry);
+  });
+
+  document.getElementById('networkList')?.addEventListener('click', (e: MouseEvent) => {
+    const row = (e.target as Element).closest<HTMLElement>('.tx-network-row');
+    if (!row) return;
+    const id = Number(row.getAttribute('data-net-id'));
+    if (id) _openNetworkDetail(id);
   });
 }
 
