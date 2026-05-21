@@ -245,9 +245,33 @@ type HookFn = () => any;
 type HookScope = { beforeEachs: HookFn[]; afterEachs: HookFn[]; beforeAlls: HookFn[]; afterAlls: HookFn[] };
 type QueueItem = {
   name: string; fn: HookFn;
+  fixtureDefs: FixtureDefs; expectsFixtures: boolean;
   beforeEachs: HookFn[]; afterEachs: HookFn[];
   setupBeforeAlls: HookFn[]; teardownAfterAlls: HookFn[];
 };
+
+// ── Fixture system ────────────────────────────────────────────────────────────
+
+type UseCallback<T> = (value: T) => Promise<void>;
+type FixtureFn<T> = (fixtures: Record<string, any>, use: UseCallback<T>) => Promise<void>;
+type FixtureDefs = Record<string, FixtureFn<any>>;
+
+async function runWithFixtures(
+  fixtureDefs: FixtureDefs,
+  testFn: (fixtures: Record<string, any>) => any,
+): Promise<void> {
+  const resolved: Record<string, any> = {};
+  const run = Object.entries(fixtureDefs).reduceRight(
+    (inner: () => Promise<void>, [name, fixtureFn]) => async () => {
+      await fixtureFn(resolved, async (value) => {
+        resolved[name] = value;
+        await inner();
+      });
+    },
+    async () => { await testFn(resolved); },
+  );
+  await run();
+}
 
 function buildTestQueue(
   code: string,
@@ -263,19 +287,33 @@ function buildTestQueue(
   const beforeAll  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
   const afterAll   = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
 
-  const it = (name: string, fn: HookFn) => {
-    const suite    = stack.join(' > ');
-    const fullName = stack.length ? suite + ' > ' + name : name;
-    if (filterSuite  && suite    !== filterSuite)              return;
-    if (filterTest   && fullName !== filterTest)               return;
-    if (filterTests  && !filterTests.includes(fullName))       return;
-    queue.push({
-      name: fullName, fn,
-      beforeEachs: hookStack.flatMap(s => s.beforeEachs),
-      afterEachs:  hookStack.flatMap(s => s.afterEachs).reverse(),
-      setupBeforeAlls: [], teardownAfterAlls: [],
-    });
+  const defaultFixtureDefs: FixtureDefs = {
+    page:    async (_f, use) => { await use((window as any).page); },
+    browser: async (_f, use) => { await use((window as any).browser); },
+    expect:  async (_f, use) => { await use((window as any).expect); },
   };
+
+  const makeTestFn = (fixtureDefs: FixtureDefs): any => {
+    const testFn = (name: string, fn: HookFn) => {
+      const suite    = stack.join(' > ');
+      const fullName = stack.length ? suite + ' > ' + name : name;
+      if (filterSuite  && suite    !== filterSuite)              return;
+      if (filterTest   && fullName !== filterTest)               return;
+      if (filterTests  && !filterTests.includes(fullName))       return;
+      queue.push({
+        name: fullName, fn,
+        fixtureDefs, expectsFixtures: fn.length > 0,
+        beforeEachs: hookStack.flatMap(s => s.beforeEachs),
+        afterEachs:  hookStack.flatMap(s => s.afterEachs).reverse(),
+        setupBeforeAlls: [], teardownAfterAlls: [],
+      });
+    };
+    testFn.extend = (newDefs: FixtureDefs) => makeTestFn({ ...fixtureDefs, ...newDefs });
+    return testFn;
+  };
+
+  const baseTest = makeTestFn(defaultFixtureDefs);
+  const it = (name: string, fn: HookFn) => baseTest(name, fn);
 
   const describe = (name: string, fn: () => void) => {
     stack.push(name);
@@ -297,7 +335,7 @@ function buildTestQueue(
 
   (window as any).describe   = describe;
   (window as any).it         = it;
-  (window as any).test       = it;
+  (window as any).test       = baseTest;
   (window as any).beforeEach = beforeEach;
   (window as any).afterEach  = afterEach;
   (window as any).beforeAll  = beforeAll;
@@ -335,7 +373,11 @@ async function executeTests(
       await page.resetSession();
       for (const hook of t.setupBeforeAlls)    await Promise.resolve(hook());
       for (const hook of t.beforeEachs)         await Promise.resolve(hook());
-      await Promise.resolve(t.fn());
+      if (t.expectsFixtures) {
+        await runWithFixtures(t.fixtureDefs, t.fn);
+      } else {
+        await Promise.resolve(t.fn());
+      }
       for (const hook of t.afterEachs)          await Promise.resolve(hook());
       for (const hook of t.teardownAfterAlls)   await Promise.resolve(hook());
       const dur = Date.now() - t0;
