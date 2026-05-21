@@ -4,7 +4,24 @@
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const hammerhead = require('testcafe-hammerhead');
-import { IframeInjector, IframeConfig } from './iframeInjector';
+
+// Hammerhead passes X-Frame-Options: DENY/SAMEORIGIN through unchanged, which
+// blocks the proxied page from loading in our iframe.  Strip those values so
+// the browser does not enforce them.  ALLOW-FROM is still rewritten by the
+// original transform below.
+{
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const transforms = require('testcafe-hammerhead/lib/request-pipeline/header-transforms/transforms');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const headerNames = require('testcafe-hammerhead/lib/request-pipeline/builtin-header-names');
+  const orig = transforms.responseTransforms[headerNames.xFrameOptions];
+  transforms.responseTransforms[headerNames.xFrameOptions] = (src: string, ctx: unknown) => {
+    const upper = src.trim().toUpperCase();
+    if (upper === 'DENY' || upper === 'SAMEORIGIN') return undefined;
+    return orig(src, ctx);
+  };
+}
+import { IframeInjector } from './iframeInjector';
 import { TestApi } from './testApi';
 import { TestServer } from './server';
 import { startWatcher } from './watcher';

@@ -99,9 +99,13 @@ interface LocatorAssertions {
   toHaveAttribute(name: string, value?: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   toHaveCount(count: number, opts?: TxTimeoutOptions): Promise<void>;
   toHaveClass(cls: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
-  toHaveURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
-  toHaveTitle(title: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   not: Omit<LocatorAssertions, 'not'>;
+}
+
+interface PageAssertions {
+  toHaveTitle(titleOrRegExp: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  toHaveURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  not: Omit<PageAssertions, 'not'>;
 }
 
 interface ValueAssertions {
@@ -368,7 +372,11 @@ type TxFixtureDefs<F extends Record<string, any>> = { [K in keyof F]: TxFixtureF
 interface TxBaseFixtures {
   page: Page;
   browser: Browser;
-  expect: { (actual: Locator): LocatorAssertions; (actual: any): ValueAssertions };
+  expect: {
+    (actual: Page): PageAssertions;
+    (actual: Locator): LocatorAssertions;
+    (actual: any): ValueAssertions;
+  };
 }
 
 interface TestFactory<F extends Record<string, any> = TxBaseFixtures> {
@@ -381,6 +389,7 @@ interface TestFactory<F extends Record<string, any> = TxBaseFixtures> {
 declare const page: Page;
 declare const browser: Browser;
 
+declare function expect(actual: Page): PageAssertions;
 declare function expect(actual: Locator): LocatorAssertions;
 declare function expect(actual: any): ValueAssertions;
 
@@ -389,14 +398,16 @@ declare function it(name: string, fn: (fixtures: TxBaseFixtures) => void | Promi
 declare const test: TestFactory<TxBaseFixtures>;
 declare function beforeAll(fn: () => void | Promise<void>): void;
 declare function afterAll(fn: () => void | Promise<void>): void;
+declare function beforeEach(fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
 declare function beforeEach(fn: () => void | Promise<void>): void;
+declare function afterEach(fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
 declare function afterEach(fn: () => void | Promise<void>): void;
 
 // ── 'tx' module — available via require('tx') or import from 'tx' ─────────────
 
 declare module 'tx' {
   export { Locator, FrameLocator, Page, PopupPage, Browser };
-  export { LocatorAssertions, ValueAssertions };
+  export { LocatorAssertions, PageAssertions, ValueAssertions };
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory };
@@ -405,6 +416,7 @@ declare module 'tx' {
   export const browser: Browser;
   export const test: TestFactory<TxBaseFixtures>;
 
+  export function expect(actual: Page): PageAssertions;
   export function expect(actual: Locator): LocatorAssertions;
   export function expect(actual: any): ValueAssertions;
 }

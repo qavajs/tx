@@ -6,7 +6,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { generateControlPanelHTML } from './controlPanel';
-import { TestRunner, parseTestFile, ParsedFile } from './testRunner';
+import { parseTestFile, ParsedFile } from './testRunner';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from './reporter';
 import type { TaskHandler } from './types';
 
@@ -90,25 +90,6 @@ export class TestServer {
           }
           res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
           res.end(fs.readFileSync(panelPath));
-          return;
-        }
-
-        if (req.url === '/api/run-test' && req.method === 'POST') {
-          let body = '';
-          req.on('data', (chunk: Buffer) => (body += chunk));
-          req.on('end', async () => {
-            try {
-              const { code } = JSON.parse(body) as { code: string };
-              const runner = new TestRunner();
-              for (const r of this.reporters) runner.addReporter(r);
-              const results = await runner.runCode(code);
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify(results));
-            } catch (err: any) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: err.message }));
-            }
-          });
           return;
         }
 

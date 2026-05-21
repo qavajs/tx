@@ -3,8 +3,6 @@ import { log, setLogContainer, API_BASE, testApi, page, pwExpect, initIframe, se
 declare global {
   interface Window {
     testApi: typeof testApi;
-    runTestInBrowser: () => void;
-    runTestOnServer:  () => void;
     runSuite:         (filename: string, suiteName: string) => void;
     runTest:          (filename: string, fullName: string) => void;
     toggleCard:       (filename: string) => void;
@@ -244,12 +242,13 @@ window.toggleSuite = (filename: string, suiteName: string) => {
 
 interface TestResult { name: string; passed: boolean; error?: string; duration: number; }
 
-type HookFn = () => any;
-type HookScope = { beforeEachs: HookFn[]; afterEachs: HookFn[]; beforeAlls: HookFn[]; afterAlls: HookFn[] };
+type HookFn = (...args: any[]) => any;
+type HookEntry = { fn: HookFn; expectsFixtures: boolean };
+type HookScope = { beforeEachs: HookEntry[]; afterEachs: HookEntry[]; beforeAlls: HookFn[]; afterAlls: HookFn[] };
 type QueueItem = {
   name: string; fn: HookFn;
   fixtureDefs: FixtureDefs; expectsFixtures: boolean;
-  beforeEachs: HookFn[]; afterEachs: HookFn[];
+  beforeEachs: HookEntry[]; afterEachs: HookEntry[];
   setupBeforeAlls: HookFn[]; teardownAfterAlls: HookFn[];
 };
 
@@ -285,8 +284,8 @@ function buildTestQueue(
   const stack: string[] = [];
   const hookStack: HookScope[] = [];
 
-  const beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push(fn); };
-  const afterEach  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push(fn); };
+  const beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push({ fn, expectsFixtures: fn.length > 0 }); };
+  const afterEach  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push({ fn, expectsFixtures: fn.length > 0 }); };
   const beforeAll  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
   const afterAll   = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
 
@@ -375,13 +374,19 @@ async function executeTests(
       closeExtraTabs();
       await page.resetSession();
       for (const hook of t.setupBeforeAlls)    await Promise.resolve(hook());
-      for (const hook of t.beforeEachs)         await Promise.resolve(hook());
+      for (const hook of t.beforeEachs) {
+        if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
+        else await Promise.resolve(hook.fn());
+      }
       if (t.expectsFixtures) {
         await runWithFixtures(t.fixtureDefs, t.fn);
       } else {
         await Promise.resolve(t.fn());
       }
-      for (const hook of t.afterEachs)          await Promise.resolve(hook());
+      for (const hook of t.afterEachs) {
+        if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
+        else await Promise.resolve(hook.fn());
+      }
       for (const hook of t.teardownAfterAlls)   await Promise.resolve(hook());
       const dur = Date.now() - t0;
       results.push({ name: t.name, passed: true, duration: dur });
@@ -548,36 +553,6 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
   if (btn) btn.disabled = false;
   return { passed: totalPass, failed: totalFail };
-};
-
-window.runTestInBrowser = async () => {
-  const input = document.getElementById('testFileInput') as HTMLInputElement;
-  const file  = input.files?.[0];
-  if (!file) { log('Select a .js file first', 'error'); return; }
-  log(`run  ${file.name}  (browser)`, 'info');
-  renderTestResults(await executeTests(await file.text()), file.name);
-};
-
-window.runTestOnServer = async () => {
-  const input = document.getElementById('testFileInput') as HTMLInputElement;
-  const file  = input.files?.[0];
-  if (!file) { log('Select a .js file first', 'error'); return; }
-  log(`upload  ${file.name}  → server`, 'info');
-  try {
-    const resp = await fetch(API_BASE + '/api/run-test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: await file.text() }),
-    });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json() as any;
-    if (data.error) throw new Error(data.error);
-    renderTestResults(data.tests, file.name);
-    log(`server: ${data.passed} passed, ${data.failed} failed (${data.duration}ms)`,
-      data.failed === 0 ? 'success' : 'error');
-  } catch (e: any) {
-    log('Server error: ' + e.message, 'error');
-  }
 };
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
