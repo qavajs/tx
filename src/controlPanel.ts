@@ -958,7 +958,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
 
         .tx-network-header {
             display: grid;
-            grid-template-columns: 46px 50px 46px 1fr 62px;
+            grid-template-columns: 60px 50px 46px 1fr 62px;
             padding: 2px 10px;
             font-size: 10px;
             font-weight: 700;
@@ -979,7 +979,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
 
         .tx-network-row {
             display: grid;
-            grid-template-columns: 46px 50px 46px 1fr 62px;
+            grid-template-columns: 60px 50px 46px 1fr 62px;
             padding: 2px 10px;
             font-family: var(--font-mono);
             font-size: 11px;
