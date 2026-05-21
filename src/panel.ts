@@ -1,4 +1,4 @@
-import { log, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc } from './browser';
+import { log, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort } from './browser';
 
 declare global {
   interface Window {
@@ -11,6 +11,7 @@ declare global {
     runAll:           () => Promise<{ passed: number; failed: number }>;
     applyFilter:      (query: string) => void;
     runFiltered:      () => Promise<void>;
+    stopExecution:    () => void;
   }
 }
 
@@ -366,11 +367,13 @@ async function executeTests(
 
   const results: TestResult[] = [];
   for (const t of queue) {
+    if (_stopRequested) break;
     if (filename) {
       setTestItemStatus(filename, t.name, 'running');
       activateTestLog(filename, t.name);
     }
     const t0 = Date.now();
+    let _timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       closeExtraTabs();
       await page.resetSession();
@@ -383,9 +386,19 @@ async function executeTests(
         ? () => runWithFixtures(t.fixtureDefs, t.fn)
         : () => Promise.resolve(t.fn());
       const testTimeout = (window as any).__CONFIG__?.testTimeout ?? 30000;
+      const _stopPromise = new Promise<never>((_, reject) => {
+        _currentTestCancel = (err: Error) => { setTestAbort(err); reject(err); };
+      });
       await Promise.race([
         runTestFn(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Test timed out after ${testTimeout}ms`)), testTimeout)),
+        new Promise<never>((_, reject) => {
+          _timeoutId = setTimeout(() => {
+            const err = new Error(`Test timed out after ${testTimeout}ms`);
+            setTestAbort(err);
+            reject(err);
+          }, testTimeout);
+        }),
+        _stopPromise,
       ]);
       for (const hook of t.afterEachs) {
         if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
@@ -403,6 +416,9 @@ async function executeTests(
       if (filename) setTestItemStatus(filename, t.name, 'fail', dur);
       appendErrorToLog(e.stack || e.message);
     } finally {
+      clearTimeout(_timeoutId);
+      setTestAbort(null);
+      _currentTestCancel = null;
       if (filename) {
         const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
         logEl?.classList.remove('open');
@@ -481,6 +497,8 @@ async function fetchAndRun(
 // ── Window actions ────────────────────────────────────────────────────────────
 
 window.runTestByFilename = async (filename: string) => {
+  _stopRequested = false;
+  setStopBtnVisible(true);
   openAndResetCard(filename);
   log(`run  ${filename}`, 'info');
   await notifyRunBegin([{ file: filename, tests: null }]);
@@ -492,9 +510,12 @@ window.runTestByFilename = async (filename: string) => {
     updateCardStatus(filename, 0, 1);
     notifyRunEnd(0, 1, 1, 0);
   }
+  setStopBtnVisible(false);
 };
 
 window.runSuite = async (filename: string, suiteName: string) => {
+  _stopRequested = false;
+  setStopBtnVisible(true);
   document.getElementById('card-' + escAttr(filename))?.classList.add('open');
   const card = document.getElementById('card-' + escAttr(filename));
   card?.querySelectorAll<HTMLElement>('.tx-test-item').forEach(item => {
@@ -522,9 +543,12 @@ window.runSuite = async (filename: string, suiteName: string) => {
     updateCardStatus(filename, 0, 1);
     notifyRunEnd(0, 1, 1, 0);
   }
+  setStopBtnVisible(false);
 };
 
 window.runTest = async (filename: string, fullName: string) => {
+  _stopRequested = false;
+  setStopBtnVisible(true);
   document.getElementById('card-' + escAttr(filename))?.classList.add('open');
   setTestItemStatus(filename, fullName, 'running');
   setCardRunning(filename);
@@ -537,6 +561,7 @@ window.runTest = async (filename: string, fullName: string) => {
     setTestItemStatus(filename, fullName, 'fail');
     notifyRunEnd(0, 1, 1, 0);
   }
+  setStopBtnVisible(false);
 };
 
 window.runAll = async (): Promise<{ passed: number; failed: number }> => {
@@ -547,12 +572,15 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   }
   const btn = document.getElementById('runAllBtn') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
+  _stopRequested = false;
   _isTestRunning = true;
+  setStopBtnVisible(true);
   setTopbarStatus('running', 'Running…');
   const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'));
   await notifyRunBegin(allCards.map(c => ({ file: c.dataset.filename!, tests: null })));
   let totalPass = 0, totalFail = 0, totalDuration = 0;
   for (const card of allCards) {
+    if (_stopRequested) break;
     const filename = card.dataset.filename!;
     openAndResetCard(filename);
     log(`run  ${filename}`, 'info');
@@ -567,7 +595,12 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   }
   notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
   _isTestRunning = false;
-  setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
+  setStopBtnVisible(false);
+  if (_stopRequested) {
+    setTopbarStatus('ready', `Stopped — ${totalPass} passed, ${totalFail} failed`);
+  } else {
+    setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
+  }
   if (btn) btn.disabled = false;
   return { passed: totalPass, failed: totalFail };
 };
@@ -588,6 +621,15 @@ function jsq(s: string) {
 
 let _watchVersion = -1;
 let _isTestRunning = false;
+let _stopRequested = false;
+let _currentTestCancel: ((err: Error) => void) | null = null;
+
+function setStopBtnVisible(visible: boolean) {
+  const btn = document.getElementById('stopBtn') as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.style.display = visible ? 'flex' : 'none';
+  btn.disabled = false;
+}
 
 async function pollUpdates() {
   try {
@@ -771,7 +813,9 @@ window.applyFilter = (query: string) => {
 window.runFiltered = async () => {
   const btn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
+  _stopRequested = false;
   _isTestRunning = true;
+  setStopBtnVisible(true);
   setTopbarStatus('running', 'Running…');
   let totalPass = 0, totalFail = 0, totalDuration = 0;
 
@@ -788,6 +832,7 @@ window.runFiltered = async () => {
   await notifyRunBegin(Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests })));
 
   for (const [filename, testNames] of byFile) {
+    if (_stopRequested) break;
     openAndResetCard(filename);
     log(`run filtered  ${filename}`, 'info');
     try {
@@ -802,7 +847,12 @@ window.runFiltered = async () => {
 
   notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
   _isTestRunning = false;
-  setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
+  setStopBtnVisible(false);
+  if (_stopRequested) {
+    setTopbarStatus('ready', `Stopped — ${totalPass} passed, ${totalFail} failed`);
+  } else {
+    setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
+  }
   if (btn) btn.disabled = false;
 };
 
@@ -1378,6 +1428,14 @@ function initNetworkListeners() {
     _updateConsoleBadge();
   });
 }
+
+window.stopExecution = () => {
+  _stopRequested = true;
+  _currentTestCancel?.(new Error('Test stopped'));
+  const btn = document.getElementById('stopBtn') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  setTopbarStatus('running', 'Stopping…');
+};
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 

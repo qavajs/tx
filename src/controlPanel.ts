@@ -121,6 +121,24 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             box-shadow: none;
         }
 
+        .tx-stop-btn {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 14px;
+            background: transparent;
+            color: var(--fail);
+            border: 1px solid var(--fail);
+            border-radius: var(--radius);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.12s;
+            letter-spacing: 0.1px;
+        }
+        .tx-stop-btn:hover  { background: var(--fail-bg); }
+        .tx-stop-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
         .tx-topbar-right {
             margin-left: auto;
             display: flex;
@@ -1335,6 +1353,9 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         <div class="tx-topbar-div"></div>
         <button class="tx-run-all-btn" id="runAllBtn" onclick="window.runAll && window.runAll()">
             &#9654;&nbsp; Run all specs
+        </button>
+        <button class="tx-stop-btn" id="stopBtn" onclick="window.stopExecution && window.stopExecution()">
+            &#9632;&nbsp; Stop
         </button>
         <div class="tx-topbar-right">
             <div class="tx-status-pill">

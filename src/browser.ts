@@ -6,6 +6,34 @@ declare global {
   }
 }
 
+// ── Test abort mechanism ──────────────────────────────────────────────────────
+
+let _testAbortError: Error | null = null;
+const _abortListeners: Array<(err: Error) => void> = [];
+
+export function setTestAbort(err: Error | null): void {
+  _testAbortError = err;
+  const fns = _abortListeners.splice(0);
+  if (err) for (const fn of fns) fn(err);
+}
+
+function _awaitOrAbort(ms: number): Promise<void> {
+  if (_testAbortError) return Promise.reject(_testAbortError);
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const abortFn = (err: Error) => { if (!settled) { settled = true; clearTimeout(id); reject(err); } };
+    _abortListeners.push(abortFn);
+    const id = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        const idx = _abortListeners.indexOf(abortFn);
+        if (idx >= 0) _abortListeners.splice(idx, 1);
+        resolve();
+      }
+    }, ms);
+  });
+}
+
 // ── Viewport ──────────────────────────────────────────────────────────────────
 
 let viewportW: number | null = null;
@@ -404,7 +432,7 @@ export class Locator {
     while (Date.now() - t0 < _timeout) {
       const el = this._el() as HTMLElement | null;
       if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); return el; }
-      await new Promise(r => setTimeout(r, 50));
+      await _awaitOrAbort(50);
     }
     throw new Error(`Locator timed out after ${_timeout}ms — element not found`);
   }
@@ -458,32 +486,32 @@ export class Locator {
       if (!el) {
         lastReason = 'element not found';
         stableRect = null;
-        await new Promise(r => setTimeout(r, 50));
+        await _awaitOrAbort(50);
         continue;
       }
       if (force) return el;
       if (!this._isVisibleElement(el)) {
         lastReason = 'element not visible';
         stableRect = null;
-        await new Promise(r => setTimeout(r, 50));
+        await _awaitOrAbort(50);
         continue;
       }
       if (!this._receivesEvents(el)) {
         lastReason = 'element does not receive events';
         stableRect = null;
-        await new Promise(r => setTimeout(r, 50));
+        await _awaitOrAbort(50);
         continue;
       }
       if (!this._isEnabledElement(el)) {
         lastReason = 'element is disabled';
         stableRect = null;
-        await new Promise(r => setTimeout(r, 50));
+        await _awaitOrAbort(50);
         continue;
       }
       if (needsEditable && !this._isEditableElement(el)) {
         lastReason = 'element is not editable';
         stableRect = null;
-        await new Promise(r => setTimeout(r, 50));
+        await _awaitOrAbort(50);
         continue;
       }
       if (needsStable) {
@@ -491,13 +519,13 @@ export class Locator {
         if (!stableRect) {
           stableRect = rect;
           lastReason = 'element is not stable';
-          await new Promise(r => setTimeout(r, 50));
+          await _awaitOrAbort(50);
           continue;
         }
         if (rect.top !== stableRect.top || rect.left !== stableRect.left || rect.width !== stableRect.width || rect.height !== stableRect.height) {
           stableRect = rect;
           lastReason = 'element is not stable';
-          await new Promise(r => setTimeout(r, 50));
+          await _awaitOrAbort(50);
           continue;
         }
       }
@@ -659,7 +687,7 @@ export class Locator {
         setVal(current);
         el.dispatchEvent(new IE('input', { bubbles: true, cancelable: false, inputType: 'insertText', data: ch } as any));
         el.dispatchEvent(new KE('keyup', kDown(ch)));
-        if (delay > 0) await new Promise(r => setTimeout(r, delay));
+        if (delay > 0) await _awaitOrAbort(delay);
       }
 
       el.dispatchEvent(new E('change',   { bubbles: true  }));
@@ -681,7 +709,7 @@ export class Locator {
       const el = await this._waitForActionableEl(opts, 'type') as HTMLInputElement;
       el.focus();
       for (const ch of text) {
-        if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
+        if (opts?.delay) await _awaitOrAbort(opts.delay);
         el.value += ch;
         el.dispatchEvent(new Event('input', { bubbles: true }));
       }
@@ -902,7 +930,7 @@ export class Locator {
         if (state === 'detached'  && !el)                       { entry.success(); return; }
         if (state === 'visible'   && await this.isVisible())    { entry.success(); return; }
         if (state === 'hidden'    && !(await this.isVisible())) { entry.success(); return; }
-        await new Promise(r => setTimeout(r, 50));
+        await _awaitOrAbort(50);
       }
       throw new Error(`waitFor(state="${state}") timed out after ${timeout}ms`);
     } catch (error: any) {
@@ -950,7 +978,7 @@ async function _checkLocatorHandlers(): Promise<void> {
       if (!h.noWaitAfter) {
         const t0 = Date.now();
         while (Date.now() - t0 < 5000 && await h.locator.isVisible()) {
-          await new Promise(r => setTimeout(r, 50));
+          await _awaitOrAbort(50);
         }
       }
       if (h.times > 0 && h.invocations >= h.times) _locatorHandlers.splice(i, 1);
@@ -2113,7 +2141,7 @@ export const page = {
           entry.success();
           return;
         }
-        await new Promise(r => setTimeout(r, 50));
+        await _awaitOrAbort(50);
       }
       throw new Error(`waitForURL(${url}) timed out — current: ${page.url()}`);
     } catch (error: any) {
@@ -2131,7 +2159,7 @@ export const page = {
   async waitForTimeout(ms: number): Promise<void> {
     const entry = logCommand(`${ms}ms`, 'wait');
     try {
-      await new Promise(r => setTimeout(r, ms));
+      await _awaitOrAbort(ms);
       entry.success();
     } catch (error: any) {
       entry.fail(error?.message ?? String(error));
@@ -2172,7 +2200,7 @@ export const page = {
       const entry = logCommand(`"${text}"`, 'key.type');
       try {
         for (const ch of text) {
-          if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
+          if (opts?.delay) await _awaitOrAbort(opts.delay);
           await page.keyboard.press(ch, true);
         }
         entry.success();
@@ -2342,7 +2370,7 @@ async function _retry(fn: () => Promise<void>, timeout?: number): Promise<void> 
   let last: Error = new Error('Timeout');
   while (Date.now() - t0 < _timeout) {
     try { await fn(); return; } catch (e: any) { last = e; }
-    await new Promise(r => setTimeout(r, 50));
+    await _awaitOrAbort(50);
   }
   throw last;
 }
