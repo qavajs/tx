@@ -1,4 +1,4 @@
-import { log, setLogContainer, API_BASE, testApi, page, expect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc } from './browser';
+import { log, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc } from './browser';
 
 declare global {
   interface Window {
@@ -22,7 +22,8 @@ window.testApi = testApi;
 (window as any).page    = page;
 (window as any).expect  = expect;
 (window as any).browser = browser;
-(window as any).tx      = { page, expect: expect, browser, ...testApi };
+(window as any).request = request;
+(window as any).tx      = { page, expect: expect, browser, request, ...testApi };
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 
@@ -292,6 +293,7 @@ function buildTestQueue(
     page:    async (_f, use) => { await use((window as any).page); },
     browser: async (_f, use) => { await use((window as any).browser); },
     expect:  async (_f, use) => { await use((window as any).expect); },
+    request: async (_f, use) => { await use((window as any).request); },
   };
 
   const makeTestFn = (fixtureDefs: FixtureDefs): any => {
@@ -490,7 +492,20 @@ window.runTestByFilename = async (filename: string) => {
 };
 
 window.runSuite = async (filename: string, suiteName: string) => {
-  openAndResetCard(filename);
+  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+  const card = document.getElementById('card-' + escAttr(filename));
+  card?.querySelectorAll<HTMLElement>('.tx-test-item').forEach(item => {
+    if (item.dataset.suite !== suiteName) return;
+    item.classList.remove('running', 'pass', 'fail');
+    item.querySelector('.tx-test-dot')?.classList.remove('running', 'pass', 'fail');
+    const badge = item.querySelector<HTMLElement>('.tx-test-badge');
+    if (badge) { badge.className = 'tx-test-badge'; badge.textContent = ''; }
+    const logEl = item.nextElementSibling as HTMLElement | null;
+    if (logEl?.classList.contains('tx-test-log')) { logEl.innerHTML = ''; logEl.classList.remove('open'); }
+  });
+  const sbadge = document.getElementById('sbadges-' + escAttr(filename + '\x01' + suiteName));
+  if (sbadge) sbadge.innerHTML = '<span class="tx-badge" style="color:var(--warn)">●</span>';
+  setCardRunning(filename);
   const suiteTests = Array.from(
     document.getElementById('card-' + escAttr(filename))
       ?.querySelectorAll<HTMLElement>('.tx-test-item') ?? []

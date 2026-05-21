@@ -2750,6 +2750,72 @@ export function initIframe() {
   createTab();
 }
 
+// ── API Response wrapper ──────────────────────────────────────────────────────
+
+export interface ApiResponse {
+  ok(): boolean;
+  status(): number;
+  statusText(): string;
+  headers(): Record<string, string>;
+  url(): string;
+  json<T = unknown>(): Promise<T>;
+  text(): Promise<string>;
+  body(): Promise<ArrayBuffer>;
+}
+
+function _wrapResponse(resp: Response): ApiResponse {
+  const hdrs: Record<string, string> = {};
+  resp.headers.forEach((val, key) => { hdrs[key.toLowerCase()] = val; });
+  return {
+    ok:         () => resp.ok,
+    status:     () => resp.status,
+    statusText: () => resp.statusText,
+    headers:    () => ({ ...hdrs }),
+    url:        () => resp.url,
+    json:       () => resp.clone().json(),
+    text:       () => resp.clone().text(),
+    body:       () => resp.clone().arrayBuffer(),
+  };
+}
+
+// ── API Request context ───────────────────────────────────────────────────────
+
+export const request = {
+  async fetch(url: string, options?: RequestInit): Promise<ApiResponse> {
+    const entry = logCommand(url, 'request');
+    const method = (options?.method ?? 'GET').toUpperCase();
+    const reqHeaders = _normalizeHeaders(options?.headers);
+    const req = {
+      url:                 () => url,
+      method:              () => method,
+      headers:             () => reqHeaders,
+      postData:            () => options?.body ?? null,
+      isNavigationRequest: () => false,
+      resourceType:        () => 'fetch',
+    };
+    _emitPage('request', req);
+    try {
+      const resp = await globalThis.fetch(url, options);
+      const respHeaders = _normalizeHeaders(resp.headers);
+      let respBody: string | null = null;
+      if (_isTextContent(resp.headers.get('content-type') ?? '')) {
+        try {
+          const text = await resp.clone().text();
+          respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text;
+        } catch { /* ignore */ }
+      }
+      _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, headers: () => respHeaders, body: () => respBody, request: () => req });
+      _emitPage('requestfinished', req);
+      entry.success();
+      return _wrapResponse(resp);
+    } catch (error: any) {
+      _emitPage('requestfailed', { ...req, failure: () => ({ errorText: String(error) }) });
+      entry.fail(error?.message ?? String(error));
+      throw error;
+    }
+  },
+};
+
 // ── Browser object ────────────────────────────────────────────────────────────
 
 export const browser = {

@@ -348,6 +348,25 @@ interface Page {
   close(): Promise<void>;
 }
 
+// ── APIResponse ───────────────────────────────────────────────────────────────
+
+interface APIResponse {
+  ok(): boolean;
+  status(): number;
+  statusText(): string;
+  headers(): Record<string, string>;
+  url(): string;
+  json<T = unknown>(): Promise<T>;
+  text(): Promise<string>;
+  body(): Promise<ArrayBuffer>;
+}
+
+// ── APIRequestContext ─────────────────────────────────────────────────────────
+
+interface APIRequestContext {
+  fetch(url: string, options?: RequestInit): Promise<APIResponse>;
+}
+
 // ── Browser ───────────────────────────────────────────────────────────────────
 
 interface Browser {
@@ -390,6 +409,7 @@ type TxFixtureDefs<F extends Record<string, any>> = { [K in keyof F]: TxFixtureF
 interface TxBaseFixtures {
   page: Page;
   browser: Browser;
+  request: APIRequestContext;
   expect: {
     (actual: Page): PageAssertions;
     (actual: Locator): LocatorAssertions;
@@ -406,6 +426,7 @@ interface TestFactory<F extends Record<string, any> = TxBaseFixtures> {
 
 declare const page: Page;
 declare const browser: Browser;
+declare const request: APIRequestContext;
 
 declare function expect(actual: Page): PageAssertions;
 declare function expect(actual: Locator): LocatorAssertions;
@@ -430,9 +451,11 @@ declare module 'tx' {
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
+  export { APIResponse, APIRequestContext };
 
   export const page: Page;
   export const browser: Browser;
+  export const request: APIRequestContext;
   export const test: TestFactory<TxBaseFixtures>;
 
   export function expect(actual: Page): PageAssertions;

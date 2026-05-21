@@ -45,4 +45,26 @@ describe('Fixtures', () => {
   myTest('loggedInPage fixture shows correct item count', async ({ loggedInPage }) => {
     await expect(loggedInPage.locator('[data-test="inventory-item"]')).toHaveCount(6);
   });
+
+});
+
+describe('API', () => {
+  test('request fixture fetches JSON from an API', async ({ request }) => {
+    const resp = await request.fetch('https://httpbin.org/get');
+    expect(resp.status()).toBe(200);
+    expect(resp.ok()).toBe(true);
+    const body = await resp.json() as { url: string };
+    expect(body.url).toContain('httpbin.org');
+  });
+
+  test('request fixture posts JSON body', async ({ request }) => {
+    const resp = await request.fetch('https://httpbin.org/post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hello: 'world' }),
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json() as { json: { hello: string } };
+    expect(body.json.hello).toBe('world');
+  });
 });

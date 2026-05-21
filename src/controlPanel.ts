@@ -1063,7 +1063,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
 
         .tx-network-detail {
             display: none;
-            width: 360px;
+            width: 65%;
             min-width: 240px;
             flex-shrink: 0;
             border-left: 1px solid var(--border);
