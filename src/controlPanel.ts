@@ -1241,6 +1241,96 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             color: var(--text-muted);
             font-size: 11px;
         }
+
+        /* ══ Selector playground ═════════════════════════════════════ */
+
+        .tx-selector-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 12px 14px;
+            gap: 8px;
+            overflow: auto;
+        }
+
+        .tx-selector-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tx-selector-input {
+            flex: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border-s);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            padding: 6px 10px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .tx-selector-input:focus { border-color: var(--jade); }
+        .tx-selector-input.error { border-color: var(--fail); }
+
+        .tx-selector-clear-btn {
+            padding: 5px 11px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-s);
+            border-radius: var(--radius);
+            color: var(--text-dim);
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.12s, color 0.12s;
+            flex-shrink: 0;
+        }
+        .tx-selector-clear-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+        .tx-selector-status {
+            font-size: 11px;
+            color: var(--text-dim);
+            min-height: 16px;
+        }
+        .tx-selector-status.match { color: var(--jade); }
+        .tx-selector-status.error { color: var(--fail); }
+        .tx-selector-status.zero  { color: var(--warn); }
+
+        .tx-selector-matches {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .tx-selector-matches::-webkit-scrollbar { width: 3px; }
+        .tx-selector-matches::-webkit-scrollbar-thumb { background: var(--border-s); }
+
+        .tx-selector-match-item {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            padding: 4px 8px;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .tx-selector-match-item:hover { background: var(--bg-hover); color: var(--text); }
+
+        .tx-selector-match-idx {
+            color: var(--text-muted);
+            font-size: 10px;
+            min-width: 18px;
+            flex-shrink: 0;
+        }
+        .tx-selector-match-tag  { color: var(--jade); }
+        .tx-selector-match-id   { color: #a78bfa; }
+        .tx-selector-match-cls  { color: #60a5fa; }
+        .tx-selector-match-text { color: var(--text-dim); margin-left: 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -1314,6 +1404,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                 <div class="tx-devtools-tabs">
                     <button class="tx-devtools-tab active" id="devTabNetwork" onclick="window.switchDevTab && window.switchDevTab('network')">Network <span class="tx-devtools-tab-count" id="networkCount"></span></button>
                     <button class="tx-devtools-tab" id="devTabConsole" onclick="window.switchDevTab && window.switchDevTab('console')">Console <span class="tx-devtools-tab-count" id="consoleCount"></span></button>
+                    <button class="tx-devtools-tab" id="devTabSelector" onclick="window.switchDevTab && window.switchDevTab('selector')">Selector</button>
                     <div class="tx-devtools-spacer"></div>
                     <button class="tx-network-clear-btn" id="devClearBtn" onclick="window.clearDevTab && window.clearDevTab()">Clear</button>
                 </div>
@@ -1343,6 +1434,16 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                 <div class="tx-devtab-content" id="devTabContentConsole">
                     <div class="tx-console-body" id="consoleList">
                         <div class="tx-empty-network">No console output yet</div>
+                    </div>
+                </div>
+                <div class="tx-devtab-content" id="devTabContentSelector">
+                    <div class="tx-selector-body">
+                        <div class="tx-selector-row">
+                            <input type="text" id="selectorInput" class="tx-selector-input" placeholder="CSS selector, e.g. button.primary" autocomplete="off" spellcheck="false" oninput="window.runSelectorQuery && window.runSelectorQuery(this.value)">
+                            <button class="tx-selector-clear-btn" onclick="window.clearSelectorQuery && window.clearSelectorQuery()">Clear</button>
+                        </div>
+                        <div class="tx-selector-status" id="selectorStatus"></div>
+                        <div class="tx-selector-matches" id="selectorMatches"></div>
                     </div>
                 </div>
             </div>

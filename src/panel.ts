@@ -1,4 +1,4 @@
-import { log, setLogContainer, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl } from './browser';
+import { log, setLogContainer, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc } from './browser';
 
 declare global {
   interface Window {
@@ -1027,9 +1027,9 @@ function _appendConsoleEntry(entry: ConsoleEntry) {
 
 // ── Dev panel tab / toggle ────────────────────────────────────────────────────
 
-let _activeDevTab: 'network' | 'console' = 'network';
+let _activeDevTab: 'network' | 'console' | 'selector' = 'network';
 
-function _openDevPanel(tab: 'network' | 'console') {
+function _openDevPanel(tab: 'network' | 'console' | 'selector') {
   const panel = document.getElementById('networkPanel');
   if (!panel) return;
   const alreadyOpen = panel.classList.contains('open');
@@ -1037,6 +1037,7 @@ function _openDevPanel(tab: 'network' | 'console') {
     panel.classList.remove('open');
     document.getElementById('networkToggleBtn')?.classList.remove('active');
     document.getElementById('consoleToggleBtn')?.classList.remove('active');
+    _clearSelectorHighlights();
     return;
   }
   if (!alreadyOpen) {
@@ -1047,24 +1048,32 @@ function _openDevPanel(tab: 'network' | 'console') {
   _switchDevTabInternal(tab);
 }
 
-function _switchDevTabInternal(tab: 'network' | 'console') {
+function _switchDevTabInternal(tab: 'network' | 'console' | 'selector') {
   const panel = document.getElementById('networkPanel');
   if (!panel) return;
+  if (_activeDevTab === 'selector' && tab !== 'selector') _clearSelectorHighlights();
   _activeDevTab = tab;
   panel.dataset.activeTab = tab;
   document.getElementById('devTabNetwork')?.classList.toggle('active', tab === 'network');
   document.getElementById('devTabConsole')?.classList.toggle('active', tab === 'console');
+  document.getElementById('devTabSelector')?.classList.toggle('active', tab === 'selector');
   document.getElementById('devTabContentNetwork')?.classList.toggle('active', tab === 'network');
   document.getElementById('devTabContentConsole')?.classList.toggle('active', tab === 'console');
+  document.getElementById('devTabContentSelector')?.classList.toggle('active', tab === 'selector');
   document.getElementById('networkToggleBtn')?.classList.toggle('active', tab === 'network' && panel.classList.contains('open'));
   document.getElementById('consoleToggleBtn')?.classList.toggle('active', tab === 'console' && panel.classList.contains('open'));
   if (tab === 'console') {
     _consoleErrorCount = 0;
     _updateConsoleBadge();
   }
+  if (tab === 'selector') {
+    const input = document.getElementById('selectorInput') as HTMLInputElement | null;
+    if (input?.value) _runSelectorQuery(input.value);
+    setTimeout(() => input?.focus(), 50);
+  }
 }
 
-(window as any).switchDevTab = (tab: 'network' | 'console') => _openDevPanel(tab);
+(window as any).switchDevTab = (tab: 'network' | 'console' | 'selector') => _openDevPanel(tab);
 
 (window as any).toggleNetworkPanel = () => _openDevPanel('network');
 
@@ -1073,6 +1082,8 @@ function _switchDevTabInternal(tab: 'network' | 'console') {
 (window as any).clearDevTab = () => {
   if (_activeDevTab === 'network') {
     (window as any).clearNetwork();
+  } else if (_activeDevTab === 'selector') {
+    (window as any).clearSelectorQuery();
   } else {
     _consoleEntries.length = 0;
     _consoleCounter = 0;
@@ -1081,6 +1092,109 @@ function _switchDevTabInternal(tab: 'network' | 'console') {
     if (list) list.innerHTML = '<div class="tx-empty-network">No console output yet</div>';
     _updateConsoleBadge();
   }
+};
+
+// ── Selector playground ───────────────────────────────────────────────────────
+
+const _HIGHLIGHT_CLASS = '__tx_sel_hi__';
+const _HIGHLIGHT_STYLE_ID = '__tx_sel_style__';
+
+function _ensureHighlightStyle(doc: Document) {
+  if (doc.getElementById(_HIGHLIGHT_STYLE_ID)) return;
+  const s = doc.createElement('style');
+  s.id = _HIGHLIGHT_STYLE_ID;
+  s.textContent = `.__tx_sel_hi__ { outline: 2px solid #00d084 !important; outline-offset: 1px !important; background-color: rgba(0,208,132,0.08) !important; }`;
+  (doc.head || doc.documentElement).appendChild(s);
+}
+
+function _clearSelectorHighlights() {
+  const doc = iframeDoc();
+  if (!doc) return;
+  for (const el of Array.from(doc.querySelectorAll<Element>('.' + _HIGHLIGHT_CLASS))) {
+    el.classList.remove(_HIGHLIGHT_CLASS);
+  }
+  const styleEl = doc.getElementById(_HIGHLIGHT_STYLE_ID);
+  if (styleEl) styleEl.remove();
+}
+
+function _describeElement(el: Element, idx: number): string {
+  const tag = el.tagName.toLowerCase();
+  const id = el.id ? `#${el.id}` : '';
+  const cls = Array.from(el.classList).filter(c => c !== _HIGHLIGHT_CLASS).slice(0, 3).map(c => `.${c}`).join('');
+  const text = (el.textContent || '').trim().slice(0, 40);
+  return `<span class="tx-selector-match-idx">${idx + 1}</span><span class="tx-selector-match-tag">${_esc(tag)}</span><span class="tx-selector-match-id">${_esc(id)}</span><span class="tx-selector-match-cls">${_esc(cls)}</span>${text ? `<span class="tx-selector-match-text">${_esc(text)}</span>` : ''}`;
+}
+
+function _esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _runSelectorQuery(selector: string) {
+  const input = document.getElementById('selectorInput') as HTMLInputElement | null;
+  const status = document.getElementById('selectorStatus');
+  const matchList = document.getElementById('selectorMatches');
+  if (!status || !matchList) return;
+
+  _clearSelectorHighlights();
+
+  if (!selector.trim()) {
+    status.textContent = '';
+    status.className = 'tx-selector-status';
+    matchList.innerHTML = '';
+    if (input) input.className = 'tx-selector-input';
+    return;
+  }
+
+  const doc = iframeDoc();
+  if (!doc) {
+    status.textContent = 'No page loaded in iframe';
+    status.className = 'tx-selector-status error';
+    matchList.innerHTML = '';
+    return;
+  }
+
+  let matches: Element[];
+  try {
+    matches = Array.from(doc.querySelectorAll(selector));
+    if (input) input.className = 'tx-selector-input';
+  } catch {
+    status.textContent = 'Invalid selector';
+    status.className = 'tx-selector-status error';
+    matchList.innerHTML = '';
+    if (input) input.className = 'tx-selector-input error';
+    return;
+  }
+
+  _ensureHighlightStyle(doc);
+  for (const el of matches) el.classList.add(_HIGHLIGHT_CLASS);
+
+  if (matches.length === 0) {
+    status.textContent = 'No elements matched';
+    status.className = 'tx-selector-status zero';
+    matchList.innerHTML = '';
+    return;
+  }
+
+  status.textContent = `${matches.length} element${matches.length === 1 ? '' : 's'} matched`;
+  status.className = 'tx-selector-status match';
+
+  matchList.innerHTML = matches.map((el, i) => {
+    return `<div class="tx-selector-match-item" data-idx="${i}">${_describeElement(el, i)}</div>`;
+  }).join('');
+
+  matchList.querySelectorAll<HTMLElement>('.tx-selector-match-item').forEach((row, i) => {
+    row.addEventListener('click', () => {
+      matches[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+}
+
+(window as any).runSelectorQuery = _runSelectorQuery;
+
+(window as any).clearSelectorQuery = () => {
+  const input = document.getElementById('selectorInput') as HTMLInputElement | null;
+  if (input) { input.value = ''; input.className = 'tx-selector-input'; }
+  _runSelectorQuery('');
 };
 
 function initNetworkResizer() {
