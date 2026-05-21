@@ -489,7 +489,7 @@ function createLocatorMatchers(actual: Locator) {
       const ok = expected instanceof RegExp ? expected.test(v) : v === String(expected);
       if (!ok) throw new Error(`Expected value "${v}" to equal "${expected}"`);
     }, opts?.timeout),
-    toHaveAttribute: async (name: string, value: string | RegExp, opts?: { timeout?: number }) => retry(async () => {
+    toHaveAttribute: async (name: string, value: string | RegExp = '', opts?: { timeout?: number }) => retry(async () => {
       const a = await actual.getAttribute(name) ?? '';
       const ok = value instanceof RegExp ? value.test(a) : a === String(value);
       if (!ok) throw new Error(`Expected [${name}]="${a}" to match "${value}"`);

@@ -85,7 +85,7 @@ interface LocatorAssertions {
   toHaveText(text: string | RegExp, opts?: TxTextOptions): Promise<void>;
   toContainText(text: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   toHaveValue(value: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
-  toHaveAttribute(name: string, value: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  toHaveAttribute(name: string, value?: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   toHaveCount(count: number, opts?: TxTimeoutOptions): Promise<void>;
   toHaveClass(cls: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   toHaveURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;

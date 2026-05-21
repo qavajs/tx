@@ -1599,7 +1599,7 @@ export function pwExpect(target: any) {
           throw new Error(`Expected value ${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
-    async toHaveAttribute(name: string, value: string | RegExp, opts?: { timeout?: number }) {
+    async toHaveAttribute(name: string, value: string | RegExp = '', opts?: { timeout?: number }) {
       await locAssert('toHaveAttr', async l => {
         const got = await l.getAttribute(name);
         if (!(value instanceof RegExp ? value.test(got ?? '') : got === value))
