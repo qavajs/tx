@@ -332,6 +332,7 @@ async function executeTests(
     const t0 = Date.now();
     try {
       closeExtraTabs();
+      await page.resetSession();
       for (const hook of t.setupBeforeAlls)    await Promise.resolve(hook());
       for (const hook of t.beforeEachs)         await Promise.resolve(hook());
       await Promise.resolve(t.fn());

@@ -1,307 +1,371 @@
-# 🚀 Cypress Safari - Implementation Complete
+# tx — Implementation Reference
 
-## What Has Been Built
+**tx** is a Playwright-style virtual browser testing framework that runs websites inside an iframe via the Hammerhead proxy. Tests are written in TypeScript using a `page`/`expect` API modelled after Playwright.
 
-You now have a complete **Cypress-like testing framework for Safari** with iframe injection and virtual browser capabilities.
+---
 
 ## Project Structure
 
 ```
 cypress-safari/
-├── Core Files
-│   ├── start.ts                 # Main entry point
-│   ├── wrapper.ts              # Main orchestrator
-│   ├── server.ts               # HTTP server (port 3000)
-│   ├── iframeInjector.ts       # iframe management
-│   ├── testApi.ts              # Cypress-like test API
-│   ├── controlPanel.ts         # Interactive UI generation
-│   └── types.ts                # TypeScript definitions
+├── src/
+│   ├── start.ts          # CLI entry point — config loading, arg parsing
+│   ├── wrapper.ts        # TxWrapper — starts proxy + server + watcher
+│   ├── server.ts         # HTTP server (port 3000) — serves control panel + test API
+│   ├── browser.ts        # Browser-side runtime — page, Locator, tab management
+│   ├── panel.ts          # Browser-side UI wiring — test runner panel
+│   ├── testRunner.ts     # Node.js vm sandbox test runner
+│   ├── serverPage.ts     # Server-side page API (fetch + regex HTML, no DOM)
+│   ├── watcher.ts        # esbuild file bundler + fs.watch hot-reload
+│   ├── reporter.ts       # Reporter event emitter system
+│   ├── controlPanel.ts   # HTML generator for the control panel UI
+│   ├── iframeInjector.ts # Iframe management helpers
+│   ├── testApi.ts        # Legacy test API (compatibility shim)
+│   ├── tsLoader.ts       # ts-node loader registration
+│   └── types.ts          # TxConfig, TaskHandler, and shared type definitions
 │
-├── Examples
-│   ├── basicTest.ts            # Basic element interactions
-│   ├── loginTest.ts            # Login flow test
-│   ├── shoppingTest.ts         # Shopping flow test  
-│   ├── advanced.ts             # Advanced test patterns
-│   └── configurations.ts       # Configuration examples
+├── test/
+│   ├── tx.config.js           # Project config file
+│   ├── specs/                 # Test spec files (*.spec.ts)
+│   ├── pages/                 # Page Object Model classes
+│   ├── ConsoleReporter.ts     # Built-in console reporter
+│   └── HtmlReporter.ts        # Built-in HTML report generator
 │
-├── Documentation
-│   ├── README.md               # Comprehensive guide
-│   └── QUICKREF.md             # Quick reference cheat sheet
-│
-└── Config Files
-    ├── package.json
-    └── tsconfig.json
+├── dist/                 # esbuild output (index.js, panel.js, ...)
+├── build.mjs             # esbuild build script
+├── package.json
+└── tsconfig.json
 ```
-
-## Key Features Implemented
-
-### 1. **Hammerhead Proxy Integration**
-- Proxy runs on ports 1337/1338
-- Full network interception support
-- Custom session handling
-
-### 2. **Virtual Browser (iframe)**
-- Website injected into iframe
-- Full DOM access from test code
-- Proxy URL transparent to tests
-
-### 3. **Interactive Control Panel**
-- Web-based interface at `http://localhost:3000`
-- Manual element selection
-- Interactive testing tools
-- Real-time console logging
-
-### 4. **Cypress-like Test API**
-```typescript
-await cy.wait()                          // Wait for page load
-cy.get(selector)                         // Find elements
-cy.click(selector)                       // Click elements
-cy.type(selector, text)                  // Type text
-await cy.waitForElement(selector)        // Wait for element
-```
-
-### 5. **Multiple Test Modes**
-- **Interactive**: Control panel UI with manual testing
-- **Programmatic**: Write tests in TypeScript
-- **Automated**: CI/CD pipeline support
-
-## How to Use
-
-### Quick Start (Interactive Mode)
-
-```bash
-npm start
-```
-
-Opens browser at `http://localhost:3000` with:
-- Visual virtual browser
-- Selector tools
-- Action executor
-- Element inspector
-- Live console
-
-### Run Example Tests
-
-```bash
-npm run test:basic      # Basic interactions
-npm run test:login      # Login flow
-npm run test:shopping   # Shopping cart
-```
-
-### Write Custom Tests
-
-```typescript
-import { CypressSafariWrapper } from './wrapper';
-
-async function myTest() {
-    const wrapper = new CypressSafariWrapper({
-        targetUrl: 'https://www.saucedemo.com/',
-    });
-
-    try {
-        const cy = await wrapper.start();
-        
-        // Wait for page to load
-        await cy.wait(5000);
-        
-        // Test your interactions
-        cy.type('[data-test="username"]', 'standard_user');
-        cy.click('[data-test="login-button"]');
-        
-        // Verify results
-        const url = cy.url();
-        console.log(`Logged in! URL: ${url}`);
-        
-        await wrapper.stop();
-    } catch (error) {
-        console.error('Test failed:', error);
-        await wrapper.stop();
-    }
-}
-
-myTest();
-```
-
-Run with: `ts-node myTest.ts`
-
-## Test API Methods
-
-### Navigation
-- `await cy.wait(timeout?)` - Wait for iframe to load
-- `cy.visit(url)` - Navigate to URL
-- `cy.reload()` - Reload page
-- `cy.url()` - Get current URL
-- `cy.title()` - Get page title
-
-### Elements
-- `cy.get(selector)` - Find all matching elements
-- `cy.find(selector)` - Find first matching element
-- `cy.text(selector)` - Get element text
-- `cy.attr(selector, name)` - Get attribute value
-- `cy.isVisible(selector)` - Check visibility
-
-### Interactions
-- `cy.click(selector)` - Click element
-- `cy.type(selector, text)` - Type text into element
-
-### Waiting
-- `await cy.waitForElement(selector, timeout?)` - Wait for element
-- `await cy.waitForElementToDisappear(selector, timeout?)` - Wait to disappear
-
-### Advanced
-- `cy.execute(fn, ...args)` - Execute code in iframe context
-- `cy.screenshot(selector?)` - Get element bounds
-
-## Control Panel Features
-
-### Navigation Bar
-- Enter and navigate to URLs
-- Reload button
-- URL display
-
-### Selector Tools
-- CSS selector input
-- Find button to locate elements
-- Element count display
-- Visual highlighting
-
-### Actions
-- Click selected elements
-- Type text into fields
-- Quick action buttons
-
-### Inspector
-- Toggle inspector mode
-- Click elements to inspect
-- View tag, class, id
-- Element details display
-
-### Console
-- Real-time action logging
-- Error messages
-- Success indicators
-- Full command history
-
-## Architecture Overview
-
-```
-User's Test Code
-      ↓
-CypressSafariWrapper (orchestrator)
-      ├→ Hammerhead Proxy (1337/1338)
-      ├→ TestApi (Cypress-like interface)
-      ├→ IframeInjector (DOM management)
-      └→ TestServer (HTTP 3000)
-            ↓
-      Control Panel (HTML/JS)
-            ↓
-      Virtual Browser (iframe)
-            ↓
-      Target Website (via proxy)
-```
-
-## Configuration Options
-
-```typescript
-new CypressSafariWrapper({
-    // Target site to test
-    targetUrl: 'https://example.com',
-    
-    // Proxy settings
-    proxyHost: 'localhost',
-    port1: 1337,
-    port2: 1338,
-    
-    // Control panel
-    controlPanelPort: 3000,
-    
-    // Run headless (no browser UI)
-    headless: false,
-})
-```
-
-## Example Use Cases
-
-### E2E Testing
-```typescript
-const cy = await wrapper.start();
-cy.type('#username', 'user');
-cy.type('#password', 'pass');
-cy.click('#login');
-await cy.waitForElement('#dashboard');
-```
-
-### Form Validation
-```typescript
-cy.type('#email', 'invalid@');
-cy.click('#validate');
-const error = cy.text('.error-message');
-console.log('Error:', error);
-```
-
-### Shopping Flow
-```typescript
-const items = cy.get('[data-test="product"]');
-cy.click(items[0]); // First item
-cy.click('#add-to-cart');
-cy.click('#checkout');
-```
-
-## Development Workflow
-
-1. **Manual Testing**: Start control panel, interact visually
-2. **Identify Selectors**: Use inspector tool in control panel
-3. **Write Tests**: Create test scripts using identified selectors
-4. **Automate**: Run tests programmatically with `ts-node`
-5. **CI/CD**: Run in headless mode in your pipeline
-
-## Performance Tips
-
-- Use `waitForElement()` for dynamic content
-- Keep timeout values reasonable (3000-5000ms typical)
-- Run tests headless in CI/CD for speed
-- Use specific selectors (avoid `*` where possible)
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Element not found | Use `waitForElement()` instead of `get()` |
-| iframe not loading | Increase timeout: `await cy.wait(10000)` |
-| Click not working | Verify visibility: `cy.isVisible(selector)` |
-| URL unchanged | Add delay after navigation |
-| Proxy connection error | Check ports 1337/1338 are available |
-
-## Next Steps
-
-1. **Run Interactive Mode**: `npm start` to explore the control panel
-2. **Try Examples**: Run `npm run test:login` to see a test in action
-3. **Inspect Elements**: Use the control panel to find selectors
-4. **Write Tests**: Create your own test files
-5. **Automate**: Integrate with your CI/CD pipeline
-
-## Files Reference
-
-| File | Purpose |
-|------|---------|
-| [README.md](README.md) | Full documentation |
-| [QUICKREF.md](QUICKREF.md) | Quick API reference |
-| [start.ts](start.ts) | Entry point |
-| [wrapper.ts](wrapper.ts) | Main orchestrator |
-| [testApi.ts](testApi.ts) | Test API implementation |
-| [examples/basicTest.ts](examples/basicTest.ts) | Simple test example |
-| [examples/loginTest.ts](examples/loginTest.ts) | Login test example |
-| [examples/advanced.ts](examples/advanced.ts) | Advanced patterns |
-
-## Getting Help
-
-- Check [QUICKREF.md](QUICKREF.md) for API quick reference
-- Review examples in `examples/` directory
-- Check [README.md](README.md) for detailed documentation
-- Look at test files for implementation patterns
 
 ---
 
-**Happy Testing! 🎉**
+## Architecture
 
-Your Cypress-like testing framework is ready to use. Start with `npm start` to explore the interactive control panel.
+```
+CLI (start.ts)
+  └── TxWrapper (wrapper.ts)
+        ├── Hammerhead Proxy      ports 1337 / 1338
+        ├── TestServer (server.ts) port 3000
+        │     ├── GET /           → control panel HTML
+        │     ├── GET /panel.js   → bundled browser runtime
+        │     ├── GET /mock       → blank page served through proxy
+        │     ├── POST /api/run-test
+        │     ├── POST /api/task
+        │     ├── GET /api/tests
+        │     └── GET /api/version
+        └── Watcher (watcher.ts)
+              └── esbuild bundles *.spec.ts → browser IIFE modules
+```
+
+At startup the proxy opens two sessions:
+
+- **Proxy session** — wraps the target website URL through Hammerhead.
+- **Control panel session** — wraps `http://localhost:3000` so the control panel loads through the proxy, bypassing CSP restrictions.
+
+---
+
+## Test File Format
+
+Tests are standard `describe` / `it` / `test` blocks, identical to Playwright/Jest:
+
+```typescript
+describe('Login flow', () => {
+  beforeEach(async () => { /* ... */ });
+
+  it('logs in with valid credentials', async () => {
+    await page.goto('https://www.saucedemo.com');
+    await page.getByTestId('username').fill('standard_user');
+    await page.getByTestId('password').fill('secret_sauce');
+    await page.getByTestId('login-button').click();
+    await page.waitForURL(/inventory/);
+    await expect(page.locator('[data-test="title"]')).toHaveText('Products');
+  });
+});
+```
+
+`page` and `expect` are available as globals. Fixtures are supported via `test.extend()`.
+
+---
+
+## page API
+
+### Navigation
+| Method | Description |
+|--------|-------------|
+| `page.goto(url)` | Navigate to URL (returns Promise) |
+| `page.reload()` | Reload the current page |
+| `page.url()` | Return current URL (real URL, proxy prefix stripped) |
+| `page.title()` | Return current page title |
+| `page.waitForURL(urlOrRegExp, opts?)` | Wait until URL matches |
+| `page.waitForSelector(selector, opts?)` | Wait for element, returns Locator |
+| `page.waitForTimeout(ms)` | Explicit delay |
+| `page.evaluate(fn, ...args)` | Execute function in iframe context |
+| `page.addInitScript(fnOrScript)` | Inject script on every page load |
+
+### Locator factories
+| Method | Description |
+|--------|-------------|
+| `page.locator(selector)` | CSS selector + `:has-text()` pseudo-class |
+| `page.getByText(text, opts?)` | Match by text content |
+| `page.getByRole(role, opts?)` | Match by ARIA role (+ optional `name`) |
+| `page.getByLabel(text, opts?)` | Match by associated `<label>` or `aria-label` |
+| `page.getByPlaceholder(text)` | Match by placeholder attribute |
+| `page.getByTestId(id)` | Match by `data-testid` or `data-test` attribute |
+| `page.getByAltText(text)` | Match by `alt` attribute |
+| `page.getByTitle(text)` | Match by `title` attribute |
+| `page.frameLocator(selector)` | Scope subsequent queries to a sub-frame |
+
+### Keyboard & Mouse
+| Method | Description |
+|--------|-------------|
+| `page.keyboard.press(key)` | Press a key on the focused element |
+| `page.keyboard.type(text, opts?)` | Type text character by character |
+| `page.mouse.move(x, y)` | Move mouse pointer |
+| `page.mouse.click(x, y, opts?)` | Click at coordinates |
+
+### Events
+| Event | Description |
+|-------|-------------|
+| `page.on('console', fn)` | Forward iframe console messages |
+| `page.on('pageerror', fn)` | Uncaught errors and unhandled rejections |
+| `page.on('dialog', fn)` | alert / confirm / prompt intercept |
+| `page.on('popup', fn)` | New tab opened via `window.open` or `target="_blank"` |
+| `page.on('request', fn)` | Every fetch / XHR request |
+| `page.on('response', fn)` | Every fetch / XHR response |
+| `page.on('requestfinished', fn)` | Request completed |
+| `page.on('requestfailed', fn)` | Request failed |
+| `page.on('download', fn)` | Download link clicked |
+| `page.on('filechooser', fn)` | File input activated |
+| `page.on('websocket', fn)` | WebSocket opened |
+| `page.on('worker', fn)` | Web Worker created |
+| `page.on('frameattached/detached/navigated', fn)` | Sub-frame lifecycle |
+
+---
+
+## Locator API
+
+A `Locator` is lazy — it re-queries the DOM on every call. All action methods automatically wait for the element to be visible, enabled, stable, and receiving events (up to `timeout`, default 5 s).
+
+### Chaining
+```typescript
+page.locator('ul li').nth(2)
+page.locator('.item').first()
+page.locator('.item').last()
+page.locator('.item').filter({ hasText: 'Add to cart' })
+page.locator('form').locator('input[type="email"]')
+```
+
+### Actions
+| Method | Notes |
+|--------|-------|
+| `.click(opts?)` | Dispatches mouseover → mousedown → mouseup → click |
+| `.dblclick(opts?)` | |
+| `.rightClick(opts?)` | Dispatches contextmenu |
+| `.fill(value, opts?)` | Clears field then types, fires React/Vue-compatible events |
+| `.clear(opts?)` | Alias for `.fill('')` |
+| `.type(text, opts?)` | Appends text character by character |
+| `.press(key, opts?)` | Keyboard events + form submit on Enter |
+| `.selectOption(value, opts?)` | `<select>` value or text |
+| `.check(opts?)` / `.uncheck(opts?)` | Checkbox / radio |
+| `.focus(opts?)` | |
+| `.hover(opts?)` | |
+| `.scrollIntoViewIfNeeded(opts?)` | |
+| `.setInputFiles(files, opts?)` | File input (path string or `{ name, mimeType, buffer }`) |
+
+### Queries
+| Method | Returns |
+|--------|---------|
+| `.textContent()` | `Promise<string \| null>` |
+| `.innerText()` | `Promise<string>` |
+| `.inputValue()` | `Promise<string>` |
+| `.getAttribute(name)` | `Promise<string \| null>` |
+| `.isVisible()` | `Promise<boolean>` |
+| `.isHidden()` | `Promise<boolean>` |
+| `.isEnabled()` | `Promise<boolean>` |
+| `.isDisabled()` | `Promise<boolean>` |
+| `.isChecked()` | `Promise<boolean>` |
+| `.isEditable()` | `Promise<boolean>` |
+| `.count()` | `Promise<number>` |
+| `.waitFor(opts?)` | Wait for `state: 'visible' \| 'hidden' \| 'attached' \| 'detached'` |
+
+---
+
+## expect() Matchers
+
+```typescript
+expect(value).toBe(expected)
+expect(value).toEqual(expected)
+expect(value).toBeTruthy()
+expect(value).toBeFalsy()
+expect(value).toBeNull()
+expect(value).toBeUndefined()
+expect(value).toContain(substring)
+expect(value).toMatch(regexpOrString)
+expect(number).toBeGreaterThan(n)
+expect(number).toBeLessThan(n)
+expect(array).toHaveLength(n)
+expect(fn).toThrow()
+```
+
+Locator-based async matchers (auto-retry until timeout):
+```typescript
+await expect(locator).toHaveText(text, opts?)
+await expect(locator).toContainText(text, opts?)
+await expect(locator).toHaveValue(value)
+await expect(locator).toHaveCount(n, opts?)
+await expect(locator).toBeVisible(opts?)
+await expect(locator).toBeHidden(opts?)
+await expect(locator).toBeEnabled(opts?)
+await expect(locator).toBeDisabled(opts?)
+await expect(locator).toBeChecked(opts?)
+await expect(locator).toHaveAttribute(name, value?)
+await expect(page).toHaveURL(urlOrRegExp, opts?)
+await expect(page).toHaveTitle(titleOrRegExp, opts?)
+```
+
+---
+
+## browser API
+
+```typescript
+const newPage = await browser.newPage()   // Open a new tab
+await browser.closeTab(tabId)             // Close a tab
+browser.closeExtraTabs()                  // Close all tabs except the first
+const result = await browser.task('readFile', { path: './data.json' })
+```
+
+`browser.task()` calls a named handler registered in `tx.config.js` under `tasks`, running in the Node.js context.
+
+---
+
+## Configuration (tx.config.js)
+
+```javascript
+module.exports = {
+  proxyHost: 'localhost',
+  port1: 1337,              // Hammerhead proxy port 1
+  port2: 1338,              // Hammerhead proxy port 2
+  controlPanelPort: 3000,   // Control panel HTTP port
+  headless: false,          // Skip opening the browser
+  testFiles: ['./specs/**/*.spec.ts'],  // Glob patterns
+  grep: 'login',            // Filter tests by name (string or /regexp/flags)
+  viewport: { width: 1600, height: 900 },
+  testMode: false,          // Run all tests then exit with code 0/1
+  snapshot: false,          // Capture DOM snapshots after each command
+  reporters: [
+    ['./ConsoleReporter.ts', {}],
+    ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
+  ],
+  tasks: {
+    readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
+    dirname:  () => __dirname,
+  },
+};
+```
+
+---
+
+## Running Tests
+
+```bash
+# Interactive mode — opens browser, hot-reloads on file change
+npm start
+
+# Test mode — runs all specs, exits 0 on pass / 1 on failure
+npm test
+
+# Build only
+node build.mjs
+
+# Typecheck
+npm run typecheck
+```
+
+CLI overrides:
+```bash
+node dist/index.js --config test/tx.config.js
+node dist/index.js --config test/tx.config.js --test
+node dist/index.js --config test/tx.config.js --grep login
+node dist/index.js --headless true
+```
+
+---
+
+## Reporter API
+
+Custom reporters implement the `Reporter` interface from `src/reporter.ts`:
+
+```typescript
+import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from '../src/reporter';
+
+export class MyReporter implements Reporter {
+  onBegin(config: FullConfig, suite: Suite): void { }
+  onTestBegin(test: TestCase, result: TestResult): void { }
+  onTestEnd(test: TestCase, result: TestResult): void { }
+  onEnd(result: FullResult): void { }
+}
+```
+
+Register in `tx.config.js` under `reporters` as `['./MyReporter.ts', { ...config }]`.
+
+---
+
+## Snapshot Mode
+
+When `snapshot: true` is set in config, the framework captures a full computed-style DOM snapshot after each destructive command (`click`, `fill`, `goto`, etc.). Snapshots appear as camera badges in the command log and can be opened in an overlay for visual diffing.
+
+---
+
+## Fixtures
+
+Tests can use Playwright-style fixtures via `test.extend()`:
+
+```typescript
+import { test as base } from 'tx';
+
+const test = base.extend({
+  loggedIn: async ({ page }, use) => {
+    await page.goto('https://example.com');
+    await page.getByLabel('Username').fill('admin');
+    await page.getByLabel('Password').fill('secret');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await use(page);
+  },
+});
+
+test('sees dashboard', async ({ loggedIn }) => {
+  await expect(loggedIn.getByRole('heading')).toHaveText('Dashboard');
+});
+```
+
+---
+
+## Page Object Model
+
+```typescript
+// test/pages/LoginPage.ts
+export class LoginPage {
+  constructor(private page: typeof page) {}
+
+  async goto() { await this.page.goto('https://www.saucedemo.com'); }
+
+  async login(username: string, password: string) {
+    await this.page.getByTestId('username').fill(username);
+    await this.page.getByTestId('password').fill(password);
+    await this.page.getByTestId('login-button').click();
+  }
+
+  async waitForInventory() {
+    await this.page.waitForURL(/inventory/);
+  }
+}
+```
+
+---
+
+## Limitations
+
+- Runs in a single browser window (Safari on macOS via the system `open` command).
+- Cross-origin sub-frames inside the target site are not accessible (sandboxed by the browser).
+- No built-in screenshot/PDF capture — snapshotting is DOM-based (computed styles, no rasterization).
+- Hammerhead proxies HTTP/HTTPS; WebSocket traffic passes through but is not interceptable at the network level.

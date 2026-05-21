@@ -620,6 +620,7 @@ export class Locator {
       // Use the iframe's own constructors so events are trusted by page scripts
       const KE = win.KeyboardEvent as typeof KeyboardEvent;
       const E  = win.Event        as typeof Event;
+      const IE = (win.InputEvent ?? win.Event) as typeof InputEvent;
 
       // Native value setter — required for React/Vue controlled inputs
       const tag    = el.tagName;
@@ -627,43 +628,52 @@ export class Locator {
       const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
       const setVal = (v: string) => { if (setter) setter.call(el, v); else (el as any).value = v; };
 
-      // Helper: build keyboard event init for a single character
-      const kInit = (ch: string) => {
-        const code    = ch === ' ' ? 32 : ch.charCodeAt(0);
-        const isAlpha = /[a-zA-Z]/.test(ch);
-        return {
-          key:        ch,
-          code:       ch === ' ' ? 'Space' : isAlpha ? 'Key' + ch.toUpperCase() : 'Unidentified',
-          keyCode:    isAlpha ? ch.toUpperCase().charCodeAt(0) : code,
-          charCode:   code,
-          which:      isAlpha ? ch.toUpperCase().charCodeAt(0) : code,
-          bubbles:    true,
-          cancelable: true,
-        };
+      // Map a character to its DOM KeyboardEvent.code value
+      const KEY_CODE_MAP: Record<string, string> = {
+        ' ': 'Space', '.': 'Period', ',': 'Comma', '-': 'Minus', '=': 'Equal',
+        '[': 'BracketLeft', ']': 'BracketRight', '\\': 'Backslash',
+        ';': 'Semicolon', "'": 'Quote', '`': 'Backquote', '/': 'Slash',
+      };
+      const charToCode = (ch: string): string => {
+        if (/[a-zA-Z]/.test(ch)) return 'Key' + ch.toUpperCase();
+        if (/[0-9]/.test(ch))    return 'Digit' + ch;
+        return KEY_CODE_MAP[ch] ?? 'Unidentified';
+      };
+
+      // keydown/keyup: charCode is always 0; keypress carries the actual charCode
+      const kDown = (ch: string) => {
+        const raw = ch.charCodeAt(0);
+        const kc  = /[a-zA-Z]/.test(ch) ? ch.toUpperCase().charCodeAt(0) : raw;
+        return { key: ch, code: charToCode(ch), keyCode: kc, charCode: 0, which: kc, bubbles: true, cancelable: true };
+      };
+      const kPress = (ch: string) => {
+        const raw = ch.charCodeAt(0);
+        return { key: ch, code: charToCode(ch), keyCode: raw, charCode: raw, which: raw, bubbles: true, cancelable: true };
       };
 
       el.focus();
-      el.dispatchEvent(new E('focus', { bubbles: true }));
+      el.dispatchEvent(new E('focus',   { bubbles: false }));
+      el.dispatchEvent(new E('focusin', { bubbles: true  }));
 
-      // Clear existing value with a select-all + delete sequence
+      // Clear existing value
       setVal('');
-      el.dispatchEvent(new E('input', { bubbles: true }));
+      el.dispatchEvent(new IE('input', { bubbles: true, cancelable: false, inputType: 'deleteContent' } as any));
 
       // Type character by character
       let current = '';
       for (const ch of value) {
-        const ki = kInit(ch);
-        el.dispatchEvent(new KE('keydown',  ki));
-        el.dispatchEvent(new KE('keypress', ki));
+        el.dispatchEvent(new KE('keydown',  kDown(ch)));
+        el.dispatchEvent(new KE('keypress', kPress(ch)));
         current += ch;
         setVal(current);
-        el.dispatchEvent(new E('input', { bubbles: true }));
-        el.dispatchEvent(new KE('keyup', ki));
+        el.dispatchEvent(new IE('input', { bubbles: true, cancelable: false, inputType: 'insertText', data: ch } as any));
+        el.dispatchEvent(new KE('keyup', kDown(ch)));
         if (delay > 0) await new Promise(r => setTimeout(r, delay));
       }
 
-      el.dispatchEvent(new E('change', { bubbles: true }));
-      el.dispatchEvent(new E('blur',   { bubbles: true }));
+      el.dispatchEvent(new E('change',   { bubbles: true  }));
+      el.dispatchEvent(new E('blur',     { bubbles: false }));
+      el.dispatchEvent(new E('focusout', { bubbles: true  }));
       entry.success();
     } catch (error: any) {
       entry.fail(error?.message ?? String(error));
@@ -1780,6 +1790,40 @@ export const page = {
   removeLocatorHandler(locator: Locator): void {
     const i = _locatorHandlers.findIndex(h => h.locator === locator);
     if (i >= 0) _locatorHandlers.splice(i, 1);
+  },
+
+  async resetSession(): Promise<void> {
+    _locatorHandlers.length = 0;
+    _pageListeners.clear();
+
+    try {
+      const win = iframeWin() as any;
+      const doc = iframeDoc() as any;
+      if (win) {
+        try { win.localStorage.clear(); } catch { /* cross-origin */ }
+        try { win.sessionStorage.clear(); } catch { /* cross-origin */ }
+      }
+      if (doc) {
+        try {
+          const hostname = win?.location?.hostname ?? '';
+          for (const cookie of doc.cookie.split(';')) {
+            const name = cookie.split('=')[0].trim();
+            if (!name) continue;
+            const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+            doc.cookie = base;
+            if (hostname) doc.cookie = `${base}; domain=${hostname}`;
+          }
+        } catch { /* cross-origin or HttpOnly */ }
+      }
+    } catch { /* ignore */ }
+
+    const tab = _activeTab();
+    if (!tab) return;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('resetSession: blank page load timed out')), 10_000);
+      tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+      tab.iframe.src = API_BASE + '/mock';
+    });
   },
 
   async close(): Promise<void> {

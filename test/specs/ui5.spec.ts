@@ -3,11 +3,8 @@ describe('UI5', () => {
         await page.goto('https://ui5.sap.com/test-resources/sap/m/demokit/cart/webapp/index.html?sap-ui-theme=sap_horizon_dark#');
         await page.locator('[role="listitem"][id*=category][title="Open category Keyboards"]').click();
         await page.locator('[title="Open details for Internet Keyboard"]').click();
-        //await page.locator('[aria-label="Product Footer"] button').click();
-        await page.waitForTimeout(5000);
-        console.log(page.locator('[aria-label="Show Shopping Cart"]'));
-        console.log(await page.locator('[aria-label="Show Shopping Cart"]').isVisible());
-        await page.locator('[aria-label="Show Shopping Cart"]').click();
+        await page.locator('[aria-label="Product Footer"] button').click();
+        await page.locator('[aria-label="Product Header"] [aria-label="Show Shopping Cart"]').click();
         await page.locator('[data-sap-ui="container-cart---cartView--proceedButton"]').click();
         await page.locator('[data-sap-ui="container-cart---checkoutView--contentsStep-nextButton"]').click();
         await page.locator('[data-sap-ui="container-cart---checkoutView--paymentTypeStep-nextButton"]').click();
