@@ -28,17 +28,20 @@ window.testApi = testApi;
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 
+let _activeTestLog: HTMLElement | null = null;
+
 function activateTestLog(filename: string, fullName: string) {
   const key = escAttr(filename + '\x01' + fullName);
   const el = document.getElementById('tlog-' + key) as HTMLElement | null;
   if (!el) return;
   el.innerHTML = '';
   el.classList.add('open');
+  _activeTestLog = el;
   setLogContainer(el);
 }
 
 function appendErrorToLog(error: string) {
-  const el = document.querySelector<HTMLElement>('.tx-test-log.open');
+  const el = _activeTestLog;
   if (!el) return;
   const firstLine = error.split('\n')[0];
   const child = document.createElement('div');
@@ -384,8 +387,6 @@ async function executeTests(
       results.push({ name: t.name, passed: true, duration: dur });
       if (filename) {
         setTestItemStatus(filename, t.name, 'pass', dur);
-        const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
-        if (logEl?.children.length === 0) logEl.classList.remove('open');
       }
     } catch (e: any) {
       const dur = Date.now() - t0;
@@ -393,7 +394,12 @@ async function executeTests(
       if (filename) setTestItemStatus(filename, t.name, 'fail', dur);
       appendErrorToLog(e.stack || e.message);
     } finally {
+      if (filename) {
+        const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
+        logEl?.classList.remove('open');
+      }
       setLogContainer(null);
+      _activeTestLog = null;
     }
   }
   return results;
