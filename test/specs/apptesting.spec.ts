@@ -160,4 +160,16 @@ describe('windows', () => {
         expect(page.locator('#new-tab-link')).toBeVisible();
     });
 
+    test('iframe', async ({ browser, page, expect }) => {
+        const iframe = page.frameLocator('[title="Test Iframe"]');
+        await iframe.locator('#iframe-btn').click();
+        await iframe.locator('#iframe-input').fill('iframe input');
+    });
+
+        test('nested iframe', async ({ browser, page, expect }) => {
+        const outerIframe = page.frameLocator('[title="Nested Iframe"]');
+        const iframe = outerIframe.frameLocator('#inner-iframe');
+        await iframe.locator('#iframe-btn').click();
+        await iframe.locator('#iframe-input').fill('iframe input');
+    });
 });
