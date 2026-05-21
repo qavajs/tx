@@ -1295,7 +1295,7 @@ function initNetworkResizer() {
 }
 
 function initNetworkListeners() {
-  page.on('request', (req: any) => {
+  page.onPermanent('request', (req: any) => {
     const rawBody = req.postData();
     const requestBody: string | null = rawBody == null ? null
       : typeof rawBody === 'string' ? rawBody
@@ -1323,7 +1323,7 @@ function initNetworkListeners() {
     _appendNetworkEntry(entry);
   });
 
-  page.on('response', (resp: any) => {
+  page.onPermanent('response', (resp: any) => {
     const entry = _reqMap.get(resp.request());
     if (!entry) return;
     entry.status = resp.status();
@@ -1333,7 +1333,7 @@ function initNetworkListeners() {
     _refreshNetworkRow(entry);
   });
 
-  page.on('requestfinished', (req: any) => {
+  page.onPermanent('requestfinished', (req: any) => {
     const entry = _reqMap.get(req);
     if (!entry) return;
     entry.duration = Date.now() - entry.startTime;
@@ -1341,7 +1341,7 @@ function initNetworkListeners() {
     _refreshNetworkRow(entry);
   });
 
-  page.on('requestfailed', (req: any) => {
+  page.onPermanent('requestfailed', (req: any) => {
     const entry = _reqMap.get(req);
     if (!entry) return;
     entry.duration = Date.now() - entry.startTime;
@@ -1357,7 +1357,7 @@ function initNetworkListeners() {
     if (id) _openNetworkDetail(id);
   });
 
-  page.on('console', (msg: any) => {
+  page.onPermanent('console', (msg: any) => {
     const level = msg.type?.() ?? 'log';
     const entry: ConsoleEntry = {
       id: ++_consoleCounter,
@@ -1371,7 +1371,7 @@ function initNetworkListeners() {
     _appendConsoleEntry(entry);
   });
 
-  page.on('pageerror', (err: Error) => {
+  page.onPermanent('pageerror', (err: Error) => {
     const entry: ConsoleEntry = {
       id: ++_consoleCounter,
       level: 'pageerror',

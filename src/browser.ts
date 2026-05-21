@@ -949,8 +949,12 @@ async function _checkLocatorHandlers(): Promise<void> {
 // ── Page event system ─────────────────────────────────────────────────────────
 
 const _pageListeners = new Map<string, Set<(...args: any[]) => any>>();
+const _permanentPageListeners = new Map<string, Set<(...args: any[]) => any>>();
 
 function _emitPage(event: string, ...args: any[]): void {
+  for (const fn of _permanentPageListeners.get(event) ?? []) {
+    try { fn(...args); } catch (e) { console.error(`page.on('${event}') handler error:`, e); }
+  }
   for (const fn of _pageListeners.get(event) ?? []) {
     try { fn(...args); } catch (e) { console.error(`page.on('${event}') handler error:`, e); }
   }
@@ -1713,6 +1717,12 @@ export const page = {
 
   on(event: string, fn: (...args: any[]) => any) {
     _addPageListener(event, fn);
+    return page;
+  },
+
+  onPermanent(event: string, fn: (...args: any[]) => any) {
+    if (!_permanentPageListeners.has(event)) _permanentPageListeners.set(event, new Set());
+    _permanentPageListeners.get(event)!.add(fn);
     return page;
   },
 
