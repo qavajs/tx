@@ -276,8 +276,11 @@ const LOG_STATE: Record<LogState, { icon: string }> = {
   fail:    { icon: '✗' },
 };
 
+let _logContainer: HTMLElement | null = null;
+export function setLogContainer(el: HTMLElement | null) { _logContainer = el; }
+
 function createLogEntry(message: string, state: LogState, cmd?: string, duration?: number) {
-  const container = document.getElementById('console');
+  const container = _logContainer ?? document.getElementById('console');
   if (!container) return null;
   const cls   = state;
   const icon  = LOG_STATE[state].icon;
@@ -343,10 +346,13 @@ export function logCommand(message: string, cmd: string) {
             entry.dataset.snapshotId = String(snapshotId);
             entry.title = 'Click to open snapshot';
             entry.classList.add('has-snapshot');
+            entry.onclick = () => {
+              const id = Number(entry.dataset.snapshotId);
+              if (id && (window as any).openSnapshot) (window as any).openSnapshot(id);
+            };
             if (!entry.querySelector('.tx-cmd-snapshot-badge')) {
               const badge = document.createElement('span');
               badge.className = 'tx-cmd-snapshot-badge';
-              badge.textContent = '';
               badge.title = 'Snapshot available';
               const durEl = entry.querySelector<HTMLElement>('.tx-cmd-dur');
               entry.insertBefore(badge, durEl || null);

@@ -1,4 +1,4 @@
-import { log, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots } from './browser';
+import { log, setLogContainer, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots } from './browser';
 
 declare global {
   interface Window {
@@ -25,38 +25,38 @@ window.testApi = testApi;
 (window as any).browser = browser;
 (window as any).tx      = { page, expect: pwExpect, browser, ...testApi };
 
-// ── Command Log (panel UI) ────────────────────────────────────────────────────
+// ── Inline test log ───────────────────────────────────────────────────────────
 
-function logSection(title: string) {
-  const container = document.getElementById('console');
-  if (!container) return;
-  const hdr = document.createElement('div');
-  hdr.className = 'tx-log-section';
-  hdr.textContent = title;
-  container.appendChild(hdr);
-  container.scrollTop = container.scrollHeight;
+function activateTestLog(filename: string, fullName: string) {
+  const key = escAttr(filename + '\x01' + fullName);
+  const el = document.getElementById('tlog-' + key) as HTMLElement | null;
+  if (!el) return;
+  el.innerHTML = '';
+  el.classList.add('open');
+  setLogContainer(el);
 }
 
-function logResult(t: TestResult) {
-  const container = document.getElementById('console');
-  if (!container) return;
-  const cls  = t.passed ? 'pass' : 'fail';
-  const icon = t.passed ? '✓'   : '✗';
-  const entry = document.createElement('div');
-  entry.className = `tx-cmd ${cls}`;
-  const iconEl = document.createElement('span'); iconEl.className = `tx-cmd-icon ${cls}`; iconEl.textContent = icon;
-  const firstLine = t.error ? t.error.split('\n')[0] : '';
-  const msgEl  = document.createElement('span'); msgEl.className  = 'tx-cmd-msg';  msgEl.textContent = t.name + (firstLine ? '  —  ' + firstLine : '');
-  const durEl  = document.createElement('span'); durEl.className  = 'tx-cmd-dur';  durEl.textContent = t.duration + 'ms';
-  entry.appendChild(iconEl); entry.appendChild(msgEl); entry.appendChild(durEl);
-  container.appendChild(entry);
-  if (!t.passed && t.error && t.error.includes('\n')) {
+function appendErrorToLog(error: string) {
+  const el = document.querySelector<HTMLElement>('.tx-test-log.open');
+  if (!el) return;
+  const firstLine = error.split('\n')[0];
+  const child = document.createElement('div');
+  child.className = 'tx-cmd tx-cmd--result tx-cmd--child fail';
+  child.innerHTML =
+    '<div class="tx-cmd-num"></div>' +
+    '<div class="tx-cmd-expander-col"></div>' +
+    '<div class="tx-cmd-pin">' +
+      '<span class="tx-cmd-method tx-cmd-method--child">assert</span>' +
+      '<span class="tx-cmd-msg tx-cmd-msg--error">' + escHtml(firstLine) + '</span>' +
+    '</div>';
+  el.appendChild(child);
+  if (error.includes('\n')) {
     const stackEl = document.createElement('pre');
     stackEl.className = 'tx-cmd-stack';
-    stackEl.textContent = t.error;
-    container.appendChild(stackEl);
+    stackEl.textContent = error;
+    el.appendChild(stackEl);
   }
-  container.scrollTop = container.scrollHeight;
+  el.scrollTop = el.scrollHeight;
 }
 
 // ── Spec card helpers ─────────────────────────────────────────────────────────
@@ -102,6 +102,8 @@ function resetTestItems(filename: string) {
     .forEach(el => { el.className = 'tx-test-badge'; el.textContent = ''; });
   card?.querySelectorAll<HTMLElement>('.tx-suite-badges')
     .forEach(el => { el.innerHTML = ''; });
+  card?.querySelectorAll<HTMLElement>('.tx-test-log')
+    .forEach(el => { el.innerHTML = ''; el.classList.remove('open'); });
 }
 
 function refreshSuiteBadge(filename: string, suiteName: string) {
@@ -153,15 +155,30 @@ async function loadTestList() {
 
 function renderTestItemHtml(filename: string, suite: string, name: string): string {
   const fullName = suite === '(root)' ? name : suite + ' > ' + name;
+  const stateIcons =
+    '<svg class="tx-state-svg tx-state-svg--idle" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
+      '<path d="M5 8h6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>' +
+    '</svg>' +
+    '<svg class="tx-state-svg tx-state-svg--pass" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
+      '<path d="M4 8.667L7.333 12L12 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '</svg>' +
+    '<svg class="tx-state-svg tx-state-svg--fail" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
+      '<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+    '</svg>' +
+    '<svg class="tx-state-svg tx-state-svg--running" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
+      '<circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="2"/>' +
+    '</svg>';
+  const key = escAttr(filename + '\x01' + fullName);
   return '<div class="tx-test-item"' +
-    ' data-testkey="' + escAttr(filename + '\x01' + fullName) + '"' +
+    ' data-testkey="' + key + '"' +
     ' data-suite="' + escHtml(suite) + '"' +
     ' data-fullname="' + escHtml(fullName) + '">' +
-    '<span class="tx-test-dot"></span>' +
+    '<span class="tx-test-dot">' + stateIcons + '</span>' +
     '<span class="tx-test-name">' + escHtml(name) + '</span>' +
     '<span class="tx-test-badge"></span>' +
     '<button class="tx-test-run-btn" onclick="event.stopPropagation();window.runTest(' + jsq(filename) + ',' + jsq(fullName) + ')">&#9654;</button>' +
-  '</div>';
+  '</div>' +
+  '<div class="tx-test-log" id="tlog-' + key + '"></div>';
 }
 
 function renderSuiteHtml(filename: string, suite: string, names: string[]): string {
@@ -290,7 +307,10 @@ async function executeTests(
 
   const results: TestResult[] = [];
   for (const t of queue) {
-    if (filename) setTestItemStatus(filename, t.name, 'running');
+    if (filename) {
+      setTestItemStatus(filename, t.name, 'running');
+      activateTestLog(filename, t.name);
+    }
     const t0 = Date.now();
     try {
       closeExtraTabs();
@@ -301,11 +321,18 @@ async function executeTests(
       for (const hook of t.teardownAfterAlls)   await Promise.resolve(hook());
       const dur = Date.now() - t0;
       results.push({ name: t.name, passed: true, duration: dur });
-      if (filename) setTestItemStatus(filename, t.name, 'pass', dur);
+      if (filename) {
+        setTestItemStatus(filename, t.name, 'pass', dur);
+        const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
+        if (logEl?.children.length === 0) logEl.classList.remove('open');
+      }
     } catch (e: any) {
       const dur = Date.now() - t0;
       results.push({ name: t.name, passed: false, error: e.stack || e.message, duration: dur });
       if (filename) setTestItemStatus(filename, t.name, 'fail', dur);
+      appendErrorToLog(e.stack || e.message);
+    } finally {
+      setLogContainer(null);
     }
   }
   return results;
@@ -338,9 +365,8 @@ function notifyRunEnd(passed: number, failed: number, total: number, duration: n
 }
 
 function renderTestResults(results: TestResult[], filename?: string) {
-  if (filename) logSection(filename);
   let passed = 0, failed = 0;
-  results.forEach(t => { logResult(t); t.passed ? passed++ : failed++; });
+  results.forEach(t => { t.passed ? passed++ : failed++; });
   const status = document.getElementById('testRunnerStatus');
   if (status) {
     status.innerHTML =
@@ -394,7 +420,6 @@ window.runTestByFilename = async (filename: string) => {
 
 window.runSuite = async (filename: string, suiteName: string) => {
   openAndResetCard(filename);
-  log(`suite  "${suiteName}"  in ${filename}`, 'info');
   const suiteTests = Array.from(
     document.getElementById('card-' + escAttr(filename))
       ?.querySelectorAll<HTMLElement>('.tx-test-item') ?? []
@@ -414,7 +439,6 @@ window.runTest = async (filename: string, fullName: string) => {
   document.getElementById('card-' + escAttr(filename))?.classList.add('open');
   setTestItemStatus(filename, fullName, 'running');
   setCardRunning(filename);
-  log(`it  "${fullName}"`, 'info');
   await notifyRunBegin([{ file: filename, tests: [fullName] }]);
   try {
     const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filterTest: fullName, filename }));
@@ -635,6 +659,8 @@ function openSnapshot(id: number) {
   setBrowserView('browser');
 };
 
+(window as any).openSnapshot = openSnapshot;
+
 (window as any).setBrowserView = setBrowserView;
 
 // ── Filter ────────────────────────────────────────────────────────────────────
@@ -723,63 +749,48 @@ window.runFiltered = async () => {
 
 function initResizers() {
   const specs = document.querySelector<HTMLElement>('.tx-specs');
-  const log   = document.querySelector<HTMLElement>('.tx-log-panel');
   const specsHandle = document.getElementById('specsResizer');
-  const logHandle   = document.getElementById('logResizer');
-  if (!specs || !log || !specsHandle || !logHandle) return;
+  if (!specs || !specsHandle) return;
 
-  const saved = {
-    specs: Number(localStorage.getItem('tx-specs-w') || 0),
-    log:   Number(localStorage.getItem('tx-log-w')   || 0),
-  };
-  if (saved.specs) specs.style.width = saved.specs + 'px';
-  if (saved.log)   log.style.width   = saved.log   + 'px';
+  const saved = Number(localStorage.getItem('tx-specs-w') || 0);
+  if (saved) specs.style.width = saved + 'px';
 
-  function attach(handle: HTMLElement, target: HTMLElement, key: string, min: number, max: number) {
-    handle.addEventListener('mousedown', (e: MouseEvent) => {
-      e.preventDefault();
-      handle.classList.add('dragging');
-      document.body.style.cursor    = 'col-resize';
-      document.body.style.userSelect = 'none';
-      const startX = e.clientX;
-      const startW = target.offsetWidth;
-      const onMove = (ev: MouseEvent) => {
-        target.style.width = Math.min(max, Math.max(min, startW + ev.clientX - startX)) + 'px';
-      };
-      const onUp = () => {
-        handle.classList.remove('dragging');
-        document.body.style.cursor    = '';
-        document.body.style.userSelect = '';
-        localStorage.setItem(key, String(target.offsetWidth));
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup',   onUp);
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup',   onUp);
-    });
-  }
-
-  attach(specsHandle, specs, 'tx-specs-w', 150, 500);
-  attach(logHandle,   log,   'tx-log-w',   180, 600);
+  specsHandle.addEventListener('mousedown', (e: MouseEvent) => {
+    e.preventDefault();
+    specsHandle.classList.add('dragging');
+    document.body.style.cursor    = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const startX = e.clientX;
+    const startW = specs.offsetWidth;
+    const onMove = (ev: MouseEvent) => {
+      specs.style.width = Math.min(600, Math.max(150, startW + ev.clientX - startX)) + 'px';
+    };
+    const onUp = () => {
+      specsHandle.classList.remove('dragging');
+      document.body.style.cursor    = '';
+      document.body.style.userSelect = '';
+      localStorage.setItem('tx-specs-w', String(specs.offsetWidth));
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-  log('tx ready', 'info');
   setOnTabsChanged(renderTabBar);
   initIframe();
   renderTabBar();
   renderBrowserView();
-  const consoleEl = document.getElementById('console');
-  if (consoleEl) {
-    consoleEl.addEventListener('click', (event: MouseEvent) => {
-      let el = event.target as HTMLElement | null;
-      while (el && !el.classList.contains('tx-cmd')) el = el.parentElement;
-      const id = el?.dataset.snapshotId ? Number(el.dataset.snapshotId) : null;
-      if (id) openSnapshot(id);
-    });
-  }
+  document.getElementById('testList')?.addEventListener('click', (event: MouseEvent) => {
+    const item = (event.target as Element).closest<HTMLElement>('.tx-test-item');
+    if (!item) return;
+    const logEl = item.nextElementSibling as HTMLElement | null;
+    if (logEl?.classList.contains('tx-test-log')) logEl.classList.toggle('open');
+  });
   initResizers();
   const snapshotWrapper = document.getElementById('snapshotViewportWrapper');
   if (snapshotWrapper) {

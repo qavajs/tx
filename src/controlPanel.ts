@@ -168,7 +168,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         /* ══ Specs panel ══════════════════════════════════════════════════ */
 
         .tx-specs {
-            width: 252px;
+            width: 400px;
             flex-shrink: 0;
             background: var(--bg-panel);
             display: flex;
@@ -394,21 +394,21 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-test-item.pass { color: var(--text-dim); }
         .tx-test-item.fail { color: var(--fail); }
         .tx-test-dot {
-            width: 10px;
-            font-size: 9px;
-            line-height: 1;
+            width: 12px;
             flex-shrink: 0;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: var(--text-muted);
-            transition: color 0.15s;
         }
-        .tx-test-dot::before { content: '–'; }
-        .tx-test-dot.running { color: var(--warn); animation: tx-dot-pulse 0.7s ease-in-out infinite; }
-        .tx-test-dot.running::before { content: '●'; }
-        .tx-test-dot.pass { color: var(--pass); }
-        .tx-test-dot.pass::before { content: '✓'; }
-        .tx-test-dot.fail { color: var(--fail); }
-        .tx-test-dot.fail::before { content: '✕'; }
+        .tx-state-svg { display: none; }
+        .tx-test-dot .tx-state-svg--idle   { display: block; }
+        .tx-test-dot.pass .tx-state-svg--idle   { display: none; }
+        .tx-test-dot.pass .tx-state-svg--pass   { display: block; color: var(--pass); }
+        .tx-test-dot.fail .tx-state-svg--idle   { display: none; }
+        .tx-test-dot.fail .tx-state-svg--fail   { display: block; color: var(--fail); }
+        .tx-test-dot.running .tx-state-svg--idle    { display: none; }
+        .tx-test-dot.running .tx-state-svg--running { display: block; color: var(--warn); animation: tx-dot-pulse 0.7s ease-in-out infinite; }
         @keyframes tx-dot-pulse {
             0%, 100% { opacity: 1; }
             50%       { opacity: 0.2; }
@@ -449,51 +449,15 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-resize-handle:hover::before,
         .tx-resize-handle.dragging::before { background: var(--jade); width: 2px; }
 
-        /* ══ Command log ══════════════════════════════════════════════════ */
+        /* ══ Inline test log ═════════════════════════════════════════════ */
 
-        .tx-log-panel {
-            width: 310px;
-            flex-shrink: 0;
+        .tx-test-log {
+            display: none;
             background: var(--bg-app);
-            display: flex;
-            flex-direction: column;
+            border-bottom: 1px solid var(--border);
             overflow: hidden;
         }
-
-        .tx-log-hdr {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 9px 14px 8px;
-            border-bottom: 1px solid var(--border);
-            flex-shrink: 0;
-        }
-        .tx-log-title {
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-            color: var(--text-dim);
-        }
-        .tx-log-clear {
-            font-size: 10px;
-            color: var(--text-muted);
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            padding: 2px 6px;
-            border-radius: 3px;
-            transition: all 0.1s;
-        }
-        .tx-log-clear:hover { background: var(--bg-card); color: var(--text); }
-
-        #console {
-            flex: 1;
-            overflow-y: auto;
-            padding: 4px 0 8px;
-        }
-        #console::-webkit-scrollbar { width: 3px; }
-        #console::-webkit-scrollbar-thumb { background: var(--border-s); border-radius: 2px; }
+        .tx-test-log.open { display: block; }
 
         /* log entries */
         .tx-cmd {
@@ -565,16 +529,45 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             word-break: break-all;
         }
 
-        .tx-log-section {
-            padding: 7px 14px 3px;
+        /* test-result error rows (tx-cmd--result) */
+        .tx-cmd--result { align-items: center; padding: 2px 10px 2px 0; gap: 0; }
+        .tx-cmd-num {
+            width: 30px;
+            text-align: right;
+            padding-right: 6px;
             font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
             color: var(--text-muted);
-            border-top: 1px solid var(--border);
-            margin-top: 3px;
+            flex-shrink: 0;
         }
+        .tx-cmd-expander-col {
+            width: 14px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+        }
+        .tx-cmd-pin {
+            flex: 1;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            min-width: 0;
+        }
+        .tx-cmd-method {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            flex-shrink: 0;
+            min-width: 42px;
+            text-align: right;
+            border-radius: 3px;
+            padding: 1px 4px;
+        }
+        .tx-cmd-method--pass { color: var(--pass); background: color-mix(in srgb, var(--pass) 12%, transparent); }
+        .tx-cmd-method--fail { color: var(--fail); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+        .tx-cmd-method--child { color: var(--text-muted); background: var(--bg-card); }
+        .tx-cmd-msg--error { color: var(--fail); }
 
         /* ══ Browser panel ════════════════════════════════════════════════ */
 
@@ -809,6 +802,8 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             border-radius: 50%;
             background: var(--jade);
             flex-shrink: 0;
+            align-self: center;
+            box-shadow: 0 0 0 2px var(--jade-bg);
         }
 
         .tx-browser-main {
@@ -893,17 +888,6 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         </nav>
 
         <div class="tx-resize-handle" id="specsResizer"></div>
-
-        <!-- ── Command Log ──────────────────────────────────────────────── -->
-        <aside class="tx-log-panel">
-            <div class="tx-log-hdr">
-                <span class="tx-log-title">Command Log</span>
-                <button class="tx-log-clear" onclick="document.getElementById('console').innerHTML='';window.clearSnapshots&&window.clearSnapshots()">Clear</button>
-            </div>
-            <div id="console"></div>
-        </aside>
-
-        <div class="tx-resize-handle" id="logResizer"></div>
 
         <!-- ── Browser ───────────────────────────────────────────── -->
         <main class="tx-browser">
