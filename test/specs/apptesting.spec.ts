@@ -134,3 +134,30 @@ describe('apptesting widgets', () => {
         await expect(input).toHaveValue('JavaScript');
     });
 });
+
+describe('windows', () => {
+    beforeEach(async ({ page }) => {
+        await page.goto('https://apptesting.pl/pages/windows.html');
+    });
+
+    test('new tab', async ({ browser, page, expect }) => {
+        const newTab = page.locator('#new-tab-link');
+        await newTab.click();
+        await expect(page.locator('[aria-label="Search"]')).toBeVisible();
+        await browser.pages()[0].bringToFront();
+        expect(page.locator('#new-tab-link')).toBeVisible();
+    });
+
+    test('popup window', async ({ browser, page, expect }) => {
+        const newWindow = page.locator('#new-window-btn');
+        await newWindow.click();
+        const popupElement = page.locator('h1');
+        await expect(popupElement).toBeVisible();
+        await expect(popupElement).toHaveText('Popup Window');
+        const popupButton = await page.locator('button');
+        await popupButton.click();
+        await browser.pages()[0].bringToFront();
+        expect(page.locator('#new-tab-link')).toBeVisible();
+    });
+
+});

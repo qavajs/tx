@@ -1,4 +1,4 @@
-import { log, setLogContainer, API_BASE, testApi, page, pwExpect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc } from './browser';
+import { log, setLogContainer, API_BASE, testApi, page, expect, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc } from './browser';
 
 declare global {
   interface Window {
@@ -20,9 +20,9 @@ window.testApi = testApi;
 // or accessible directly as globals (page, expect, browser, tx) ───────────────
 
 (window as any).page    = page;
-(window as any).expect  = pwExpect;
+(window as any).expect  = expect;
 (window as any).browser = browser;
-(window as any).tx      = { page, expect: pwExpect, browser, ...testApi };
+(window as any).tx      = { page, expect: expect, browser, ...testApi };
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 
@@ -46,7 +46,6 @@ function appendErrorToLog(error: string) {
   child.className = 'tx-cmd tx-cmd--result tx-cmd--child fail';
   child.innerHTML =
     '<div class="tx-cmd-num"></div>' +
-    '<div class="tx-cmd-expander-col"></div>' +
     '<div class="tx-cmd-pin">' +
       '<span class="tx-cmd-msg tx-cmd-msg--error">' + escHtml(firstLine) + '</span>' +
     '</div>';

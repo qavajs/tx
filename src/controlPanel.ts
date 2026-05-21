@@ -565,14 +565,6 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             color: var(--text-muted);
             flex-shrink: 0;
         }
-        .tx-cmd-expander-col {
-            width: 14px;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-muted);
-        }
         .tx-cmd-pin {
             flex: 1;
             display: flex;

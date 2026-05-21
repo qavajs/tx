@@ -1060,7 +1060,7 @@ function _bridgePopup(win: any): void {
   win.open = (url?: string, _target?: string, _features?: string) => {
     const popupPage = createTab(url);
     _emitPage('popup', popupPage);
-    return null;
+    return _tabs[_tabs.length - 1]?.iframe.contentWindow ?? null;
   };
 }
 
@@ -2363,18 +2363,20 @@ async function _retry(fn: () => Promise<void>, timeout = 5000): Promise<void> {
   throw last;
 }
 
-export function pwExpect(target: any) {
+export function expect(target: any) {
   const t = (ms?: number) => ms ?? 5000;
   const locDesc = (target instanceof Locator) ? (target as Locator)._desc : '';
 
   // la = async matcher log helper, ls = sync matcher log helper
   const la = async (cmd: string, msg: string, fn: () => Promise<void>) => {
-    try { await fn(); log(msg, 'success', cmd); }
-    catch (e: any) { log(msg, 'error', cmd); throw e; }
+    const entry = logCommand(msg, cmd);
+    try { await fn(); entry.success(); }
+    catch (e: any) { entry.fail(e?.message ?? String(e)); throw e; }
   };
   const ls = (cmd: string, msg: string, fn: () => void) => {
-    try { fn(); log(msg, 'success', cmd); }
-    catch (e: any) { log(msg, 'error', cmd); throw e; }
+    const entry = logCommand(msg, cmd);
+    try { fn(); entry.success(); }
+    catch (e: any) { entry.fail(e?.message ?? String(e)); throw e; }
   };
 
   // Runs `fn` in a retry loop; fn must throw with a descriptive error on failure.
