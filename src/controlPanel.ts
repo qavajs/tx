@@ -877,6 +877,163 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
             font-size: 11px;
             line-height: 1.6;
         }
+
+        /* ══ Network panel ═══════════════════════════════════════════ */
+
+        .tx-network-toggle-btn {
+            padding: 4px 10px;
+            background: transparent;
+            border: 1px solid var(--border-s);
+            border-radius: var(--radius);
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.1s;
+            flex-shrink: 0;
+        }
+        .tx-network-toggle-btn:hover { background: var(--bg-hover); color: var(--text); border-color: var(--jade); }
+        .tx-network-toggle-btn.active { background: var(--jade-bg); color: var(--jade); border-color: var(--jade); }
+
+        .tx-network {
+            display: none;
+            flex-direction: column;
+            background: var(--bg-panel);
+            flex-shrink: 0;
+            overflow: hidden;
+            height: 200px;
+        }
+        .tx-network.open { display: flex; }
+
+        .tx-network-resize-handle {
+            height: 6px;
+            flex-shrink: 0;
+            cursor: row-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tx-network-resize-handle::before {
+            content: '';
+            height: 1px;
+            width: 100%;
+            background: var(--border);
+            transition: background 0.15s, height 0.1s;
+        }
+        .tx-network-resize-handle:hover::before,
+        .tx-network-resize-handle.dragging::before { background: var(--jade); height: 2px; }
+
+        .tx-network-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 12px;
+            background: var(--bg-topbar);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .tx-network-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+        }
+        .tx-network-count {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .tx-network-clear-btn {
+            margin-left: auto;
+            padding: 2px 8px;
+            background: transparent;
+            border: 1px solid var(--border-s);
+            border-radius: 3px;
+            color: var(--text-dim);
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        .tx-network-clear-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+        .tx-network-header {
+            display: grid;
+            grid-template-columns: 46px 50px 46px 1fr 62px;
+            padding: 2px 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-topbar);
+            flex-shrink: 0;
+        }
+
+        .tx-network-body {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .tx-network-body::-webkit-scrollbar { width: 3px; }
+        .tx-network-body::-webkit-scrollbar-thumb { background: var(--border-s); }
+
+        .tx-network-row {
+            display: grid;
+            grid-template-columns: 46px 50px 46px 1fr 62px;
+            padding: 2px 10px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            line-height: 1.6;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+            cursor: default;
+            transition: background 0.08s;
+        }
+        .tx-network-row:hover { background: var(--bg-hover); }
+        .tx-network-row.pending { opacity: 0.55; }
+        .tx-network-row.failed .tx-net-url { color: var(--fail); }
+
+        .tx-net-method {
+            font-weight: 700;
+            font-size: 10px;
+            color: var(--jade);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tx-net-status {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tx-net-status.ok       { color: var(--pass); }
+        .tx-net-status.redirect { color: var(--warn); }
+        .tx-net-status.error    { color: var(--fail); }
+        .tx-net-type {
+            font-size: 10px;
+            color: var(--text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tx-net-url {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text);
+            min-width: 0;
+        }
+        .tx-net-dur {
+            text-align: right;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .tx-empty-network {
+            padding: 18px 14px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
@@ -924,6 +1081,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                     <button class="tx-go-btn" onclick="window.testApi && window.testApi.visit(document.getElementById('navUrl').value)">Go</button>
                 </div>
                 <span class="tx-viewport-tag" id="viewportTag">—</span>
+                <button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle network panel">Network</button>
             </div>
             <div class="tx-tab-bar" id="tabBar"></div>
             <div class="tx-browser-main">
@@ -942,6 +1100,24 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                     <div id="snapshotViewportWrapper">
                         <iframe id="snapshotFrame" sandbox="allow-same-origin"></iframe>
                     </div>
+                </div>
+            </div>
+            <div class="tx-network" id="networkPanel">
+                <div class="tx-network-resize-handle" id="networkResizeHandle"></div>
+                <div class="tx-network-toolbar">
+                    <span class="tx-network-title">Network</span>
+                    <span class="tx-network-count" id="networkCount"></span>
+                    <button class="tx-network-clear-btn" onclick="window.clearNetwork && window.clearNetwork()">Clear</button>
+                </div>
+                <div class="tx-network-header">
+                    <span>Method</span>
+                    <span>Status</span>
+                    <span>Type</span>
+                    <span>URL</span>
+                    <span>Duration</span>
+                </div>
+                <div class="tx-network-body" id="networkList">
+                    <div class="tx-empty-network">No requests yet</div>
                 </div>
             </div>
         </main>

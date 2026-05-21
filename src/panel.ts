@@ -798,6 +798,175 @@ function initResizers() {
   });
 }
 
+// ── Network panel ────────────────────────────────────────────────────────────
+
+interface NetworkEntry {
+  id: number;
+  url: string;
+  method: string;
+  type: string;
+  status: number | null;
+  statusText: string;
+  startTime: number;
+  duration: number | null;
+  state: 'pending' | 'complete' | 'failed';
+  error?: string;
+}
+
+const _networkEntries: NetworkEntry[] = [];
+let _networkCounter = 0;
+const _MAX_NETWORK = 500;
+const _reqMap = new WeakMap<object, NetworkEntry>();
+
+function _netStatusClass(status: number | null): string {
+  if (status === null) return '';
+  if (status >= 200 && status < 300) return 'ok';
+  if (status >= 300 && status < 400) return 'redirect';
+  return 'error';
+}
+
+function _netShortUrl(url: string): string {
+  try { const u = new URL(url); return u.pathname + (u.search || ''); } catch { return url; }
+}
+
+function _renderNetworkRow(entry: NetworkEntry): string {
+  const stClass = _netStatusClass(entry.status);
+  const statusText = entry.state === 'failed'
+    ? (entry.error || 'failed')
+    : entry.status != null ? String(entry.status) : '…';
+  const dur = entry.duration != null ? entry.duration + 'ms' : '…';
+  return '<div class="tx-network-row ' + entry.state + '" data-net-id="' + entry.id + '" title="' + escHtml(entry.url) + '">' +
+    '<span class="tx-net-method">' + escHtml(entry.method) + '</span>' +
+    '<span class="tx-net-status ' + stClass + '">' + escHtml(statusText) + '</span>' +
+    '<span class="tx-net-type">' + escHtml(entry.type) + '</span>' +
+    '<span class="tx-net-url">' + escHtml(_netShortUrl(entry.url)) + '</span>' +
+    '<span class="tx-net-dur">' + escHtml(dur) + '</span>' +
+  '</div>';
+}
+
+function _updateNetworkCount() {
+  const el = document.getElementById('networkCount');
+  if (el) el.textContent = _networkEntries.length + ' request' + (_networkEntries.length !== 1 ? 's' : '');
+}
+
+function _appendNetworkEntry(entry: NetworkEntry) {
+  const list = document.getElementById('networkList');
+  if (!list) return;
+  const empty = list.querySelector('.tx-empty-network');
+  if (empty) empty.remove();
+  const tmp = document.createElement('div');
+  tmp.innerHTML = _renderNetworkRow(entry);
+  const wasAtBottom = list.scrollHeight - list.scrollTop <= list.clientHeight + 30;
+  list.appendChild(tmp.firstElementChild!);
+  if (wasAtBottom) list.scrollTop = list.scrollHeight;
+  _updateNetworkCount();
+}
+
+function _refreshNetworkRow(entry: NetworkEntry) {
+  const list = document.getElementById('networkList');
+  const row = list?.querySelector<HTMLElement>('[data-net-id="' + entry.id + '"]');
+  if (!row) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = _renderNetworkRow(entry);
+  row.replaceWith(tmp.firstElementChild!);
+  _updateNetworkCount();
+}
+
+(window as any).clearNetwork = () => {
+  _networkEntries.length = 0;
+  _networkCounter = 0;
+  const list = document.getElementById('networkList');
+  if (list) list.innerHTML = '<div class="tx-empty-network">No requests yet</div>';
+  _updateNetworkCount();
+};
+
+(window as any).toggleNetworkPanel = () => {
+  const panel = document.getElementById('networkPanel');
+  const btn = document.getElementById('networkToggleBtn');
+  if (!panel) return;
+  const open = panel.classList.toggle('open');
+  btn?.classList.toggle('active', open);
+  if (open) {
+    const savedH = Number(localStorage.getItem('tx-network-h') || 0);
+    if (savedH) panel.style.height = savedH + 'px';
+  }
+};
+
+function initNetworkResizer() {
+  const panel = document.getElementById('networkPanel');
+  const handle = document.getElementById('networkResizeHandle');
+  if (!panel || !handle) return;
+
+  handle.addEventListener('mousedown', (e: MouseEvent) => {
+    if (!panel.classList.contains('open')) return;
+    e.preventDefault();
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    const startY = e.clientY;
+    const startH = panel.offsetHeight;
+    const onMove = (ev: MouseEvent) => {
+      const h = Math.min(600, Math.max(80, startH - (ev.clientY - startY)));
+      panel.style.height = h + 'px';
+    };
+    const onUp = () => {
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      localStorage.setItem('tx-network-h', String(panel.offsetHeight));
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function initNetworkListeners() {
+  page.on('request', (req: any) => {
+    const entry: NetworkEntry = {
+      id: ++_networkCounter,
+      url: req.url(),
+      method: req.method(),
+      type: req.resourceType(),
+      status: null,
+      statusText: '',
+      startTime: Date.now(),
+      duration: null,
+      state: 'pending',
+    };
+    if (_networkEntries.length >= _MAX_NETWORK) _networkEntries.shift();
+    _networkEntries.push(entry);
+    _reqMap.set(req, entry);
+    _appendNetworkEntry(entry);
+  });
+
+  page.on('response', (resp: any) => {
+    const entry = _reqMap.get(resp.request());
+    if (!entry) return;
+    entry.status = resp.status();
+    entry.statusText = resp.statusText();
+    _refreshNetworkRow(entry);
+  });
+
+  page.on('requestfinished', (req: any) => {
+    const entry = _reqMap.get(req);
+    if (!entry) return;
+    entry.duration = Date.now() - entry.startTime;
+    entry.state = 'complete';
+    _refreshNetworkRow(entry);
+  });
+
+  page.on('requestfailed', (req: any) => {
+    const entry = _reqMap.get(req);
+    if (!entry) return;
+    entry.duration = Date.now() - entry.startTime;
+    entry.state = 'failed';
+    entry.error = req.failure?.()?.errorText ?? 'Failed';
+    _refreshNetworkRow(entry);
+  });
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -812,6 +981,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (logEl?.classList.contains('tx-test-log')) logEl.classList.toggle('open');
   });
   initResizers();
+  initNetworkResizer();
+  initNetworkListeners();
   const snapshotWrapper = document.getElementById('snapshotViewportWrapper');
   if (snapshotWrapper) {
     new ResizeObserver(() => { if (_activeBrowserView === 'snapshot') applySnapshotViewport(); })
