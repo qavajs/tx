@@ -402,7 +402,7 @@ export class Locator {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
       const el = this._el() as HTMLElement | null;
-      if (el) return el;
+      if (el) { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); return el; }
       await new Promise(r => setTimeout(r, 50));
     }
     throw new Error(`Locator timed out after ${timeout}ms — element not found`);
@@ -500,6 +500,7 @@ export class Locator {
           continue;
         }
       }
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       return el;
     }
 
