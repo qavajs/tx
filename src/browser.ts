@@ -91,32 +91,13 @@ function _notifySnapshotListeners(): void {
 
 function _captureSnapshot(label: string): number {
   const doc = iframeDoc();
-  const win = iframeWin();
-  if (!doc || !win) return -1;
+  if (!doc) return -1;
   const url = page.url();
   const title = doc.title || '';
 
   const cloneRoot = doc.documentElement.cloneNode(true) as HTMLElement;
 
-  const origEls  = [doc.documentElement as Element, ...Array.from(doc.documentElement.querySelectorAll('*'))];
-  const cloneEls = [cloneRoot            as Element, ...Array.from(cloneRoot.querySelectorAll('*'))];
-  for (let i = 0; i < origEls.length; i++) {
-    const orig = origEls[i] as HTMLElement;
-    const el   = cloneEls[i] as HTMLElement;
-    if (!orig || !el) continue;
-    try {
-      const cs = (win as any).getComputedStyle(orig);
-      const parts: string[] = [];
-      for (let j = 0; j < cs.length; j++) {
-        const prop = cs[j];
-        const val  = cs.getPropertyValue(prop);
-        if (val) parts.push(`${prop}:${val}`);
-      }
-      if (parts.length) el.setAttribute('style', parts.join(';'));
-    } catch { /* ignore */ }
-  }
-
-  for (const el of Array.from(cloneRoot.querySelectorAll('script, link[rel="stylesheet"]'))) {
+  for (const el of Array.from(cloneRoot.querySelectorAll('script'))) {
     el.remove();
   }
 
