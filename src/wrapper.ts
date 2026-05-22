@@ -2,6 +2,9 @@
  * Tx Wrapper - Main orchestrator
  */
 
+import * as fs from 'node:fs';
+import { execSync, spawn, ChildProcess } from 'node:child_process';
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const hammerhead = require('testcafe-hammerhead');
 
@@ -25,42 +28,108 @@ import { IframeInjector } from './iframeInjector';
 
 // ── Browser launch helpers ─────────────────────────────────────────────────────
 
-const BROWSER_NAMES: Record<string, { darwin: string; linux: string; win32: string }> = {
-  chrome:   { darwin: 'Google Chrome',  linux: 'google-chrome',   win32: 'chrome'         },
-  chromium: { darwin: 'Chromium',       linux: 'chromium-browser', win32: 'chromium'       },
-  firefox:  { darwin: 'Firefox',        linux: 'firefox',         win32: 'firefox'         },
-  edge:     { darwin: 'Microsoft Edge', linux: 'microsoft-edge',  win32: 'msedge'          },
-  safari:   { darwin: 'Safari',         linux: '',                win32: ''                },
+type Platform = 'darwin' | 'linux' | 'win32';
+
+const BROWSER_PATHS: Record<string, Record<Platform, string[]>> = {
+  chrome: {
+    darwin: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'],
+    linux:  ['google-chrome', 'google-chrome-stable', 'chromium-browser', 'chromium'],
+    win32:  [
+      '%PROGRAMFILES%\\Google\\Chrome\\Application\\chrome.exe',
+      '%PROGRAMFILES(X86)%\\Google\\Chrome\\Application\\chrome.exe',
+      '%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe',
+    ],
+  },
+  chromium: {
+    darwin: ['/Applications/Chromium.app/Contents/MacOS/Chromium'],
+    linux:  ['chromium-browser', 'chromium', 'google-chrome'],
+    win32:  ['%PROGRAMFILES%\\Chromium\\Application\\chrome.exe'],
+  },
+  firefox: {
+    darwin: ['/Applications/Firefox.app/Contents/MacOS/firefox'],
+    linux:  ['firefox', 'firefox-esr'],
+    win32:  [
+      '%PROGRAMFILES%\\Mozilla Firefox\\firefox.exe',
+      '%PROGRAMFILES(X86)%\\Mozilla Firefox\\firefox.exe',
+    ],
+  },
+  edge: {
+    darwin: ['/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'],
+    linux:  ['microsoft-edge', 'microsoft-edge-stable'],
+    win32:  [
+      '%PROGRAMFILES(X86)%\\Microsoft\\Edge\\Application\\msedge.exe',
+      '%PROGRAMFILES%\\Microsoft\\Edge\\Application\\msedge.exe',
+    ],
+  },
+  safari: {
+    darwin: ['/Applications/Safari.app/Contents/MacOS/Safari'],
+    linux:  [],
+    win32:  [],
+  },
 };
 
-function buildOpenCommand(url: string, browser?: string): string {
-  const platform = process.platform as 'darwin' | 'linux' | 'win32';
-  const q = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
+const DEFAULT_BROWSER_ORDER = ['chrome', 'chromium', 'firefox', 'edge', 'safari'];
 
-  if (!browser) {
-    if (platform === 'win32') return `start "" ${q(url)}`;
-    if (platform === 'darwin') return `open ${q(url)}`;
-    return `xdg-open ${q(url)}`;
-  }
-
-  const known = BROWSER_NAMES[browser.toLowerCase()];
-
-  if (platform === 'darwin') {
-    const appName = known ? known.darwin : browser;
-    if (!appName) throw new Error(`Browser "${browser}" is not supported on macOS`);
-    return `open -a ${q(appName)} ${q(url)}`;
-  }
-
-  if (platform === 'win32') {
-    const exe = known ? known.win32 : browser;
-    return `start "" ${q(exe)} ${q(url)}`;
-  }
-
-  // linux / other
-  const cmd = known ? known.linux : browser;
-  if (!cmd) throw new Error(`Browser "${browser}" is not supported on Linux`);
-  return `${cmd} ${q(url)}`;
+function expandEnvVars(s: string): string {
+  return s.replace(/%([^%]+)%/g, (_, k) => process.env[k] ?? '');
 }
+
+function resolveCandidate(candidate: string, platform: Platform): string | null {
+  if (platform === 'linux') {
+    try {
+      const p = execSync(`which ${candidate} 2>/dev/null`).toString().trim();
+      return p || null;
+    } catch { return null; }
+  }
+  const resolved = expandEnvVars(candidate);
+  return fs.existsSync(resolved) ? resolved : null;
+}
+
+function findBrowserExecutable(browser?: string): string | null {
+  const platform = process.platform as Platform;
+
+  if (browser && (browser.startsWith('/') || /^[A-Za-z]:\\/.test(browser))) {
+    return fs.existsSync(browser) ? browser : null;
+  }
+
+  const tryKey = (key: string): string | null => {
+    const entry = BROWSER_PATHS[key];
+    if (!entry) return null;
+    for (const candidate of (entry[platform] ?? [])) {
+      const resolved = resolveCandidate(candidate, platform);
+      if (resolved) return resolved;
+    }
+    return null;
+  };
+
+  if (browser) {
+    const result = tryKey(browser.toLowerCase());
+    if (result) return result;
+    // Treat the value as a raw binary name on Linux
+    if (platform === 'linux') {
+      try {
+        const p = execSync(`which ${browser} 2>/dev/null`).toString().trim();
+        if (p) return p;
+      } catch { /* not found */ }
+    }
+    return null;
+  }
+
+  for (const key of DEFAULT_BROWSER_ORDER) {
+    const result = tryKey(key);
+    if (result) return result;
+  }
+  return null;
+}
+
+function headlessArgs(exePath: string): string[] {
+  const lower = exePath.toLowerCase();
+  if (lower.includes('firefox')) return ['--headless', '--no-remote', '--new-instance'];
+  if (lower.includes('safari'))  return [];
+  // Chrome, Chromium, Edge (Chromium-based)
+  return ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'];
+}
+
 import { TestApi } from './testApi';
 import { TestServer } from './server';
 import { startWatcher } from './watcher';
@@ -76,6 +145,7 @@ export class TxWrapper {
   private testApi: TestApi | null = null;
   private server: TestServer | null = null;
   private injector: IframeInjector | null = null;
+  private _browserChild: ChildProcess | null = null;
 
   constructor(
     private config: {
@@ -186,23 +256,25 @@ export class TxWrapper {
         );
       }
 
-      if (!this.config.headless) {
-        const { exec } = require('child_process');
-        const cmd = buildOpenCommand(this.controlPanelProxyUrl, this.config.browser);
-        console.log(`\n🌐 Opening browser...`);
-
-        exec(cmd, (err: Error | null) => {
-          if (err) {
-            console.error('Failed to open browser:', err.message);
-            console.log(`\n📍 Visit via proxy: ${this.controlPanelProxyUrl}`);
-            console.log(`📍 Or visit locally: http://localhost:${this.config.controlPanelPort}`);
-          } else {
-            console.log(`✅ Browser opened successfully`);
-          }
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      const exePath = findBrowserExecutable(this.config.browser);
+      if (!exePath) {
+        throw new Error(
+          'Could not find a browser executable. ' +
+          'Install Chrome, Firefox, or Edge, or set the "browser" config option to the path of a browser binary.'
+        );
       }
+
+      const args = [
+        ...(this.config.headless ? headlessArgs(exePath) : []),
+        this.controlPanelProxyUrl,
+      ];
+
+      console.log(`\n🌐 ${this.config.headless ? 'Launching headless browser' : 'Opening browser'}: ${exePath}`);
+      this._browserChild = spawn(exePath, args, { stdio: 'ignore', detached: false });
+      this._browserChild.on('error', (err: Error) => {
+        console.error('Browser error:', err.message);
+      });
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       console.log(`\n✨ Control Panel ready for use`);
       console.log(`\n💡 Open via proxy: ${this.controlPanelProxyUrl}`);
@@ -229,6 +301,11 @@ export class TxWrapper {
    */
   async stop(): Promise<void> {
     console.log('\n🛑 Stopping Tx Wrapper...');
+
+    if (this._browserChild) {
+      try { this._browserChild.kill(); } catch { /* already exited */ }
+      this._browserChild = null;
+    }
 
     if (this.injector) {
       this.injector.remove();

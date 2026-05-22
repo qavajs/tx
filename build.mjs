@@ -38,7 +38,7 @@ await esbuild.build({
   platform: 'browser',
   format: 'iife',
   outfile: 'dist/controller.js',
-  minify: !watch,
+  sourcemap: true,
 });
 
 console.log('Build complete → dist/');

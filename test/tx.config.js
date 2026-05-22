@@ -5,7 +5,7 @@ module.exports = {
   controlPanelPort: 3000,
   headless: false,
   testFiles: ['./specs/**/*.spec.ts'],
-  //grep: 'login',
+  grep: 'login',
   viewport: { width: 1600, height: 900 },
   //snapshot: true,
   actionTimeout: 10000,   // 10s for actions
