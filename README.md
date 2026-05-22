@@ -101,6 +101,7 @@ All fields are optional. CLI flags override the config file.
 | `--browser <name>` | Browser to open (`chrome`, `firefox`, `edge`, `safari`, or an absolute path) |
 | `--port <n>` | Control panel port |
 | `--headless` | Run the browser in headless mode |
+| `--shard <n>/<total>` | Run only the nth shard of total (e.g. `--shard 2/4`) |
 
 ## Writing Tests
 

@@ -300,6 +300,7 @@ node dist/index.js --config test/tx.config.js --test
 node dist/index.js --config test/tx.config.js --grep login
 node dist/index.js --config test/tx.config.js --profile ci
 node dist/index.js --headless true
+node dist/index.js --shard 1/4   # run first quarter of test files (CI parallelism)
 ```
 
 ---
@@ -530,6 +531,31 @@ export class LoginPage {
     await this.page.waitForURL(/inventory/);
   }
 }
+```
+
+---
+
+## Sharding
+
+Pass `--shard <current>/<total>` to split test files across N parallel CI workers:
+
+```bash
+# On four workers run in parallel:
+node dist/index.js --config tx.config.js --test --shard 1/4
+node dist/index.js --config tx.config.js --test --shard 2/4
+node dist/index.js --config tx.config.js --test --shard 3/4
+node dist/index.js --config tx.config.js --test --shard 4/4
+```
+
+The resolved file list is sorted alphabetically, then divided into `total` equal buckets using `Math.ceil`; worker `current` executes bucket `current` (1-based).  If the total number of files doesn't divide evenly the last shard receives fewer files.
+
+`shard` can also be set in `tx.config.js`:
+
+```js
+module.exports = {
+  shard: { current: Number(process.env.SHARD_INDEX), total: Number(process.env.SHARD_TOTAL) },
+  testMode: true,
+};
 ```
 
 ---

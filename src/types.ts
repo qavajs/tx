@@ -69,6 +69,13 @@ export interface TxConfig {
    * Profile values are merged on top of the base config, before CLI args.
    */
   profiles?: Record<string, Omit<TxConfig, 'profiles'>>;
+
+  /**
+   * Shard this run — split test files into `total` equal buckets and run
+   * only bucket number `current` (1-based).  Use with --shard <n>/<total>
+   * on the CLI, e.g. `--shard 1/3` for the first of three parallel shards.
+   */
+  shard?: { current: number; total: number };
 }
 
 export interface WaitOptions {

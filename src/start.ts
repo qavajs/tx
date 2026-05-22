@@ -102,6 +102,18 @@ function setConfigField(config: TxConfig, key: string, value: string): void {
     case 'browser':
       config.browser = value;
       break;
+    case 'shard': {
+      const m = value.match(/^(\d+)\/(\d+)$/);
+      if (!m) { console.warn(`Invalid --shard value: "${value}". Expected format: <current>/<total> (e.g. 1/3)`); break; }
+      const current = parseInt(m[1], 10);
+      const total = parseInt(m[2], 10);
+      if (total < 1 || current < 1 || current > total) {
+        console.warn(`Invalid --shard value: "${value}". current must be ≥1 and ≤ total.`);
+        break;
+      }
+      config.shard = { current, total };
+      break;
+    }
     default:
       console.warn(`Unknown CLI option: --${key}`);
   }
@@ -251,12 +263,23 @@ async function main() {
   };
 
   // Resolve testFiles into absolute paths
-  const resolvedFiles = resolveTestFiles(
+  let resolvedFiles = resolveTestFiles(
     { testFiles: fileConfig.testFiles },
     configDir
   );
   if (resolvedFiles) {
     console.log(`📂 Test files resolved: ${resolvedFiles.length} file(s)`);
+  }
+
+  // Apply sharding: partition resolved files and keep only the current shard's slice
+  const shard = cliConfig.shard ?? fileConfig.shard;
+  if (shard) {
+    const { current, total } = shard;
+    const files = resolvedFiles ?? [];
+    const sliceSize = Math.ceil(files.length / total);
+    const start = (current - 1) * sliceSize;
+    resolvedFiles = files.slice(start, start + sliceSize);
+    console.log(`🔀 Shard ${current}/${total}: running ${resolvedFiles.length} of ${files.length} file(s)`);
   }
 
   const normalizePattern = (p: string) => p.startsWith('./') ? p.slice(2) : p;
