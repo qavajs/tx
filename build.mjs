@@ -1,6 +1,12 @@
 import * as esbuild from 'esbuild';
+import * as fs from 'node:fs';
 
 const watch = process.argv.includes('--watch');
+
+if (!watch) {
+  fs.rmSync('dist', { recursive: true, force: true });
+  fs.mkdirSync('dist');
+}
 
 const sharedOpts = watch ? { watch: true } : {};
 
@@ -12,6 +18,7 @@ await esbuild.build({
   packages: 'external',   // keep node_modules external — no native-addon issues
   outfile: 'dist/index.js',
   sourcemap: true,
+  banner: { js: '#!/usr/bin/env node' },
 });
 
 await esbuild.build({

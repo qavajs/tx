@@ -1,18 +1,40 @@
 {
-  "name": "tx",
+  "name": "tx-flow",
   "version": "0.0.1",
-  "description": "tx — a Cypress-like virtual browser testing framework via Hammerhead proxy",
+  "description": "tx-flow — a Cypress-like virtual browser testing framework via Hammerhead proxy",
   "license": "ISC",
   "author": "",
   "type": "commonjs",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "types/tx.d.ts",
+  "bin": {
+    "tx": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "types",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "testing",
+    "browser",
+    "test-runner",
+    "cypress",
+    "hammerhead",
+    "proxy",
+    "e2e",
+    "automation"
+  ],
   "scripts": {
-    "prestart": "node build.mjs",
+    "build": "node build.mjs",
     "build:watch": "node build.mjs --watch",
+    "prepublishOnly": "node build.mjs",
     "start": "node dist/index.js --config test/tx.config.js",
     "dev": "node build.mjs && node dist/index.js --config test/tx.config.js",
     "test": "node build.mjs && node dist/index.js --config test/tx.config.js --test",
-    "example:show": "cat examples/sampleTest.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
