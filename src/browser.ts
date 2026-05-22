@@ -399,6 +399,20 @@ export function logCommand(message: string, cmd: string) {
   };
 }
 
+// ── Command helper ────────────────────────────────────────────────────────────
+
+async function _withCommand<T>(message: string, cmd: string, fn: () => Promise<T>): Promise<T> {
+  const entry = logCommand(message, cmd);
+  try {
+    const result = await fn();
+    entry.success();
+    return result;
+  } catch (error: any) {
+    entry.fail(error?.message ?? String(error));
+    throw error;
+  }
+}
+
 // ── Playwright-style Locator ──────────────────────────────────────────────────
 
 type QueryFn = () => Element[];
@@ -575,8 +589,7 @@ export class Locator {
   // ── Actions ───────────────────────────────────────────────────────────────
 
   async click(opts?: { force?: boolean; timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc, 'click');
-    try {
+    return _withCommand(this._desc, 'click', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'click');
       // Resolve the actual hit-target at the element's center, matching real Playwright behaviour
@@ -597,45 +610,30 @@ export class Locator {
       } else {
         target.dispatchEvent(new ME('click', init));
       }
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async dblclick(opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc, 'dblclick');
-    try {
+    return _withCommand(this._desc, 'dblclick', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'dblclick');
       el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async rightClick(opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc, 'rightClick');
-    try {
+    return _withCommand(this._desc, 'rightClick', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'rightClick');
       const init: MouseEventInit = { bubbles: true, cancelable: true, button: 2, buttons: 2 };
       el.dispatchEvent(new MouseEvent('mousedown',    init));
       el.dispatchEvent(new MouseEvent('mouseup',      init));
       el.dispatchEvent(new MouseEvent('contextmenu',  init));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async fill(value: string, opts?: { timeout?: number; delay?: number }): Promise<void> {
-    const entry = logCommand(this._desc ? `${this._desc}  "${value}"` : `"${value}"`, 'fill');
-    try {
+    return _withCommand(this._desc ? `${this._desc}  "${value}"` : `"${value}"`, 'fill', async () => {
       await _checkLocatorHandlers();
       const el    = await this._waitForActionableEl(opts, 'fill') as HTMLInputElement | HTMLTextAreaElement;
       const win   = iframeWin() as any;
@@ -698,18 +696,13 @@ export class Locator {
       el.dispatchEvent(new E('change',   { bubbles: true  }));
       el.dispatchEvent(new E('blur',     { bubbles: false }));
       el.dispatchEvent(new E('focusout', { bubbles: true  }));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async clear(opts?: { timeout?: number }): Promise<void> { await this.fill('', opts); }
 
   async type(text: string, opts?: { delay?: number; timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc ? `${this._desc}  "${text}"` : `"${text}"`, 'type');
-    try {
+    return _withCommand(this._desc ? `${this._desc}  "${text}"` : `"${text}"`, 'type', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'type') as HTMLInputElement;
       el.focus();
@@ -719,16 +712,11 @@ export class Locator {
         el.dispatchEvent(new Event('input', { bubbles: true }));
       }
       el.dispatchEvent(new Event('change', { bubbles: true }));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async press(key: string, opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc ? `${this._desc}  ${key}` : key, 'press');
-    try {
+    return _withCommand(this._desc ? `${this._desc}  ${key}` : key, 'press', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForEl(opts?.timeout);
       const kOpts = { key, bubbles: true, cancelable: true };
@@ -739,16 +727,12 @@ export class Locator {
         const form = (el as HTMLInputElement).form;
         if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       }
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async selectOption(value: string | string[], opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc ? `${this._desc}  ${Array.isArray(value) ? value.join(', ') : value}` : Array.isArray(value) ? value.join(', ') : value, 'select');
-    try {
+    const label = Array.isArray(value) ? value.join(', ') : value;
+    return _withCommand(this._desc ? `${this._desc}  ${label}` : label, 'select', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'selectOption') as HTMLSelectElement;
       const vals = Array.isArray(value) ? value : [value];
@@ -756,75 +740,46 @@ export class Locator {
         opt.selected = vals.includes(opt.value) || vals.includes(opt.text);
       }
       el.dispatchEvent(new Event('change', { bubbles: true }));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async check(opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc, 'check');
-    try {
+    return _withCommand(this._desc, 'check', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'check') as HTMLInputElement;
       if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async uncheck(opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc, 'uncheck');
-    try {
+    return _withCommand(this._desc, 'uncheck', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'uncheck') as HTMLInputElement;
       if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async focus(opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc, 'focus');
-    try {
+    return _withCommand(this._desc, 'focus', async () => {
       await _checkLocatorHandlers();
       (await this._waitForEl(opts?.timeout)).focus();
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async hover(opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc, 'hover');
-    try {
+    return _withCommand(this._desc, 'hover', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'hover');
       el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
       el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async scrollIntoViewIfNeeded(opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(this._desc, 'scroll');
-    try {
+    return _withCommand(this._desc, 'scroll', async () => {
       await _checkLocatorHandlers();
       (await this._waitForEl(opts?.timeout)).scrollIntoView({ block: 'nearest' });
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async setInputFiles(
@@ -833,8 +788,7 @@ export class Locator {
   ): Promise<void> {
     const arr = Array.isArray(files) ? files : [files];
     const names = arr.map(f => (typeof f === 'string' ? f.split('/').pop() ?? f : f.name)).join(', ');
-    const entry = logCommand(this._desc ? `${this._desc}  ${names}` : names, 'setInputFiles');
-    try {
+    return _withCommand(this._desc ? `${this._desc}  ${names}` : names, 'setInputFiles', async () => {
       await _checkLocatorHandlers();
       const el  = await this._waitForEl(opts?.timeout) as HTMLInputElement;
       const win = iframeWin() as any;
@@ -853,11 +807,7 @@ export class Locator {
       Object.defineProperty(el, 'value', { value: valueStr, configurable: true, writable: true });
       el.dispatchEvent(new Event('change', { bubbles: true }));
       el.dispatchEvent(new Event('input',  { bubbles: true }));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -903,45 +853,33 @@ export class Locator {
   async count(): Promise<number> { return this._els().length; }
 
   async evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T> {
-    const entry = logCommand(this._desc, 'evaluate');
-    try {
+    return _withCommand(this._desc, 'evaluate', async () => {
       const el = await this._waitForEl();
-      let result: T;
       if (typeof pageFunction === 'function') {
-        result = await Promise.resolve(arg !== undefined ? pageFunction(el, arg) : pageFunction(el));
-      } else {
-        const win = iframeWin() as any;
-        if (!win) throw new Error('no active page');
-        const fn = win.eval(`(${pageFunction})`);
-        result = await Promise.resolve(arg !== undefined ? fn(el, arg) : fn(el));
+        return Promise.resolve(arg !== undefined ? pageFunction(el, arg) : pageFunction(el));
       }
-      entry.success();
-      return result;
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+      const win = iframeWin() as any;
+      if (!win) throw new Error('no active page');
+      const fn = win.eval(`(${pageFunction})`);
+      return Promise.resolve(arg !== undefined ? fn(el, arg) : fn(el));
+    });
   }
 
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
     const state   = opts?.state   ?? 'visible';
     const timeout = opts?.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
-    const entry = logCommand(this._desc ? `${this._desc}  ${state}` : state, 'waitFor');
-    const t0 = Date.now();
-    try {
+    return _withCommand(this._desc ? `${this._desc}  ${state}` : state, 'waitFor', async () => {
+      const t0 = Date.now();
       while (Date.now() - t0 < timeout) {
         const el = this._el();
-        if (state === 'attached'  && el)                        { entry.success(); return; }
-        if (state === 'detached'  && !el)                       { entry.success(); return; }
-        if (state === 'visible'   && await this.isVisible())    { entry.success(); return; }
-        if (state === 'hidden'    && !(await this.isVisible())) { entry.success(); return; }
+        if (state === 'attached'  && el)                        return;
+        if (state === 'detached'  && !el)                       return;
+        if (state === 'visible'   && await this.isVisible())    return;
+        if (state === 'hidden'    && !(await this.isVisible())) return;
         await _awaitOrAbort(50);
       }
       throw new Error(`waitFor(state="${state}") timed out after ${timeout}ms`);
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 }
 
@@ -1855,142 +1793,55 @@ class Mouse {
     y: number,
     opts?: { steps?: number },
   ): Promise<void> {
-    const entry = logCommand(
-      `${x}, ${y}`,
-      'mouse.move',
-    );
-
-    try {
-      const steps = Math.max(
-        1,
-        opts?.steps ?? 1,
-      );
+    return _withCommand(`${x}, ${y}`, 'mouse.move', async () => {
+      const steps = Math.max(1, opts?.steps ?? 1);
 
       const startX = this._x;
       const startY = this._y;
 
       for (let i = 1; i <= steps; i++) {
-        this._x =
-          startX + ((x - startX) * i) / steps;
+        this._x = startX + ((x - startX) * i) / steps;
+        this._y = startY + ((y - startY) * i) / steps;
 
-        this._y =
-          startY + ((y - startY) * i) / steps;
-
-        const prevTarget =
-          this._hoverPath[0] ?? null;
-
-        const nextTarget =
-          this._target();
+        const prevTarget = this._hoverPath[0] ?? null;
+        const nextTarget = this._target();
 
         if (prevTarget !== nextTarget) {
-          this._emitBoundaryEvents(
-            prevTarget,
-            nextTarget,
-          );
+          this._emitBoundaryEvents(prevTarget, nextTarget);
         }
 
         this._emitMove(nextTarget);
 
         if (i < steps) {
-          await new Promise(r =>
-            setTimeout(r, 0),
-          );
+          await new Promise(r => setTimeout(r, 0));
         }
       }
-
-      entry.success();
-    } catch (error: any) {
-      entry.fail(
-        error?.message ?? String(error),
-      );
-      throw error;
-    }
+    });
   }
 
   async down(
     opts?: { button?: MouseButton },
   ): Promise<void> {
-    const entry = logCommand(
-      `${this._x}, ${this._y}`,
-      'mouse.down',
-    );
-
-    try {
-      const button =
-        this._buttonCode(opts?.button);
-
-      this._buttons |=
-        this._buttonMask(button);
-
+    return _withCommand(`${this._x}, ${this._y}`, 'mouse.down', async () => {
+      const button = this._buttonCode(opts?.button);
+      this._buttons |= this._buttonMask(button);
       const target = this._target();
-
-      this._dispatch(
-        target,
-        'pointerdown',
-        { button },
-      );
-
-      this._dispatch(
-        target,
-        'mousedown',
-        {
-          button,
-          detail:
-            this._clickCount + 1,
-        },
-      );
-
-      entry.success();
-    } catch (error: any) {
-      entry.fail(
-        error?.message ?? String(error),
-      );
-      throw error;
-    }
+      this._dispatch(target, 'pointerdown', { button });
+      this._dispatch(target, 'mousedown', { button, detail: this._clickCount + 1 });
+    });
   }
 
   async up(
     opts?: { button?: MouseButton },
   ): Promise<void> {
-    const entry = logCommand(
-      `${this._x}, ${this._y}`,
-      'mouse.up',
-    );
-
-    try {
-      const button =
-        this._buttonCode(opts?.button);
-
-      const mask =
-        this._buttonMask(button);
-
+    return _withCommand(`${this._x}, ${this._y}`, 'mouse.up', async () => {
+      const button = this._buttonCode(opts?.button);
+      const mask   = this._buttonMask(button);
       const target = this._target();
-
-      this._dispatch(
-        target,
-        'pointerup',
-        { button },
-      );
-
-      this._dispatch(
-        target,
-        'mouseup',
-        {
-          button,
-          detail:
-            this._clickCount + 1,
-        },
-      );
-
+      this._dispatch(target, 'pointerup', { button });
+      this._dispatch(target, 'mouseup', { button, detail: this._clickCount + 1 });
       this._buttons &= ~mask;
-
-      entry.success();
-    } catch (error: any) {
-      entry.fail(
-        error?.message ?? String(error),
-      );
-      throw error;
-    }
+    });
   }
 
   async click(
@@ -2002,61 +1853,28 @@ class Mouse {
       delay?: number;
     },
   ): Promise<void> {
-    const entry = logCommand(
-      `${x}, ${y}`,
-      'mouse.click',
-    );
-
-    try {
+    return _withCommand(`${x}, ${y}`, 'mouse.click', async () => {
       await this.move(x, y);
 
-      this._clickCount =
-        opts?.clickCount ??
-        this._clickCount + 1;
+      this._clickCount = opts?.clickCount ?? this._clickCount + 1;
 
       await this.down(opts);
 
       if (opts?.delay) {
-        await new Promise(r =>
-          setTimeout(r, opts.delay),
-        );
+        await new Promise(r => setTimeout(r, opts.delay));
       }
 
       await this.up(opts);
 
-      const target =
-        this._target();
+      const target = this._target();
+      const button = this._buttonCode(opts?.button);
 
-      const button =
-        this._buttonCode(
-          opts?.button,
-        );
-
-      this._dispatch(
-        target,
-        'click',
-        {
-          button,
-          detail:
-            this._clickCount,
-        },
-      );
+      this._dispatch(target, 'click', { button, detail: this._clickCount });
 
       if (button === 2) {
-        this._dispatch(
-          target,
-          'contextmenu',
-          { button: 2 },
-        );
+        this._dispatch(target, 'contextmenu', { button: 2 });
       }
-
-      entry.success();
-    } catch (error: any) {
-      entry.fail(
-        error?.message ?? String(error),
-      );
-      throw error;
-    }
+    });
   }
 
   async dblclick(
@@ -2067,91 +1885,39 @@ class Mouse {
       delay?: number;
     },
   ): Promise<void> {
-    const entry = logCommand(
-      `${x}, ${y}`,
-      'mouse.dblclick',
-    );
-
-    try {
-      await this.click(x, y, {
-        ...opts,
-        clickCount: 1,
-      });
+    return _withCommand(`${x}, ${y}`, 'mouse.dblclick', async () => {
+      await this.click(x, y, { ...opts, clickCount: 1 });
 
       if (opts?.delay) {
-        await new Promise(r =>
-          setTimeout(r, opts.delay),
-        );
+        await new Promise(r => setTimeout(r, opts.delay));
       }
 
-      await this.click(x, y, {
-        ...opts,
-        clickCount: 2,
-      });
+      await this.click(x, y, { ...opts, clickCount: 2 });
 
-      const target =
-        this._target();
-
-      this._dispatch(
-        target,
-        'dblclick',
-        {
-          button:
-            this._buttonCode(
-              opts?.button,
-            ),
-          detail: 2,
-        },
-      );
-
-      entry.success();
-    } catch (error: any) {
-      entry.fail(
-        error?.message ?? String(error),
-      );
-      throw error;
-    }
+      const target = this._target();
+      this._dispatch(target, 'dblclick', { button: this._buttonCode(opts?.button), detail: 2 });
+    });
   }
 
   async wheel(
     deltaX: number,
     deltaY: number,
   ): Promise<void> {
-    const entry = logCommand(
-      `Δ${deltaX}, ${deltaY}`,
-      'mouse.wheel',
-    );
-
-    try {
-      const target =
-        this._target();
-
-      target?.dispatchEvent(
+    return _withCommand(`Δ${deltaX}, ${deltaY}`, 'mouse.wheel', async () => {
+      this._target()?.dispatchEvent(
         new WheelEvent('wheel', {
           bubbles: true,
           cancelable: true,
-
           clientX: this._x,
           clientY: this._y,
-
           screenX: this._x,
           screenY: this._y,
-
           deltaX,
           deltaY,
-          deltaMode:
-            WheelEvent
-              .DOM_DELTA_PIXEL,
+          deltaMode: WheelEvent.DOM_DELTA_PIXEL,
         }),
       );
-
-      entry.success();
-    } catch (error: any) {
-      entry.fail(
-        error?.message ?? String(error),
-      );
-      throw error;
-    }
+    });
   }
 }
 
@@ -2260,29 +2026,19 @@ export class Keyboard {
   }
 
   async down(key: string): Promise<void> {
-    const entry = logCommand(key, 'keyboard.down');
-    try {
+    return _withCommand(key, 'keyboard.down', async () => {
       const info = _resolveKey(key);
       this._pressed.add(info.key);
       this._fire(this._activeEl(), 'keydown', this._buildInit(info));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async up(key: string): Promise<void> {
-    const entry = logCommand(key, 'keyboard.up');
-    try {
+    return _withCommand(key, 'keyboard.up', async () => {
       const info = _resolveKey(key);
       this._pressed.delete(info.key);
       this._fire(this._activeEl(), 'keyup', this._buildInit(info));
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   private _pressRaw(info: _KeyInfo): void {
@@ -2301,8 +2057,7 @@ export class Keyboard {
   }
 
   async press(key: string, opts?: { delay?: number }): Promise<void> {
-    const entry = logCommand(key, 'keyboard.press');
-    try {
+    return _withCommand(key, 'keyboard.press', async () => {
       const parts = key.split('+');
       const mainKey = parts[parts.length - 1];
       const mods = parts.slice(0, -1);
@@ -2322,17 +2077,11 @@ export class Keyboard {
         this._pressed.delete(info.key);
         this._fire(this._activeEl(), 'keyup', this._buildInit(info));
       }
-
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async type(text: string, opts?: { delay?: number }): Promise<void> {
-    const entry = logCommand(`"${text}"`, 'keyboard.type');
-    try {
+    return _withCommand(`"${text}"`, 'keyboard.type', async () => {
       for (const ch of text) {
         if (opts?.delay) await _awaitOrAbort(opts.delay);
         const info = _resolveKey(ch);
@@ -2355,16 +2104,11 @@ export class Keyboard {
 
         this._fire(target, 'keyup', this._buildInit(info));
       }
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 
   async insertText(text: string): Promise<void> {
-    const entry = logCommand(`"${text}"`, 'keyboard.insertText');
-    try {
+    return _withCommand(`"${text}"`, 'keyboard.insertText', async () => {
       const target = this._activeEl() as HTMLInputElement | HTMLTextAreaElement | null;
       if (target && 'value' in target) {
         const win = iframeWin() as any;
@@ -2374,11 +2118,7 @@ export class Keyboard {
         const IE = win?.InputEvent ?? win?.Event ?? InputEvent;
         target.dispatchEvent(new IE('input', { bubbles: true, cancelable: false, inputType: 'insertText', data: text } as any));
       }
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   }
 }
 
@@ -2386,30 +2126,25 @@ export const page = {
   // ── Navigation ─────────────────────────────────────────────────────────────
 
   goto(url: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const entry = logCommand(url, 'goto');
+    return _withCommand(url, 'goto', () => new Promise<void>((resolve, reject) => {
       const tab = _activeTab();
-      if (!tab) { entry.fail('no active tab'); reject(new Error('no active tab')); return; }
+      if (!tab) { reject(new Error('no active tab')); return; }
       const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
       if (navInput) navInput.value = url;
-      const timer = setTimeout(() => {
-        entry.fail(`timed out`);
-        reject(new Error(`goto("${url}") timed out`));
-      }, 30_000);
-      tab.iframe.addEventListener('load', () => { clearTimeout(timer); entry.success(); resolve(); }, { once: true });
+      const timer = setTimeout(() => reject(new Error(`goto("${url}") timed out`)), 30_000);
+      tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
       tab.iframe.src = toProxiedUrl(url);
-    });
+    }));
   },
 
   reload(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const entry = logCommand('', 'reload');
+    return _withCommand('', 'reload', () => new Promise<void>((resolve, reject) => {
       const win = iframeWin();
       const tab = _activeTab();
-      if (!win || !tab) { entry.fail('no active tab'); reject(new Error('no active tab')); return; }
-      tab.iframe.addEventListener('load', () => { entry.success(); resolve(); }, { once: true });
+      if (!win || !tab) { reject(new Error('no active tab')); return; }
+      tab.iframe.addEventListener('load', () => resolve(), { once: true });
       win.location.reload();
-    });
+    }));
   },
 
   // ── Locator factories ───────────────────────────────────────────────────────
@@ -2559,23 +2294,16 @@ export const page = {
   // ── Waits ──────────────────────────────────────────────────────────────────
 
   async waitForURL(url: string | RegExp, opts?: { timeout?: number }): Promise<void> {
-    const entry = logCommand(String(url), 'waitForURL');
     const timeout = opts?.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
     const re = typeof url === 'string' ? new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : url;
-    const t0 = Date.now();
-    try {
+    return _withCommand(String(url), 'waitForURL', async () => {
+      const t0 = Date.now();
       while (Date.now() - t0 < timeout) {
-        if (re.test(page.url())) {
-          entry.success();
-          return;
-        }
+        if (re.test(page.url())) return;
         await _awaitOrAbort(50);
       }
       throw new Error(`waitForURL(${url}) timed out — current: ${page.url()}`);
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   },
 
   async waitForSelector(selector: string, opts?: { state?: 'visible'|'attached'; timeout?: number }): Promise<Locator> {
@@ -2585,14 +2313,7 @@ export const page = {
   },
 
   async waitForTimeout(ms: number): Promise<void> {
-    const entry = logCommand(`${ms}ms`, 'wait');
-    try {
-      await _awaitOrAbort(ms);
-      entry.success();
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    return _withCommand(`${ms}ms`, 'wait', () => _awaitOrAbort(ms));
   },
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
@@ -2658,15 +2379,7 @@ export const page = {
         ? `(${pageFunction.toString()})(${JSON.stringify(arg)})`
         : `(${pageFunction.toString()})()`
       : String(pageFunction);
-    const entry = logCommand(code.slice(0, 50).replace(/\s+/g, ' '), 'evaluate');
-    try {
-      const result = await Promise.resolve(win.eval(code));
-      entry.success();
-      return result;
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    return _withCommand(code.slice(0, 50).replace(/\s+/g, ' '), 'evaluate', () => Promise.resolve(win.eval(code)));
   },
 
   addInitScript(script: string | ((...args: any[]) => any), arg?: any): { dispose: () => void } {
@@ -3253,8 +2966,7 @@ export const browser = {
 
   /** Execute a named task in the Node.js context and return its result */
   async task<T = unknown>(name: string, payload?: unknown): Promise<T> {
-    const entry = logCommand(name, 'task');
-    try {
+    return _withCommand(name, 'task', async () => {
       const resp = await fetch(API_BASE + '/api/task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3262,11 +2974,7 @@ export const browser = {
       });
       const data = await resp.json() as { result?: T; error?: string };
       if (!resp.ok || data.error) throw new Error(data.error ?? `task "${name}" failed`);
-      entry.success();
       return data.result as T;
-    } catch (error: any) {
-      entry.fail(error?.message ?? String(error));
-      throw error;
-    }
+    });
   },
 };
