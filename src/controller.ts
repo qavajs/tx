@@ -1,4 +1,4 @@
-import { log, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort, startCollectingLogs, stopCollectingLogs, type LogEntry } from './browser';
+import { log, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort, startCollectingLogs, stopCollectingLogs, type LogEntry } from './browser';
 
 declare global {
   interface Window {
@@ -23,8 +23,9 @@ window.testApi = testApi;
 (window as any).page = page;
 (window as any).expect = expect;
 (window as any).browser = browser;
+(window as any).node = node;
 (window as any).request = request;
-(window as any).tx = { page, expect: expect, browser, request, ...testApi };
+(window as any).tx = { page, expect: expect, browser, node, request, ...testApi };
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 
@@ -299,6 +300,7 @@ function buildTestQueue(
   const defaultFixtureDefs: FixtureDefs = {
     page:    async (_f, use) => { await use((window as any).page); },
     browser: async (_f, use) => { await use((window as any).browser); },
+    node:    async (_f, use) => { await use((window as any).node); },
     expect:  async (_f, use) => { await use((window as any).expect); },
     request: async (_f, use) => { await use((window as any).request); },
   };

@@ -3011,6 +3011,24 @@ export const request = {
   },
 };
 
+// ── Node object ───────────────────────────────────────────────────────────────
+
+export const node = {
+  /** Execute a named task in the Node.js context and return its result */
+  async task<T = unknown>(name: string, payload?: unknown): Promise<T> {
+    return _withCommand(name, 'task', async () => {
+      const resp = await fetch(API_BASE + '/api/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, payload: payload ?? null }),
+      });
+      const data = await resp.json() as { result?: T; error?: string };
+      if (!resp.ok || data.error) throw new Error(data.error ?? `task "${name}" failed`);
+      return data.result as T;
+    });
+  },
+};
+
 // ── Browser object ────────────────────────────────────────────────────────────
 
 export const browser = {
@@ -3026,15 +3044,6 @@ export const browser = {
 
   /** Execute a named task in the Node.js context and return its result */
   async task<T = unknown>(name: string, payload?: unknown): Promise<T> {
-    return _withCommand(name, 'task', async () => {
-      const resp = await fetch(API_BASE + '/api/task', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, payload: payload ?? null }),
-      });
-      const data = await resp.json() as { result?: T; error?: string };
-      if (!resp.ok || data.error) throw new Error(data.error ?? `task "${name}" failed`);
-      return data.result as T;
-    });
+    return node.task<T>(name, payload);
   },
 };

@@ -65,7 +65,7 @@ module.exports = {
     ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
   ],
 
-  // Node.js task handlers callable from tests via browser.task()
+  // Node.js task handlers callable from tests via node.task()
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
     dirname:  () => __dirname,
@@ -104,7 +104,7 @@ All fields are optional. CLI flags override the config file.
 
 ## Writing Tests
 
-Tests look and feel like Playwright. Globals `page`, `browser`, `expect`, and `request` are injected automatically.
+Tests look and feel like Playwright. Globals `page`, `browser`, `node`, `expect`, and `request` are injected automatically.
 
 ```ts
 describe('Login', () => {
@@ -266,9 +266,25 @@ await newTab.close();
 
 // List open tabs
 const tabs = browser.pages();
+```
 
+### `node`
+
+```ts
 // Call a Node.js task defined in tx.config.js
-const content = await browser.task('readFile', { path: '/tmp/data.json' });
+const content = await node.task('readFile', { path: '/tmp/data.json' });
+const apiKey  = await node.task('getEnv', 'API_KEY');
+```
+
+Use `node` as a fixture to access Node.js tasks inside `test.extend` definitions:
+
+```ts
+const myTest = test.extend({
+  serverData: async ({ node }, use) => {
+    const raw = await node.task('readFile', { path: './fixtures/data.json' });
+    await use(JSON.parse(raw));
+  },
+});
 ```
 
 ### `request`

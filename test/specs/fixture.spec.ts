@@ -10,8 +10,8 @@ const myTest = test.extend<{
     await use({ username: 'standard_user', password: 'secret_sauce' });
   },
 
-  serverData: async ({ browser }, use) => {
-    const raw = await (browser.task as Function)('readFile', { path: './test/serverFile.json' }) as string;
+  serverData: async ({ node }, use) => {
+    const raw = await node.task<string>('readFile', { path: './test/serverFile.json' });
     await use(JSON.parse(raw));
   },
 

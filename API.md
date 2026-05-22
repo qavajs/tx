@@ -19,7 +19,8 @@
 - [browser](#browser)
   - [browser.newPage](#browsernewpage)
   - [browser.pages](#browserpages)
-  - [browser.task](#browsertask)
+- [node](#node)
+  - [node.task](#nodetask)
 - [request](#request)
   - [request.fetch](#requestfetch)
   - [APIResponse](#apiresponse)
@@ -62,7 +63,7 @@
 | `grep`             | `string`                                | —             | Filter tests by name or tag (substring or `/regex/flags`) |
 | `viewport`         | `{ width, height }`                     | —             | Fixed iframe viewport size; scales to fit panel  |
 | `reporters`        | `[path, config][]`                      | —             | Reporter modules — see [Reporters](#reporters)   |
-| `tasks`            | `Record<string, TaskHandler>`           | —             | Named Node.js task handlers — see [browser.task](#browsertask) |
+| `tasks`            | `Record<string, TaskHandler>`           | —             | Named Node.js task handlers — see [node.task](#nodetask) |
 | `profiles`         | `Record<string, Omit<TxConfig, 'profiles'>>` | —      | Named config profiles — select at runtime with `--profile <name>`; merged on top of base config, before CLI args |
 | `retries`          | `number`                                | `0`           | Number of times to retry a failing test before marking it failed. Each retry re-runs the full test (including `beforeEach`/`afterEach` hooks). The duration shown is that of the final attempt only. |
 | `testMode`         | `boolean`                               | `false`       | Run all tests automatically on startup, then exit — exit code `0` if all passed, `1` if any failed |
@@ -164,6 +165,7 @@ describe('Suite name', () => {
 | `afterEach` | Hook run after each test in the nearest `describe`       |
 | `page`      | Playwright-style page object (see [page](#page))         |
 | `browser`   | Multi-tab browser object (see [browser](#browser))       |
+| `node`      | Node.js context bridge (see [node](#node))               |
 | `request`   | HTTP request context (see [request](#request))           |
 | `expect`    | Assertion function (see [expect](#expect))               |
 | `log`       | `(message, type?) => void` — write to the panel console  |
@@ -185,7 +187,7 @@ Tags are freeform strings — conventionally prefixed with `@` (e.g. `'@smoke'`,
 
 ### Fixtures
 
-`test.extend()` creates a custom test function with additional fixtures injected into each test. Built-in fixtures (`page`, `browser`, `request`, `expect`) are always available without extending.
+`test.extend()` creates a custom test function with additional fixtures injected into each test. Built-in fixtures (`page`, `browser`, `node`, `request`, `expect`) are always available without extending.
 
 ```js
 const myTest = test.extend({
@@ -216,9 +218,9 @@ const myTest = test.extend({
     await page.goto('https://app.example.com/logout');
   },
 
-  // Node.js fixture — read from disk via browser.task
-  serverData: async ({ browser }, use) => {
-    const raw = await browser.task('readFile', { path: './fixtures/data.json' });
+  // Node.js fixture — read from disk via node.task
+  serverData: async ({ node }, use) => {
+    const raw = await node.task('readFile', { path: './fixtures/data.json' });
     await use(JSON.parse(raw));
   },
 });
@@ -735,70 +737,6 @@ const pages = browser.pages(): Page[]
 ```
 Return an array of `Page`-like objects for every currently open tab, in creation order.
 
-### browser.task
-
-```js
-await browser.task<T = unknown>(name: string, payload?: unknown): Promise<T>
-```
-
-Execute a named task handler in the **Node.js process** and return its result to the test. This is the primary way to access Node.js APIs (file system, databases, environment variables, etc.) from within browser-side test code.
-
-**Parameters:**
-
-| Parameter | Type      | Description                                                   |
-|-----------|-----------|---------------------------------------------------------------|
-| `name`    | `string`  | The task name as registered in `tx.config.js` under `tasks`  |
-| `payload` | `unknown` | Optional JSON-serializable argument passed to the handler     |
-
-**Returns:** A `Promise` that resolves to the handler's return value (must be JSON-serializable). Throws if the task name is not registered or the handler throws.
-
-**Defining tasks in `tx.config.js`:**
-
-```js
-const fs = require('fs');
-
-module.exports = {
-  // ...
-  tasks: {
-    // Simple value
-    getEnv: (name) => process.env[name] ?? null,
-
-    // File system
-    readFile: ({ path }) => fs.readFileSync(path, 'utf-8'),
-    writeFile: ({ path, content }) => { fs.writeFileSync(path, content); return null; },
-
-    // Async — database seed, API call, etc.
-    seedDatabase: async (records) => {
-      await db.insertMany(records);
-      return records.length;
-    },
-  },
-};
-```
-
-**Using tasks in tests:**
-
-```js
-it('reads a fixture from disk', async () => {
-  const json = await browser.task('readFile', { path: './fixtures/user.json' });
-  const user = JSON.parse(json);
-  expect(user.name).toBe('Alice');
-});
-
-it('seeds the database before testing', async () => {
-  const inserted = await browser.task('seedDatabase', [{ id: 1, role: 'admin' }]);
-  expect(inserted).toBe(1);
-
-  await page.goto('https://app.example.com/users');
-  await expect(page.locator('[data-testid="user-row"]')).toHaveCount(1);
-});
-
-it('reads an environment variable', async () => {
-  const apiKey = await browser.task('getEnv', 'API_KEY');
-  // use apiKey in test…
-});
-```
-
 **Example — multi-tab flow:**
 
 ```js
@@ -828,6 +766,81 @@ it('manual multi-tab', async () => {
   await tab2.close();
 });
 ```
+
+---
+
+## node
+
+Node.js context bridge available as the `node` global in test files and as a built-in fixture. Provides access to Node.js APIs (file system, environment variables, databases, etc.) from within browser-side test code.
+
+### node.task
+
+```js
+await node.task<T = unknown>(name: string, payload?: unknown): Promise<T>
+```
+
+Execute a named task handler registered in `tx.config.js` under `tasks` and return its result to the test.
+
+**Parameters:**
+
+| Parameter | Type      | Description                                                  |
+|-----------|-----------|--------------------------------------------------------------|
+| `name`    | `string`  | The task name as registered in `tx.config.js` under `tasks` |
+| `payload` | `unknown` | Optional JSON-serializable argument passed to the handler    |
+
+**Returns:** A `Promise` that resolves to the handler's return value (must be JSON-serializable). Throws if the task name is not registered or the handler throws.
+
+**Defining tasks in `tx.config.js`:**
+
+```js
+const fs = require('fs');
+
+module.exports = {
+  tasks: {
+    getEnv:   (name) => process.env[name] ?? null,
+    readFile: ({ path }) => fs.readFileSync(path, 'utf-8'),
+    writeFile: ({ path, content }) => { fs.writeFileSync(path, content); return null; },
+    seedDatabase: async (records) => {
+      await db.insertMany(records);
+      return records.length;
+    },
+  },
+};
+```
+
+**Using `node.task` directly in tests:**
+
+```js
+test('reads a fixture from disk', async () => {
+  const json = await node.task('readFile', { path: './fixtures/user.json' });
+  const user = JSON.parse(json);
+  expect(user.name).toBe('Alice');
+});
+
+test('seeds the database before testing', async () => {
+  const inserted = await node.task('seedDatabase', [{ id: 1, role: 'admin' }]);
+  expect(inserted).toBe(1);
+  await page.goto('https://app.example.com/users');
+  await expect(page.locator('[data-testid="user-row"]')).toHaveCount(1);
+});
+```
+
+**Using `node` as a fixture:**
+
+```js
+const myTest = test.extend({
+  serverData: async ({ node }, use) => {
+    const raw = await node.task('readFile', { path: './fixtures/data.json' });
+    await use(JSON.parse(raw));
+  },
+});
+
+myTest('shows seeded data', async ({ serverData }) => {
+  expect(serverData.items).toHaveLength(3);
+});
+```
+
+> **Note:** `browser.task(name, payload)` is a convenience alias that delegates to `node.task`. Prefer `node.task` in new code; use `node` as a fixture when you need Node.js access inside `test.extend` definitions.
 
 ---
 
