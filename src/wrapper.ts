@@ -151,6 +151,7 @@ export class TxWrapper {
   private server: TestServer | null = null;
   private injector: IframeInjector | null = null;
   private _browserChild: ChildProcess | null = null;
+  private _isSafariBrowser = false;
 
   constructor(
     private config: {
@@ -269,13 +270,25 @@ export class TxWrapper {
         );
       }
 
-      const args = [
-        ...(this.config.headless ? headlessArgs(exePath) : []),
-        this.controlPanelProxyUrl,
-      ];
+      this._isSafariBrowser = exePath.toLowerCase().includes('safari') && process.platform === 'darwin';
+      let spawnCmd: string;
+      let args: string[];
+
+      if (this._isSafariBrowser) {
+        // Safari must be launched via `open` — launching the binary directly triggers
+        // WebKit's WebProcess sandbox and blocks all resource loads.
+        spawnCmd = 'open';
+        args = ['-a', 'Safari', this.controlPanelProxyUrl];
+      } else {
+        spawnCmd = exePath;
+        args = [
+          ...(this.config.headless ? headlessArgs(exePath) : []),
+          this.controlPanelProxyUrl,
+        ];
+      }
 
       console.log(`\n🌐 ${this.config.headless ? 'Launching headless browser' : 'Opening browser'}: ${exePath}`);
-      this._browserChild = spawn(exePath, args, { stdio: 'ignore', detached: false });
+      this._browserChild = spawn(spawnCmd, args, { stdio: 'ignore', detached: false });
       this._browserChild.on('error', (err: Error) => {
         console.error('Browser error:', err.message);
       });
@@ -310,6 +323,11 @@ export class TxWrapper {
     if (this._browserChild) {
       try { this._browserChild.kill(); } catch { /* already exited */ }
       this._browserChild = null;
+    }
+
+    if (this._isSafariBrowser) {
+      try { execSync('pkill -x Safari', { stdio: 'ignore' }); } catch { /* already closed */ }
+      this._isSafariBrowser = false;
     }
 
     if (this.injector) {
