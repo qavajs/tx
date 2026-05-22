@@ -7,7 +7,7 @@ module.exports = {
   testFiles: ['./specs/**/*.spec.ts'],
   grep: 'login',
   viewport: { width: 1600, height: 900 },
-  //snapshot: true,
+  snapshot: true,
   actionTimeout: 10000,   // 10s for actions
   expectTimeout: 8000,    // 8s for expect assertions
   testTimeout: 30000,     // 30s per test
@@ -19,5 +19,17 @@ module.exports = {
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
     dirname: () => __dirname,
+  },
+  profiles: {
+    ci: {
+      headless: true,
+      browser: 'chromium',
+      testMode: true,
+    },
+    debug: {
+      headless: false,
+      actionTimeout: 30000,
+      testTimeout: 120000,
+    },
   },
 };

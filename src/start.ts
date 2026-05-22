@@ -24,10 +24,11 @@ function loadReporter(entry: ReporterEntry, configDir: string): Reporter {
 
 // ── CLI argument parsing ───────────────────────────────────────────────────────
 
-function parseArgs(argv: string[]): { cliConfig: TxConfig; configFile?: string } {
+function parseArgs(argv: string[]): { cliConfig: TxConfig; configFile?: string; profile?: string } {
     const args = argv.slice(2);
     const cliConfig: TxConfig = {};
     let configFile: string | undefined;
+    let profile: string | undefined;
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -37,6 +38,8 @@ function parseArgs(argv: string[]): { cliConfig: TxConfig; configFile?: string }
         if (eqMatch) {
             if (eqMatch[1] === 'config') {
                 configFile = eqMatch[2];
+            } else if (eqMatch[1] === 'profile') {
+                profile = eqMatch[2];
             } else {
                 setConfigField(cliConfig, eqMatch[1], eqMatch[2]);
             }
@@ -49,6 +52,8 @@ function parseArgs(argv: string[]): { cliConfig: TxConfig; configFile?: string }
             const next = args[i + 1];
             if (flagMatch[1] === 'config') {
                 if (next && !next.startsWith('--')) { configFile = next; i++; }
+            } else if (flagMatch[1] === 'profile') {
+                if (next && !next.startsWith('--')) { profile = next; i++; }
             } else if (next && !next.startsWith('--')) {
                 setConfigField(cliConfig, flagMatch[1], next);
                 i++;
@@ -63,7 +68,7 @@ function parseArgs(argv: string[]): { cliConfig: TxConfig; configFile?: string }
         }
     }
 
-    return { cliConfig, configFile };
+    return { cliConfig, configFile, profile };
 }
 
 function setConfigField(config: TxConfig, key: string, value: string): void {
@@ -196,7 +201,7 @@ function resolveTestFiles(config: Pick<TxConfig, 'testFiles'>, configDir: string
 // ── Entry point ────────────────────────────────────────────────────────────────
 
 async function main() {
-    const { cliConfig, configFile: explicitConfigFile } = parseArgs(process.argv);
+    const { cliConfig, configFile: explicitConfigFile, profile } = parseArgs(process.argv);
 
     // Load config file (explicit or auto-detected)
     let fileConfig: Partial<TxConfig> = {};
@@ -209,6 +214,18 @@ async function main() {
             console.log(`📋 Using config: ${configPath}`);
         } catch (err: any) {
             console.warn(`⚠️  Failed to load config file: ${err.message}`);
+        }
+    }
+
+    // Apply profile overrides (profile < CLI args)
+    if (profile) {
+        const profileConfig = fileConfig.profiles?.[profile];
+        if (!profileConfig) {
+            const available = Object.keys(fileConfig.profiles ?? {});
+            console.warn(`⚠️  Unknown profile: "${profile}".${available.length ? ` Available: ${available.join(', ')}` : ' No profiles defined.'}`);
+        } else {
+            console.log(`🔖 Using profile: ${profile}`);
+            fileConfig = { ...fileConfig, ...profileConfig };
         }
     }
 

@@ -783,6 +783,14 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-snapshot-header-meta {
             min-width: 0;
             display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+            overflow: hidden;
+        }
+        .tx-snapshot-header-text {
+            min-width: 0;
+            display: flex;
             flex-direction: column;
             gap: 4px;
             overflow: hidden;
@@ -1401,10 +1409,12 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
                 <div class="tx-browser-pane tx-browser-pane--hidden" id="snapshotPane">
                     <div class="tx-snapshot-header">
                         <div class="tx-snapshot-header-meta">
-                            <div class="tx-snapshot-title" id="snapshotTitle">Snapshot</div>
-                            <div class="tx-snapshot-url" id="snapshotUrl"></div>
+                            <div class="tx-snapshot-header-text">
+                                <div class="tx-snapshot-title" id="snapshotTitle">Snapshot</div>
+                                <div class="tx-snapshot-url" id="snapshotUrl"></div>
+                            </div>
+                            <span class="tx-viewport-tag" id="snapshotViewportTag">—</span>
                         </div>
-                        <span class="tx-viewport-tag" id="snapshotViewportTag">—</span>
                         <button class="tx-snapshot-close-btn" onclick="window.setBrowserView && window.setBrowserView('browser')" title="Return to browser">Close</button>
                     </div>
                     <div id="snapshotViewportWrapper">

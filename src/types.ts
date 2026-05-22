@@ -62,6 +62,12 @@ export interface TxConfig {
    * When omitted the OS default browser is used.
    */
   browser?: string;
+
+  /**
+   * Named config profiles. Select one at runtime with --profile <name>.
+   * Profile values are merged on top of the base config, before CLI args.
+   */
+  profiles?: Record<string, Omit<TxConfig, 'profiles'>>;
 }
 
 export interface WaitOptions {
