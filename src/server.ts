@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { generateControlPanelHTML } from './controlPanel';
 import { parseTestFile, ParsedFile } from './testRunner';
-import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from './reporter';
+import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from './reporter';
 import type { TaskHandler } from './types';
 
 export class TestServer {
@@ -157,11 +157,11 @@ export class TestServer {
             try {
               const { tests } = JSON.parse(body) as {
                 filename?: string;
-                tests: Array<{ name: string; passed: boolean; error?: string; duration: number }>;
+                tests: Array<{ name: string; passed: boolean; error?: string; duration: number; logs?: LogEntry[] }>;
               };
               for (const t of tests) {
                 const testCase = { title: t.name, fullTitle: t.name };
-                const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error };
+                const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs };
                 this.emitter.emitTestBegin(testCase, result);
                 this.emitter.emitTestEnd(testCase, result);
               }

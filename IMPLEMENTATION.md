@@ -306,20 +306,178 @@ node dist/index.js --headless true
 
 ## Reporter API
 
-Custom reporters implement the `Reporter` interface from `src/reporter.ts`:
+### Architecture
+
+Tests execute inside the browser. Results travel to Node.js reporters via HTTP, then the `ReporterEmitter` fans them out to every registered reporter.
+
+```
+Browser (controller.ts)
+  │  POST /api/run-begin   → emitBegin(config, suite)
+  │  POST /api/report      → emitTestBegin + emitTestEnd  (per file, after it completes)
+  │  POST /api/run-end     → emitEnd(result)
+  ▼
+TestServer (server.ts)
+  └── ReporterEmitter (reporter.ts)
+        ├── ConsoleReporter
+        ├── HtmlReporter
+        └── … any custom reporters
+```
+
+**Event sequence for a full run:**
+
+1. `onBegin` — once, before the first test starts. Receives the list of test files and the complete test suite tree.
+2. `onTestBegin` / `onTestEnd` — once per test, in execution order. Called after each spec file completes (results are batched per file, not streamed in real-time).
+3. `onEnd` — once, after all files have run. Contains cumulative pass/fail/total/duration counts.
+
+### Reporter interface
+
+Defined in `src/reporter.ts`. All methods are optional.
+
+```typescript
+interface Reporter {
+  onBegin?(config: FullConfig, suite: Suite): void;
+  onTestBegin?(test: TestCase, result: TestResult): void;
+  onTestEnd?(test: TestCase, result: TestResult): void;
+  onEnd?(result: FullResult): void;
+}
+```
+
+**Types:**
+
+```typescript
+interface FullConfig {
+  testFiles: string[];          // basenames of the files included in this run
+}
+
+interface Suite {
+  title: string;
+  tests: TestCase[];
+  allTests(): TestCase[];       // flat list of all test cases
+}
+
+interface TestCase {
+  title: string;                // bare test name (no suite prefix)
+  fullTitle: string;            // suite path + test name, e.g. "Login > should redirect"
+}
+
+interface TestResult {
+  status: 'passed' | 'failed' | 'skipped';
+  duration: number;             // milliseconds
+  error?: string;               // stack trace or message, present when status === 'failed'
+}
+
+interface FullResult {
+  status: 'passed' | 'failed'; // 'passed' if failed === 0
+  passed: number;
+  failed: number;
+  total: number;
+  duration: number;             // cumulative milliseconds across all tests
+}
+```
+
+### ReporterEmitter
+
+`src/reporter.ts` also exports `ReporterEmitter`, which the server uses internally to fan out events. You do not need to use it directly when writing reporters.
+
+```typescript
+const emitter = new ReporterEmitter();
+emitter.add(new ConsoleReporter());
+emitter.add(new HtmlReporter({ outputPath: 'report.html' }));
+
+emitter.emitBegin(config, suite);
+emitter.emitTestBegin(testCase, result);
+emitter.emitTestEnd(testCase, result);
+emitter.emitEnd(fullResult);
+```
+
+### Loading mechanism
+
+Reporters are loaded by `src/start.ts` at startup, before any tests run:
+
+1. Each `reporters` entry is a `[modulePath, configObject]` tuple.
+2. The module path is resolved relative to the config file directory.
+3. `.ts` files are supported — they are compiled on demand via `src/tsLoader.ts` (a lightweight ts-node hook).
+4. The loader looks for a default export or the first exported function (class constructor). It instantiates the class with the config object as its sole constructor argument.
+
+### Registering reporters
+
+```js
+// tx.config.js
+module.exports = {
+  reporters: [
+    ['./ConsoleReporter.ts', {}],
+    ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
+  ],
+};
+```
+
+### Built-in reporters
+
+Both live in the `test/` directory and serve as working examples.
+
+**ConsoleReporter** (`test/ConsoleReporter.ts`)
+
+Prints a one-line summary for each test and a totals line at the end. Takes no meaningful config options (constructor accepts `{}` for forward compatibility).
+
+```
+Running 12 test(s)
+[Passed] Login > should redirect (312ms)
+[Failed] Login > wrong password (89ms)
+       Error: expected 'error' to be visible
+  11 passed, 1 failed, 12 total (2145ms)
+```
+
+**HtmlReporter** (`test/HtmlReporter.ts`)
+
+Writes a self-contained HTML file after the run. Accepts one config option:
+
+| Option       | Type     | Default       | Description                       |
+|--------------|----------|---------------|-----------------------------------|
+| `outputPath` | `string` | `"report.html"` | Path for the generated HTML file |
+
+The file contains a summary card (passed / failed / total) and a per-test table with status badge, full title, duration, and — for failures — the error stack trace.
+
+### Writing a custom reporter
 
 ```typescript
 import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from '../src/reporter';
 
-export class MyReporter implements Reporter {
-  onBegin(config: FullConfig, suite: Suite): void { }
-  onTestBegin(test: TestCase, result: TestResult): void { }
-  onTestEnd(test: TestCase, result: TestResult): void { }
-  onEnd(result: FullResult): void { }
+export class SlackReporter implements Reporter {
+  private webhook: string;
+  private failures: string[] = [];
+
+  constructor(config: { webhook: string }) {
+    this.webhook = config.webhook;
+  }
+
+  onTestEnd(test: TestCase, result: TestResult): void {
+    if (result.status === 'failed') {
+      this.failures.push(`• ${test.fullTitle}: ${result.error?.split('\n')[0]}`);
+    }
+  }
+
+  async onEnd(result: FullResult): Promise<void> {
+    const text = result.status === 'passed'
+      ? `All ${result.total} tests passed (${result.duration}ms)`
+      : `${result.failed} failed of ${result.total}\n${this.failures.join('\n')}`;
+    await fetch(this.webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  }
 }
 ```
 
-Register in `tx.config.js` under `reporters` as `['./MyReporter.ts', { ...config }]`.
+Register it:
+
+```js
+reporters: [
+  ['./SlackReporter.ts', { webhook: process.env.SLACK_WEBHOOK }],
+],
+```
+
+`onEnd` may return a `Promise`; the server awaits it before responding to the browser.
 
 ---
 

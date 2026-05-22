@@ -305,6 +305,23 @@ const LOG_STATE: Record<LogState, { icon: string }> = {
 let _logContainer: HTMLElement | null = null;
 export function setLogContainer(el: HTMLElement | null) { _logContainer = el; }
 
+export interface LogEntry {
+  cmd: string;
+  message: string;
+  state: 'pass' | 'fail' | 'info';
+  duration?: number;
+}
+
+let _collectedLogs: LogEntry[] | null = null;
+
+export function startCollectingLogs(): void { _collectedLogs = []; }
+
+export function stopCollectingLogs(): LogEntry[] {
+  const logs = _collectedLogs ?? [];
+  _collectedLogs = null;
+  return logs;
+}
+
 function createLogEntry(message: string, state: LogState, cmd?: string, duration?: number) {
   const container = _logContainer ?? document.getElementById('console');
   if (!container) return null;
@@ -359,6 +376,7 @@ const _snapshotCommands = new Set([
 export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string, duration?: number) {
   const state = type === 'success' ? 'pass' : type === 'error' ? 'fail' : 'info';
   createLogEntry(message, state, cmd, duration);
+  if (_collectedLogs) _collectedLogs.push({ cmd: cmd ?? state, message, state, duration });
 }
 
 export function logCommand(message: string, cmd: string) {
@@ -366,7 +384,9 @@ export function logCommand(message: string, cmd: string) {
   const startedAt = Date.now();
   return {
     success(duration?: number) {
-      updateLogEntry(entry, 'pass', duration ?? Math.max(0, Date.now() - startedAt));
+      const dur = duration ?? Math.max(0, Date.now() - startedAt);
+      updateLogEntry(entry, 'pass', dur);
+      if (_collectedLogs) _collectedLogs.push({ cmd, message, state: 'pass', duration: dur });
       if (window.__CONFIG__.snapshot && _snapshotCommands.has(cmd)) {
         try {
           const snapshotId = _captureSnapshot(message || cmd);
@@ -394,7 +414,9 @@ export function logCommand(message: string, cmd: string) {
         const msgEl = entry.querySelector<HTMLElement>('.tx-cmd-msg');
         if (msgEl) msgEl.textContent += ` — ${error}`;
       }
-      updateLogEntry(entry, 'fail', Math.max(0, Date.now() - startedAt));
+      const dur = Math.max(0, Date.now() - startedAt);
+      updateLogEntry(entry, 'fail', dur);
+      if (_collectedLogs) _collectedLogs.push({ cmd, message: error ? `${message} — ${error}` : message, state: 'fail', duration: dur });
     },
   };
 }

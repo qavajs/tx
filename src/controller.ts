@@ -1,4 +1,4 @@
-import { log, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort } from './browser';
+import { log, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort, startCollectingLogs, stopCollectingLogs, type LogEntry } from './browser';
 
 declare global {
   interface Window {
@@ -246,7 +246,7 @@ window.toggleSuite = (filename: string, suiteName: string) => {
 
 // ── Test execution ────────────────────────────────────────────────────────────
 
-interface TestResult { name: string; passed: boolean; error?: string; duration: number; }
+interface TestResult { name: string; passed: boolean; error?: string; duration: number; logs: LogEntry[]; }
 
 type HookFn = (...args: any[]) => any;
 type HookEntry = { fn: HookFn; expectsFixtures: boolean };
@@ -374,7 +374,7 @@ async function executeTests(
   const queue = buildTestQueue(code, opts ?? {});
 
   if ('parseError' in queue) {
-    return [{ name: '(parse/compile error)', passed: false, error: queue.parseError, duration: 0 }];
+    return [{ name: '(parse/compile error)', passed: false, error: queue.parseError, duration: 0, logs: [] }];
   }
 
   const results: TestResult[] = [];
@@ -386,6 +386,7 @@ async function executeTests(
     }
     const t0 = Date.now();
     let _timeoutId: ReturnType<typeof setTimeout> | undefined;
+    startCollectingLogs();
     try {
       closeExtraTabs();
       await page.resetSession();
@@ -418,13 +419,13 @@ async function executeTests(
       }
       for (const hook of t.teardownAfterAlls)   await Promise.resolve(hook());
       const dur = Date.now() - t0;
-      results.push({ name: t.name, passed: true, duration: dur });
+      results.push({ name: t.name, passed: true, duration: dur, logs: stopCollectingLogs() });
       if (filename) {
         setTestItemStatus(filename, t.name, 'pass', dur);
       }
     } catch (e: any) {
       const dur = Date.now() - t0;
-      results.push({ name: t.name, passed: false, error: e.stack || e.message, duration: dur });
+      results.push({ name: t.name, passed: false, error: e.stack || e.message, duration: dur, logs: stopCollectingLogs() });
       if (filename) setTestItemStatus(filename, t.name, 'fail', dur);
       appendErrorToLog(e.stack || e.message);
     } finally {

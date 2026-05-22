@@ -11,10 +11,18 @@ export interface TestCase {
   fullTitle: string;
 }
 
+export interface LogEntry {
+  cmd: string;
+  message: string;
+  state: 'pass' | 'fail' | 'info';
+  duration?: number;
+}
+
 export interface TestResult {
   status: 'passed' | 'failed' | 'skipped';
   duration: number;
   error?: string;
+  logs?: LogEntry[];
 }
 
 export interface Suite {
