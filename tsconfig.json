@@ -18,6 +18,7 @@
     "build.mjs",
     "dist",
     "node_modules",
-    "test"
+    "test",
+    "eslint.config.mjs"
   ]
 }

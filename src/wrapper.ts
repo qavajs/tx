@@ -129,7 +129,7 @@ function findBrowserExecutable(browser?: string): string | null {
 function headlessArgs(exePath: string): string[] {
   const lower = exePath.toLowerCase();
   if (lower.includes('firefox')) return ['--headless', '--no-remote', '--new-instance'];
-  if (lower.includes('safari'))  return [];
+  if (lower.includes('safari')) return [];
   // Chrome, Chromium, Edge (Chromium-based)
   return ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'];
 }
@@ -139,7 +139,6 @@ import { TestServer } from './server';
 import { startWatcher } from './watcher';
 import type { Reporter } from './reporter';
 import type { TaskHandler } from './types';
-import { log } from 'node:console';
 
 export class TxWrapper {
   private proxy: any;

@@ -63,17 +63,17 @@ export function reapplyViewport() {
   if (!cw || !ch) return;
 
   const scale = Math.min(cw / viewportW, ch / viewportH);
-  const ox    = (cw - viewportW * scale) / 2;
-  const oy    = (ch - viewportH * scale) / 2;
+  const ox = (cw - viewportW * scale) / 2;
+  const oy = (ch - viewportH * scale) / 2;
 
-  iframe.style.position      = 'absolute';
-  iframe.style.top           = '0';
-  iframe.style.left          = '0';
-  iframe.style.width         = viewportW + 'px';
-  iframe.style.height        = viewportH + 'px';
-  iframe.style.transform     = `translate(${ox}px,${oy}px) scale(${scale})`;
+  iframe.style.position = 'absolute';
+  iframe.style.top = '0';
+  iframe.style.left = '0';
+  iframe.style.width = viewportW + 'px';
+  iframe.style.height = viewportH + 'px';
+  iframe.style.transform = `translate(${ox}px,${oy}px) scale(${scale})`;
   iframe.style.transformOrigin = 'top left';
-  if (tag) tag.textContent   = `${viewportW} × ${viewportH} @ ${Math.round(scale * 100)}%`;
+  if (tag) tag.textContent = `${viewportW} × ${viewportH} @ ${Math.round(scale * 100)}%`;
 }
 
 export function applyViewport(w: number | null, h: number | null) {
@@ -325,14 +325,14 @@ export function stopCollectingLogs(): LogEntry[] {
 function createLogEntry(message: string, state: LogState, cmd?: string, duration?: number) {
   const container = _logContainer ?? document.getElementById('console');
   if (!container) return null;
-  const cls   = state;
-  const icon  = LOG_STATE[state].icon;
+  const cls = state;
+  const icon = LOG_STATE[state].icon;
   const label = cmd ?? (state === 'pass' ? 'ok' : state === 'fail' ? 'err' : state === 'pending' ? 'pending' : 'log');
   const entry = document.createElement('div');
   entry.className = `tx-cmd ${cls}`;
-  const iconEl  = document.createElement('span'); iconEl.className  = `tx-cmd-icon ${cls}`;  iconEl.textContent  = icon;
+  const iconEl = document.createElement('span'); iconEl.className = `tx-cmd-icon ${cls}`; iconEl.textContent = icon;
   const labelEl = document.createElement('span'); labelEl.className = `tx-cmd-label ${cls}`; labelEl.textContent = label;
-  const msgEl   = document.createElement('span'); msgEl.className   = 'tx-cmd-msg';          msgEl.textContent   = message;
+  const msgEl = document.createElement('span'); msgEl.className = 'tx-cmd-msg'; msgEl.textContent = message;
   entry.appendChild(iconEl); entry.appendChild(labelEl); entry.appendChild(msgEl);
   if (duration != null) {
     const durEl = document.createElement('span'); durEl.className = 'tx-cmd-dur'; durEl.textContent = duration + 'ms';
@@ -347,7 +347,7 @@ function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail', durat
   if (!entry) return;
   entry.classList.remove('pending', 'info', 'pass', 'fail');
   entry.classList.add(state);
-  const iconEl  = entry.querySelector<HTMLElement>('.tx-cmd-icon');
+  const iconEl = entry.querySelector<HTMLElement>('.tx-cmd-icon');
   const labelEl = entry.querySelector<HTMLElement>('.tx-cmd-label');
   if (iconEl) {
     iconEl.className = `tx-cmd-icon ${state}`;
@@ -460,8 +460,8 @@ function resolveSelector(selector: string): { base: string; hasText: string | nu
 export class Locator {
   constructor(readonly _query: QueryFn, readonly _desc = '') {}
 
-  _els(): Element[]      { return this._query(); }
-  _el():  Element | null { return this._els()[0] ?? null; }
+  _els(): Element[] { return this._query(); }
+  _el(): Element | null { return this._els()[0] ?? null; }
 
   async _waitForEl(timeout?: number): Promise<HTMLElement> {
     const _timeout = timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
@@ -579,14 +579,14 @@ export class Locator {
     return new Locator(() => { const e = this._els()[n]; return e ? [e] : []; }, `${this._desc}:nth(${n})`);
   }
   first(): Locator { return this.nth(0); }
-  last():  Locator {
+  last(): Locator {
     return new Locator(() => { const a = this._els(); return a.length ? [a[a.length - 1]] : []; }, `${this._desc}:last`);
   }
   filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp; visible?: boolean }): Locator {
     const tag = opts.hasText ? `[has-text: ${opts.hasText}]` : opts.hasNotText ? `[not-text: ${opts.hasNotText}]` : opts.visible !== undefined ? `[visible: ${opts.visible}]` : '[filtered]';
     return new Locator(() => this._els().filter(el => {
-      if (opts.hasText    && !textMatches(el, opts.hasText))    return false;
-      if (opts.hasNotText &&  textMatches(el, opts.hasNotText)) return false;
+      if (opts.hasText && !textMatches(el, opts.hasText)) return false;
+      if (opts.hasNotText && textMatches(el, opts.hasNotText)) return false;
       if (opts.visible !== undefined && this._isVisibleElement(el) !== opts.visible) return false;
       return true;
     }), `${this._desc}${tag}`);
@@ -648,27 +648,27 @@ export class Locator {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'rightClick');
       const init: MouseEventInit = { bubbles: true, cancelable: true, button: 2, buttons: 2 };
-      el.dispatchEvent(new MouseEvent('mousedown',    init));
-      el.dispatchEvent(new MouseEvent('mouseup',      init));
-      el.dispatchEvent(new MouseEvent('contextmenu',  init));
+      el.dispatchEvent(new MouseEvent('mousedown', init));
+      el.dispatchEvent(new MouseEvent('mouseup', init));
+      el.dispatchEvent(new MouseEvent('contextmenu', init));
     });
   }
 
   async fill(value: string, opts?: { timeout?: number; delay?: number }): Promise<void> {
     return _withCommand(this._desc ? `${this._desc}  "${value}"` : `"${value}"`, 'fill', async () => {
       await _checkLocatorHandlers();
-      const el    = await this._waitForActionableEl(opts, 'fill') as HTMLInputElement | HTMLTextAreaElement;
-      const win   = iframeWin() as any;
+      const el = await this._waitForActionableEl(opts, 'fill') as HTMLInputElement | HTMLTextAreaElement;
+      const win = iframeWin() as any;
       const delay = opts?.delay ?? 30;
 
       // Use the iframe's own constructors so events are trusted by page scripts
       const KE = win.KeyboardEvent as typeof KeyboardEvent;
-      const E  = win.Event        as typeof Event;
+      const E = win.Event as typeof Event;
       const IE = (win.InputEvent ?? win.Event) as typeof InputEvent;
 
       // Native value setter — required for React/Vue controlled inputs
-      const tag    = el.tagName;
-      const proto  = tag === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
+      const tag = el.tagName;
+      const proto = tag === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
       const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
       const setVal = (v: string) => { if (setter) setter.call(el, v); else (el as any).value = v; };
 
@@ -680,14 +680,14 @@ export class Locator {
       };
       const charToCode = (ch: string): string => {
         if (/[a-zA-Z]/.test(ch)) return 'Key' + ch.toUpperCase();
-        if (/[0-9]/.test(ch))    return 'Digit' + ch;
+        if (/[0-9]/.test(ch)) return 'Digit' + ch;
         return KEY_CODE_MAP[ch] ?? 'Unidentified';
       };
 
       // keydown/keyup: charCode is always 0; keypress carries the actual charCode
       const kDown = (ch: string) => {
         const raw = ch.charCodeAt(0);
-        const kc  = /[a-zA-Z]/.test(ch) ? ch.toUpperCase().charCodeAt(0) : raw;
+        const kc = /[a-zA-Z]/.test(ch) ? ch.toUpperCase().charCodeAt(0) : raw;
         return { key: ch, code: charToCode(ch), keyCode: kc, charCode: 0, which: kc, bubbles: true, cancelable: true };
       };
       const kPress = (ch: string) => {
@@ -696,8 +696,8 @@ export class Locator {
       };
 
       el.focus();
-      el.dispatchEvent(new E('focus',   { bubbles: false }));
-      el.dispatchEvent(new E('focusin', { bubbles: true  }));
+      el.dispatchEvent(new E('focus', { bubbles: false }));
+      el.dispatchEvent(new E('focusin', { bubbles: true }));
 
       // Clear existing value
       setVal('');
@@ -706,7 +706,7 @@ export class Locator {
       // Type character by character
       let current = '';
       for (const ch of value) {
-        el.dispatchEvent(new KE('keydown',  kDown(ch)));
+        el.dispatchEvent(new KE('keydown', kDown(ch)));
         el.dispatchEvent(new KE('keypress', kPress(ch)));
         current += ch;
         setVal(current);
@@ -715,9 +715,9 @@ export class Locator {
         if (delay > 0) await _awaitOrAbort(delay);
       }
 
-      el.dispatchEvent(new E('change',   { bubbles: true  }));
-      el.dispatchEvent(new E('blur',     { bubbles: false }));
-      el.dispatchEvent(new E('focusout', { bubbles: true  }));
+      el.dispatchEvent(new E('change', { bubbles: true }));
+      el.dispatchEvent(new E('blur', { bubbles: false }));
+      el.dispatchEvent(new E('focusout', { bubbles: true }));
     });
   }
 
@@ -742,9 +742,9 @@ export class Locator {
       await _checkLocatorHandlers();
       const el = await this._waitForEl(opts?.timeout);
       const kOpts = { key, bubbles: true, cancelable: true };
-      el.dispatchEvent(new KeyboardEvent('keydown',  kOpts));
+      el.dispatchEvent(new KeyboardEvent('keydown', kOpts));
       el.dispatchEvent(new KeyboardEvent('keypress', kOpts));
-      el.dispatchEvent(new KeyboardEvent('keyup',    kOpts));
+      el.dispatchEvent(new KeyboardEvent('keyup', kOpts));
       if (key === 'Enter') {
         const form = (el as HTMLInputElement).form;
         if (form) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -792,7 +792,7 @@ export class Locator {
     return _withCommand(this._desc, 'hover', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'hover');
-      el.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
+      el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
       el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
     });
   }
@@ -812,11 +812,11 @@ export class Locator {
     const names = arr.map(f => (typeof f === 'string' ? f.split('/').pop() ?? f : f.name)).join(', ');
     return _withCommand(this._desc ? `${this._desc}  ${names}` : names, 'setInputFiles', async () => {
       await _checkLocatorHandlers();
-      const el  = await this._waitForEl(opts?.timeout) as HTMLInputElement;
+      const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
       const win = iframeWin() as any;
-      const DT  = (win?.DataTransfer ?? DataTransfer) as typeof DataTransfer;
-      const F   = (win?.File        ?? File)          as typeof File;
-      const dt  = new DT();
+      const DT = (win?.DataTransfer ?? DataTransfer) as typeof DataTransfer;
+      const F = (win?.File ?? File) as typeof File;
+      const dt = new DT();
       for (const f of arr) {
         if (typeof f === 'string') {
           dt.items.add(new F([], f.split('/').pop() ?? f));
@@ -828,7 +828,7 @@ export class Locator {
       Object.defineProperty(el, 'files', { value: dt.files, configurable: true, writable: false });
       Object.defineProperty(el, 'value', { value: valueStr, configurable: true, writable: true });
       el.dispatchEvent(new Event('change', { bubbles: true }));
-      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('input', { bubbles: true }));
     });
   }
 
@@ -859,7 +859,7 @@ export class Locator {
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   }
-  async isHidden(): Promise<boolean>  { return !(await this.isVisible()); }
+  async isHidden(): Promise<boolean> { return !(await this.isVisible()); }
   async isEnabled(): Promise<boolean> {
     const el = this._el() as HTMLInputElement | HTMLButtonElement | null;
     return el ? !el.disabled : false;
@@ -888,16 +888,16 @@ export class Locator {
   }
 
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
-    const state   = opts?.state   ?? 'visible';
+    const state = opts?.state ?? 'visible';
     const timeout = opts?.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
     return _withCommand(this._desc ? `${this._desc}  ${state}` : state, 'waitFor', async () => {
       const t0 = Date.now();
       while (Date.now() - t0 < timeout) {
         const el = this._el();
-        if (state === 'attached'  && el)                        return;
-        if (state === 'detached'  && !el)                       return;
-        if (state === 'visible'   && await this.isVisible())    return;
-        if (state === 'hidden'    && !(await this.isVisible())) return;
+        if (state === 'attached' && el) return;
+        if (state === 'detached' && !el) return;
+        if (state === 'visible' && await this.isVisible()) return;
+        if (state === 'hidden' && !(await this.isVisible())) return;
         await _awaitOrAbort(50);
       }
       throw new Error(`waitFor(state="${state}") timed out after ${timeout}ms`);
@@ -1022,14 +1022,14 @@ function _bridgeDialogs(win: any): void {
       dismiss: () => { accepted = false; },
       _result: () => {
         if (type === 'confirm') return accepted;
-        if (type === 'prompt')  return accepted ? promptText : null;
+        if (type === 'prompt') return accepted ? promptText : null;
         return undefined;
       },
     };
   };
-  win.alert   = (message = '') => { _emitPage('dialog', makeDialog('alert', String(message))); };
+  win.alert = (message = '') => { _emitPage('dialog', makeDialog('alert', String(message))); };
   win.confirm = (message = '') => { const d = makeDialog('confirm', String(message)); _emitPage('dialog', d); return Boolean(d._result()); };
-  win.prompt  = (message = '', def = '') => { const d = makeDialog('prompt', String(message), String(def)); _emitPage('dialog', d); return d._result() as string | null; };
+  win.prompt = (message = '', def = '') => { const d = makeDialog('prompt', String(message), String(def)); _emitPage('dialog', d); return d._result() as string | null; };
 }
 
 function _bridgePopup(win: any): void {
@@ -1164,8 +1164,8 @@ function _bridgeFetch(win: any): void {
     // Use duck-typing instead of `instanceof URL` to work across iframe/window boundaries
     let url = typeof input === 'string' ? input
       : (input && typeof (input as any).href === 'string') ? (input as any).href
-      : (input && typeof (input as any).url  === 'string') ? (input as any).url
-      : '';
+        : (input && typeof (input as any).url === 'string') ? (input as any).url
+          : '';
     // Resolve relative URLs to absolute using the real (non-proxy) page URL
     if (url && !/^https?:\/\//.test(url)) {
       try {
@@ -1176,7 +1176,7 @@ function _bridgeFetch(win: any): void {
     const isReqObj = input != null && typeof input === 'object' && typeof (input as any).href !== 'string';
     const method = ((init?.method) ?? (isReqObj ? (input as any).method : undefined) ?? 'GET').toUpperCase();
     const reqHeaders = _normalizeHeaders(init?.headers ?? (isReqObj ? (input as any).headers : undefined));
-    const req    = { url: () => url, method: () => method, headers: () => reqHeaders, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
+    const req = { url: () => url, method: () => method, headers: () => reqHeaders, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
 
     const decision = await _dispatchRoute(url, req);
     _emitPage('request', req);
@@ -1230,9 +1230,9 @@ function _bridgeFetch(win: any): void {
 
 function _bridgeXHR(win: any): void {
   if (!win.XMLHttpRequest) return;
-  const proto       = win.XMLHttpRequest.prototype as any;
-  const origOpen    = proto.open as Function;
-  const origSend    = proto.send as Function;
+  const proto = win.XMLHttpRequest.prototype as any;
+  const origOpen = proto.open as Function;
+  const origSend = proto.send as Function;
   proto.open = function (method: string, url: string | URL, ...rest: any[]) {
     (this as any)._xMethod = method;
     let xUrl = String(url);
@@ -1249,7 +1249,7 @@ function _bridgeXHR(win: any): void {
     const self = this as any;
     const xUrl = self._xUrl ?? '';
     const xMethod = (self._xMethod ?? 'GET').toUpperCase();
-    const req  = { url: () => xUrl, method: () => xMethod, headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
+    const req = { url: () => xUrl, method: () => xMethod, headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
 
     const routeEntry = _routeHandlers.slice().reverse().find(h => _matchesRoutePattern(h.pattern, xUrl));
     if (routeEntry) {
@@ -1274,11 +1274,11 @@ function _bridgeXHR(win: any): void {
           let responseText = '';
           try { responseText = await resp.clone().text(); } catch { /* ignore */ }
 
-          Object.defineProperty(self, 'status',       { value: resp.status,     configurable: true, writable: true });
-          Object.defineProperty(self, 'statusText',   { value: resp.statusText, configurable: true, writable: true });
-          Object.defineProperty(self, 'responseText', { value: responseText,    configurable: true, writable: true });
-          Object.defineProperty(self, 'response',     { value: responseText,    configurable: true, writable: true });
-          Object.defineProperty(self, 'readyState',   { value: 4,               configurable: true, writable: true });
+          Object.defineProperty(self, 'status', { value: resp.status, configurable: true, writable: true });
+          Object.defineProperty(self, 'statusText', { value: resp.statusText, configurable: true, writable: true });
+          Object.defineProperty(self, 'responseText', { value: responseText, configurable: true, writable: true });
+          Object.defineProperty(self, 'response', { value: responseText, configurable: true, writable: true });
+          Object.defineProperty(self, 'readyState', { value: 4, configurable: true, writable: true });
           self.getAllResponseHeaders = () => Object.entries(hdrs).map(([k, v]) => `${k}: ${v}`).join('\r\n');
           self.getResponseHeader = (name: string) => hdrs[name.toLowerCase()] ?? null;
 
@@ -1353,9 +1353,9 @@ function _bridgeWebSocket(win: any): void {
     }
   };
   win.WebSocket.CONNECTING = OrigWS.CONNECTING;
-  win.WebSocket.OPEN       = OrigWS.OPEN;
-  win.WebSocket.CLOSING    = OrigWS.CLOSING;
-  win.WebSocket.CLOSED     = OrigWS.CLOSED;
+  win.WebSocket.OPEN = OrigWS.OPEN;
+  win.WebSocket.CLOSING = OrigWS.CLOSING;
+  win.WebSocket.CLOSED = OrigWS.CLOSED;
 }
 
 function _bridgeWorker(win: any): void {
@@ -1393,7 +1393,7 @@ function _bridgeDocumentEvents(doc: Document): void {
 
   // file chooser
   doc.addEventListener('click', (e: MouseEvent) => {
-    const el    = e.target as HTMLElement;
+    const el = e.target as HTMLElement;
     const input = (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'file')
       ? el as HTMLInputElement
       : (el.closest?.('input[type="file"]') as HTMLInputElement | null);
@@ -1858,7 +1858,7 @@ class Mouse {
   ): Promise<void> {
     return _withCommand(`${this._x}, ${this._y}`, 'mouse.up', async () => {
       const button = this._buttonCode(opts?.button);
-      const mask   = this._buttonMask(button);
+      const mask = this._buttonMask(button);
       const target = this._target();
       this._dispatch(target, 'pointerup', { button });
       this._dispatch(target, 'mouseup', { button, detail: this._clickCount + 1 });
@@ -1948,48 +1948,48 @@ class Mouse {
 interface _KeyInfo { key: string; code: string; keyCode: number }
 
 const _KEY_DEFS: Record<string, _KeyInfo> = {
-  Enter:        { key: 'Enter',      code: 'Enter',        keyCode: 13  },
-  Return:       { key: 'Enter',      code: 'Enter',        keyCode: 13  },
-  Tab:          { key: 'Tab',        code: 'Tab',          keyCode: 9   },
-  Backspace:    { key: 'Backspace',  code: 'Backspace',    keyCode: 8   },
-  Delete:       { key: 'Delete',     code: 'Delete',       keyCode: 46  },
-  Escape:       { key: 'Escape',     code: 'Escape',       keyCode: 27  },
-  Esc:          { key: 'Escape',     code: 'Escape',       keyCode: 27  },
-  Space:        { key: ' ',          code: 'Space',        keyCode: 32  },
-  ArrowUp:      { key: 'ArrowUp',    code: 'ArrowUp',      keyCode: 38  },
-  ArrowDown:    { key: 'ArrowDown',  code: 'ArrowDown',    keyCode: 40  },
-  ArrowLeft:    { key: 'ArrowLeft',  code: 'ArrowLeft',    keyCode: 37  },
-  ArrowRight:   { key: 'ArrowRight', code: 'ArrowRight',   keyCode: 39  },
-  Home:         { key: 'Home',       code: 'Home',         keyCode: 36  },
-  End:          { key: 'End',        code: 'End',          keyCode: 35  },
-  PageUp:       { key: 'PageUp',     code: 'PageUp',       keyCode: 33  },
-  PageDown:     { key: 'PageDown',   code: 'PageDown',     keyCode: 34  },
-  Insert:       { key: 'Insert',     code: 'Insert',       keyCode: 45  },
-  Shift:        { key: 'Shift',      code: 'ShiftLeft',    keyCode: 16  },
-  ShiftLeft:    { key: 'Shift',      code: 'ShiftLeft',    keyCode: 16  },
-  ShiftRight:   { key: 'Shift',      code: 'ShiftRight',   keyCode: 16  },
-  Control:      { key: 'Control',    code: 'ControlLeft',  keyCode: 17  },
-  ControlLeft:  { key: 'Control',    code: 'ControlLeft',  keyCode: 17  },
-  ControlRight: { key: 'Control',    code: 'ControlRight', keyCode: 17  },
-  Alt:          { key: 'Alt',        code: 'AltLeft',      keyCode: 18  },
-  AltLeft:      { key: 'Alt',        code: 'AltLeft',      keyCode: 18  },
-  AltRight:     { key: 'Alt',        code: 'AltRight',     keyCode: 18  },
-  Meta:         { key: 'Meta',       code: 'MetaLeft',     keyCode: 91  },
-  MetaLeft:     { key: 'Meta',       code: 'MetaLeft',     keyCode: 91  },
-  MetaRight:    { key: 'Meta',       code: 'MetaRight',    keyCode: 92  },
-  CapsLock:     { key: 'CapsLock',   code: 'CapsLock',     keyCode: 20  },
-  F1:           { key: 'F1',         code: 'F1',           keyCode: 112 },
-  F2:           { key: 'F2',         code: 'F2',           keyCode: 113 },
-  F3:           { key: 'F3',         code: 'F3',           keyCode: 114 },
-  F4:           { key: 'F4',         code: 'F4',           keyCode: 115 },
-  F5:           { key: 'F5',         code: 'F5',           keyCode: 116 },
-  F6:           { key: 'F6',         code: 'F6',           keyCode: 117 },
-  F7:           { key: 'F7',         code: 'F7',           keyCode: 118 },
-  F8:           { key: 'F8',         code: 'F8',           keyCode: 119 },
-  F9:           { key: 'F9',         code: 'F9',           keyCode: 120 },
-  F10:          { key: 'F10',        code: 'F10',          keyCode: 121 },
-  F11:          { key: 'F11',        code: 'F11',          keyCode: 122 },
-  F12:          { key: 'F12',        code: 'F12',          keyCode: 123 },
+  Enter:        { key: 'Enter', code: 'Enter', keyCode: 13 },
+  Return:       { key: 'Enter', code: 'Enter', keyCode: 13 },
+  Tab:          { key: 'Tab', code: 'Tab', keyCode: 9 },
+  Backspace:    { key: 'Backspace', code: 'Backspace', keyCode: 8 },
+  Delete:       { key: 'Delete', code: 'Delete', keyCode: 46 },
+  Escape:       { key: 'Escape', code: 'Escape', keyCode: 27 },
+  Esc:          { key: 'Escape', code: 'Escape', keyCode: 27 },
+  Space:        { key: ' ', code: 'Space', keyCode: 32 },
+  ArrowUp:      { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+  ArrowDown:    { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+  ArrowLeft:    { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+  ArrowRight:   { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+  Home:         { key: 'Home', code: 'Home', keyCode: 36 },
+  End:          { key: 'End', code: 'End', keyCode: 35 },
+  PageUp:       { key: 'PageUp', code: 'PageUp', keyCode: 33 },
+  PageDown:     { key: 'PageDown', code: 'PageDown', keyCode: 34 },
+  Insert:       { key: 'Insert', code: 'Insert', keyCode: 45 },
+  Shift:        { key: 'Shift', code: 'ShiftLeft', keyCode: 16 },
+  ShiftLeft:    { key: 'Shift', code: 'ShiftLeft', keyCode: 16 },
+  ShiftRight:   { key: 'Shift', code: 'ShiftRight', keyCode: 16 },
+  Control:      { key: 'Control', code: 'ControlLeft', keyCode: 17 },
+  ControlLeft:  { key: 'Control', code: 'ControlLeft', keyCode: 17 },
+  ControlRight: { key: 'Control', code: 'ControlRight', keyCode: 17 },
+  Alt:          { key: 'Alt', code: 'AltLeft', keyCode: 18 },
+  AltLeft:      { key: 'Alt', code: 'AltLeft', keyCode: 18 },
+  AltRight:     { key: 'Alt', code: 'AltRight', keyCode: 18 },
+  Meta:         { key: 'Meta', code: 'MetaLeft', keyCode: 91 },
+  MetaLeft:     { key: 'Meta', code: 'MetaLeft', keyCode: 91 },
+  MetaRight:    { key: 'Meta', code: 'MetaRight', keyCode: 92 },
+  CapsLock:     { key: 'CapsLock', code: 'CapsLock', keyCode: 20 },
+  F1:           { key: 'F1', code: 'F1', keyCode: 112 },
+  F2:           { key: 'F2', code: 'F2', keyCode: 113 },
+  F3:           { key: 'F3', code: 'F3', keyCode: 114 },
+  F4:           { key: 'F4', code: 'F4', keyCode: 115 },
+  F5:           { key: 'F5', code: 'F5', keyCode: 116 },
+  F6:           { key: 'F6', code: 'F6', keyCode: 117 },
+  F7:           { key: 'F7', code: 'F7', keyCode: 118 },
+  F8:           { key: 'F8', code: 'F8', keyCode: 119 },
+  F9:           { key: 'F9', code: 'F9', keyCode: 120 },
+  F10:          { key: 'F10', code: 'F10', keyCode: 121 },
+  F11:          { key: 'F11', code: 'F11', keyCode: 122 },
+  F12:          { key: 'F12', code: 'F12', keyCode: 123 },
 };
 
 function _resolveKey(name: string): _KeyInfo {
@@ -2210,7 +2210,7 @@ export const page = {
       const sel = ROLE_SELECTORS[role] ?? `[role="${role}"]`;
       let els = Array.from(doc.querySelectorAll(sel));
       if (opts?.name) {
-        const name  = opts.name;
+        const name = opts.name;
         const exact = opts.exact ?? false;
         els = els.filter(el => {
           const labelledById = el.getAttribute('aria-labelledby');
@@ -2246,7 +2246,7 @@ export const page = {
       // aria-label fallback
       for (const el of Array.from(doc.querySelectorAll('[aria-label]'))) {
         const lbl = el.getAttribute('aria-label') ?? '';
-        const ok  = text instanceof RegExp ? text.test(lbl) : exact ? lbl === text : lbl.includes(text as string);
+        const ok = text instanceof RegExp ? text.test(lbl) : exact ? lbl === text : lbl.includes(text as string);
         if (ok && !results.includes(el)) results.push(el);
       }
       return results;
@@ -2679,14 +2679,14 @@ export function expect(target: any) {
     },
 
     // ── Plain-value assertions (sync) ───────────────────────────────────────
-    toBe(expected: any)        { ls('toBe',         JSON.stringify(expected), () => { if (target !== expected)                                    throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`); }); },
-    toEqual(expected: any)     { ls('toEqual',      JSON.stringify(expected), () => { if (JSON.stringify(target) !== JSON.stringify(expected))    throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`); }); },
-    toBeTruthy()               { ls('toBeTruthy',   '', () => { if (!target)           throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
-    toBeFalsy()                { ls('toBeFalsy',    '', () => { if (target)            throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
-    toBeNull()                 { ls('toBeNull',     '', () => { if (target !== null)   throw new Error(`Expected null, got ${JSON.stringify(target)}`); }); },
-    toBeUndefined()            { ls('toBeUndef',    '', () => { if (target !== undefined) throw new Error(`Expected undefined, got ${JSON.stringify(target)}`); }); },
-    toBeGreaterThan(n: number) { ls('toBeGt',  String(n), () => { if (target <= n) throw new Error(`${target} is not > ${n}`); }); },
-    toBeLessThan(n: number)    { ls('toBeLt',  String(n), () => { if (target >= n) throw new Error(`${target} is not < ${n}`); }); },
+    toBe(expected: any) { ls('toBe', JSON.stringify(expected), () => { if (target !== expected) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`); }); },
+    toEqual(expected: any) { ls('toEqual', JSON.stringify(expected), () => { if (JSON.stringify(target) !== JSON.stringify(expected)) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`); }); },
+    toBeTruthy() { ls('toBeTruthy', '', () => { if (!target) throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
+    toBeFalsy() { ls('toBeFalsy', '', () => { if (target) throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
+    toBeNull() { ls('toBeNull', '', () => { if (target !== null) throw new Error(`Expected null, got ${JSON.stringify(target)}`); }); },
+    toBeUndefined() { ls('toBeUndef', '', () => { if (target !== undefined) throw new Error(`Expected undefined, got ${JSON.stringify(target)}`); }); },
+    toBeGreaterThan(n: number) { ls('toBeGt', String(n), () => { if (target <= n) throw new Error(`${target} is not > ${n}`); }); },
+    toBeLessThan(n: number) { ls('toBeLt', String(n), () => { if (target >= n) throw new Error(`${target} is not < ${n}`); }); },
     toContain(item: any) {
       ls('toContain', JSON.stringify(item), () => {
         if (Array.isArray(target)) { if (!target.includes(item)) throw new Error(`Array does not contain ${JSON.stringify(item)}`); }
@@ -2758,10 +2758,10 @@ export function expect(target: any) {
         }, t(opts?.timeout));
       });
     },
-    toBe(expected: any) { ls('not.toBe',      JSON.stringify(expected), () => { if (target === expected)  throw new Error(`Expected NOT ${JSON.stringify(expected)}`); }); },
-    toBeTruthy()        { ls('not.toBeTruthy', '', () => { if (target)    throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
-    toBeFalsy()         { ls('not.toBeFalsy',  '', () => { if (!target)   throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
-    toBeNull()          { ls('not.toBeNull',   '', () => { if (target === null) throw new Error('Expected NOT null'); }); },
+    toBe(expected: any) { ls('not.toBe', JSON.stringify(expected), () => { if (target === expected) throw new Error(`Expected NOT ${JSON.stringify(expected)}`); }); },
+    toBeTruthy() { ls('not.toBeTruthy', '', () => { if (target) throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
+    toBeFalsy() { ls('not.toBeFalsy', '', () => { if (!target) throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
+    toBeNull() { ls('not.toBeNull', '', () => { if (target === null) throw new Error('Expected NOT null'); }); },
     toContain(item: any) {
       ls('not.toContain', JSON.stringify(item), () => {
         if (Array.isArray(target)) { if (target.includes(item)) throw new Error(`Expected array NOT to contain ${JSON.stringify(item)}`); }
@@ -2810,11 +2810,11 @@ export const testApi = {
     const el = testApi.find(selector) as HTMLInputElement | null;
     if (!el) { log(selector, 'error', 'type'); return; }
     const win = iframeWin() as any;
-    const proto  = el.tagName === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
+    const proto = el.tagName === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
     const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
     el.focus();
     if (setter) setter.call(el, value); else el.value = value;
-    el.dispatchEvent(new Event('input',  { bubbles: true }));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     log(`${selector}  "${value}"`, 'success', 'type');
   },
@@ -2853,7 +2853,7 @@ export const testApi = {
     });
   },
   wait(ms = 500): Promise<void> { return new Promise(r => setTimeout(r, ms)); },
-  url():   string { return page.url(); },
+  url(): string { return page.url(); },
   title(): string { return iframeDoc()?.title ?? ''; },
 };
 

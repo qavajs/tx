@@ -2,8 +2,6 @@
  * Type Definitions for Tx
  */
 
-import type { Reporter } from './reporter';
-
 /** A reporter entry: [path-to-module, config-object] */
 export type ReporterEntry = [path: string, config: Record<string, unknown>];
 
@@ -200,7 +198,7 @@ export class TestSuite {
           await (this as any)[method]();
           await this.afterEach();
           results.passed++;
-        } catch (error) {
+        } catch (_error) {
           results.failed++;
         }
       }

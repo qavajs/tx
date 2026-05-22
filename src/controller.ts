@@ -3,15 +3,15 @@ import { log, setLogContainer, API_BASE, testApi, page, expect, request, initIfr
 declare global {
   interface Window {
     testApi: typeof testApi;
-    runSuite:         (filename: string, suiteName: string) => void;
-    runTest:          (filename: string, fullName: string) => void;
-    toggleCard:       (filename: string) => void;
-    toggleSuite:      (filename: string, suiteName: string) => void;
+    runSuite: (filename: string, suiteName: string) => void;
+    runTest: (filename: string, fullName: string) => void;
+    toggleCard: (filename: string) => void;
+    toggleSuite: (filename: string, suiteName: string) => void;
     runTestByFilename:(filename: string) => void;
-    runAll:           () => Promise<{ passed: number; failed: number }>;
-    applyFilter:      (query: string) => void;
-    runFiltered:      () => Promise<void>;
-    stopExecution:    () => void;
+    runAll: () => Promise<{ passed: number; failed: number }>;
+    applyFilter: (query: string) => void;
+    runFiltered: () => Promise<void>;
+    stopExecution: () => void;
   }
 }
 
@@ -20,11 +20,11 @@ window.testApi = testApi;
 // ── Globals for test code — importable via `import { page, expect } from 'tx'`
 // or accessible directly as globals (page, expect, browser, tx) ───────────────
 
-(window as any).page    = page;
-(window as any).expect  = expect;
+(window as any).page = page;
+(window as any).expect = expect;
 (window as any).browser = browser;
 (window as any).request = request;
-(window as any).tx      = { page, expect: expect, browser, request, ...testApi };
+(window as any).tx = { page, expect: expect, browser, request, ...testApi };
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ function setTestItemStatus(filename: string, fullName: string, state: 'running'|
   if (!item) return;
   item.classList.remove('running', 'pass', 'fail');
   item.classList.add(state);
-  const dot   = item.querySelector('.tx-test-dot');
+  const dot = item.querySelector('.tx-test-dot');
   const badge = item.querySelector<HTMLElement>('.tx-test-badge');
   if (dot) { dot.classList.remove('running', 'pass', 'fail'); dot.classList.add(state); }
   if (badge) {
@@ -131,9 +131,9 @@ function refreshSuiteBadge(filename: string, suiteName: string) {
 }
 
 function setTopbarStatus(state: 'ready'|'running'|'passed'|'failed'|'connected'|'disconnected', text: string) {
-  const dot  = document.getElementById('statusIndicator');
+  const dot = document.getElementById('statusIndicator');
   const span = document.getElementById('statusText');
-  if (dot)  dot.className    = 'tx-status-dot ' + state;
+  if (dot) dot.className = 'tx-status-dot ' + state;
   if (span) span.textContent = text;
 }
 
@@ -207,12 +207,12 @@ function renderTestFileCard(f: ParsedFile): string {
     suites[k].push({ name: t.name, tags: t.tags ?? [] });
   });
   const suiteHtml = Object.entries(suites).map(([s, items]) => renderSuiteHtml(f.filename, s, items)).join('');
-  const display  = f.relPath ?? f.filename;
-  const ext      = display.split('.').pop() ?? 'js';
-  const noExt    = display.slice(0, -(ext.length + 1));
+  const display = f.relPath ?? f.filename;
+  const ext = display.split('.').pop() ?? 'js';
+  const noExt = display.slice(0, -(ext.length + 1));
   const lastSlash = noExt.lastIndexOf('/');
-  const dir  = lastSlash >= 0 ? noExt.slice(0, lastSlash + 1) : '';
-  const stem = lastSlash >= 0 ? noExt.slice(lastSlash + 1)    : noExt;
+  const dir = lastSlash >= 0 ? noExt.slice(0, lastSlash + 1) : '';
+  const stem = lastSlash >= 0 ? noExt.slice(lastSlash + 1) : noExt;
   return '<div class="tx-spec-card" id="card-' + escAttr(f.filename) + '" data-filename="' + escHtml(f.filename) + '">' +
     '<div class="tx-spec-hdr" onclick="window.toggleCard(' + jsq(f.filename) + ')">' +
       '<span class="tx-spec-chevron">&#9658;</span>' +
@@ -292,9 +292,9 @@ function buildTestQueue(
   const hookStack: HookScope[] = [];
 
   const beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push({ fn, expectsFixtures: fn.length > 0 }); };
-  const afterEach  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push({ fn, expectsFixtures: fn.length > 0 }); };
-  const beforeAll  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
-  const afterAll   = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
+  const afterEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push({ fn, expectsFixtures: fn.length > 0 }); };
+  const beforeAll = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
+  const afterAll = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
 
   const defaultFixtureDefs: FixtureDefs = {
     page:    async (_f, use) => { await use((window as any).page); },
@@ -306,14 +306,14 @@ function buildTestQueue(
   const makeTestFn = (fixtureDefs: FixtureDefs): any => {
     const testFn = (name: string, optsOrFn: HookFn | { tag?: string[] }, maybeFn?: HookFn) => {
       const opts = typeof optsOrFn === 'object' ? optsOrFn : undefined;
-      const fn   = (typeof optsOrFn === 'function' ? optsOrFn : maybeFn) as HookFn;
+      const fn = (typeof optsOrFn === 'function' ? optsOrFn : maybeFn) as HookFn;
       const inheritedTags = ([] as string[]).concat(...tagStack);
       const tags = [...inheritedTags, ...(opts?.tag ?? [])];
-      const suite    = stack.join(' > ');
+      const suite = stack.join(' > ');
       const fullName = stack.length ? suite + ' > ' + name : name;
-      if (filterSuite  && suite    !== filterSuite)              return;
-      if (filterTest   && fullName !== filterTest)               return;
-      if (filterTests  && !filterTests.includes(fullName))       return;
+      if (filterSuite && suite !== filterSuite) return;
+      if (filterTest && fullName !== filterTest) return;
+      if (filterTests && !filterTests.includes(fullName)) return;
       queue.push({
         name: fullName, fn, tags,
         fixtureDefs, expectsFixtures: fn.length > 0,
@@ -336,13 +336,13 @@ function buildTestQueue(
     hookStack.push({ beforeEachs: [], afterEachs: [], beforeAlls: [], afterAlls: [] });
     const lenBefore = queue.length;
     try { fn(); } finally {
-      const scope      = hookStack[hookStack.length - 1];
+      const scope = hookStack[hookStack.length - 1];
       const scopeTests = queue.slice(lenBefore);
       if (scopeTests.length > 0) {
         // Prepend so outer beforeAlls run before inner ones
         if (scope.beforeAlls.length) scopeTests[0].setupBeforeAlls = [...scope.beforeAlls, ...scopeTests[0].setupBeforeAlls];
         // Append so inner afterAlls run before outer ones
-        if (scope.afterAlls.length)  scopeTests[scopeTests.length - 1].teardownAfterAlls = [...scopeTests[scopeTests.length - 1].teardownAfterAlls, ...scope.afterAlls];
+        if (scope.afterAlls.length) scopeTests[scopeTests.length - 1].teardownAfterAlls = [...scopeTests[scopeTests.length - 1].teardownAfterAlls, ...scope.afterAlls];
       }
       stack.pop();
       tagStack.pop();
@@ -350,15 +350,15 @@ function buildTestQueue(
     }
   };
 
-  (window as any).describe   = describe;
-  (window as any).test       = baseTest;
+  (window as any).describe = describe;
+  (window as any).test = baseTest;
   (window as any).beforeEach = beforeEach;
-  (window as any).afterEach  = afterEach;
-  (window as any).beforeAll  = beforeAll;
-  (window as any).afterAll   = afterAll;
+  (window as any).afterEach = afterEach;
+  (window as any).beforeAll = beforeAll;
+  (window as any).afterAll = afterAll;
 
   try {
-    // eslint-disable-next-line no-new-func
+     
     new Function(code)();
   } catch (e: any) {
     return { parseError: e.stack || e.message };
@@ -401,7 +401,7 @@ async function executeTests(
       try {
         closeExtraTabs();
         await page.resetSession();
-        for (const hook of t.setupBeforeAlls)    await Promise.resolve(hook());
+        for (const hook of t.setupBeforeAlls) await Promise.resolve(hook());
         for (const hook of t.beforeEachs) {
           if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
           else await Promise.resolve(hook.fn());
@@ -428,7 +428,7 @@ async function executeTests(
           if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
           else await Promise.resolve(hook.fn());
         }
-        for (const hook of t.teardownAfterAlls)   await Promise.resolve(hook());
+        for (const hook of t.teardownAfterAlls) await Promise.resolve(hook());
         duration = Date.now() - t0;
         finalLogs = stopCollectingLogs();
         passed = true;
@@ -492,8 +492,12 @@ function notifyRunEnd(passed: number, failed: number, total: number, duration: n
 }
 
 function renderTestResults(results: TestResult[], filename?: string) {
-  let passed = 0, failed = 0;
-  results.forEach(t => { t.passed ? passed++ : failed++; });
+  let passed = 0;
+  let failed = 0;
+  results.forEach(t => {
+    if (t.passed) passed++
+    else failed++;
+  });
   const status = document.getElementById('testRunnerStatus');
   if (status) {
     status.innerHTML =
@@ -513,7 +517,11 @@ function openAndResetCard(filename: string) {
 
 function countResults(results: TestResult[]): { passed: number; failed: number; duration: number } {
   let passed = 0, failed = 0, duration = 0;
-  for (const r of results) { r.passed ? passed++ : failed++; duration += r.duration; }
+  for (const r of results) { 
+    if (r.passed) passed++
+    else failed++;
+    duration += r.duration;
+  }
   return { passed, failed, duration };
 }
 
@@ -905,7 +913,7 @@ function initResizers() {
   specsHandle.addEventListener('mousedown', (e: MouseEvent) => {
     e.preventDefault();
     specsHandle.classList.add('dragging');
-    document.body.style.cursor    = 'col-resize';
+    document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     const startX = e.clientX;
     const startW = specs.offsetWidth;
@@ -914,14 +922,14 @@ function initResizers() {
     };
     const onUp = () => {
       specsHandle.classList.remove('dragging');
-      document.body.style.cursor    = '';
+      document.body.style.cursor = '';
       document.body.style.userSelect = '';
       localStorage.setItem('tx-specs-w', String(specs.offsetWidth));
       document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup',   onUp);
+      document.removeEventListener('mouseup', onUp);
     };
     document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup',   onUp);
+    document.addEventListener('mouseup', onUp);
   });
 }
 
@@ -1377,9 +1385,9 @@ function initNetworkListeners() {
     const rawBody = req.postData();
     const requestBody: string | null = rawBody == null ? null
       : typeof rawBody === 'string' ? rawBody
-      : (rawBody as any) instanceof URLSearchParams ? (rawBody as URLSearchParams).toString()
-      : typeof rawBody === 'object' ? (() => { try { return JSON.stringify(rawBody); } catch { return String(rawBody); } })()
-      : String(rawBody);
+        : (rawBody as any) instanceof URLSearchParams ? (rawBody as URLSearchParams).toString()
+          : typeof rawBody === 'object' ? (() => { try { return JSON.stringify(rawBody); } catch { return String(rawBody); } })()
+            : String(rawBody);
     const entry: NetworkEntry = {
       id: ++_networkCounter,
       url: req.url() ?? '',

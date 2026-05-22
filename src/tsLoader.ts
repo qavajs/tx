@@ -7,6 +7,7 @@ import Module from 'module';
 import fs from 'fs';
 
 export function register(): void {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const esbuild = require('esbuild') as typeof import('esbuild');
 
   (Module as any)._extensions['.ts'] = (mod: any, filename: string) => {

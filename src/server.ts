@@ -13,8 +13,8 @@ import type { TaskHandler } from './types';
 export class TestServer {
   private server: http.Server | null = null;
   private port: number;
-  private testFileMap: Map<string, string>;   // basename → absolute path (from config)
-  private bundledCodeMap = new Map<string, string>();  // basename → bundled browser JS
+  private testFileMap: Map<string, string>; // basename → absolute path (from config)
+  private bundledCodeMap = new Map<string, string>(); // basename → bundled browser JS
   private parsedCache = new Map<string, ParsedFile>(); // basename → parsed test structure
   private _version = 0;
   private reporters: Reporter[];
