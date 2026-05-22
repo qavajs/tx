@@ -76,6 +76,7 @@ export interface TxConfig {
    * on the CLI, e.g. `--shard 1/3` for the first of three parallel shards.
    */
   shard?: { current: number; total: number };
+
 }
 
 export interface WaitOptions {

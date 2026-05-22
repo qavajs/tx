@@ -259,7 +259,7 @@ async function main() {
     actionTimeout:    fileConfig.actionTimeout,
     expectTimeout:    fileConfig.expectTimeout,
     testTimeout:      fileConfig.testTimeout,
-    retries:          cliConfig.retries ?? fileConfig.retries,
+    retries:              cliConfig.retries ?? fileConfig.retries,
   };
 
   // Resolve testFiles into absolute paths

@@ -302,6 +302,41 @@ export class TestServer {
           return;
         }
 
+        // POST /api/artifact — receive screenshot (JSON+base64) or video (binary WebM) from browser
+        if (req.url?.startsWith('/api/artifact') && req.method === 'POST') {
+          const qs = new URL(req.url, 'http://localhost').searchParams;
+          const qName = qs.get('name') ?? 'artifact';
+          const qExt  = qs.get('ext')  ?? 'bin';
+          const ct = req.headers['content-type'] ?? '';
+          const chunks: Buffer[] = [];
+          req.on('data', (chunk: Buffer) => chunks.push(chunk));
+          req.on('end', () => {
+            try {
+              const dir = path.join(process.cwd(), 'test-artifacts');
+              fs.mkdirSync(dir, { recursive: true });
+              let filename: string;
+              let data: Buffer;
+              if (ct.includes('application/json')) {
+                const body = JSON.parse(Buffer.concat(chunks).toString()) as { name: string; data: string; ext: string };
+                filename = `${body.name}.${body.ext ?? 'png'}`;
+                data = Buffer.from(body.data, 'base64');
+              } else {
+                filename = `${qName}.${qExt}`;
+                data = Buffer.concat(chunks);
+              }
+              const filePath = path.join(dir, filename);
+              fs.writeFileSync(filePath, data);
+              console.log(`${filename.endsWith('.webm') ? '🎥 Video' : '📸 Screenshot'} saved: ${filePath}`);
+              res.writeHead(204);
+              res.end();
+            } catch (err: any) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');
       });

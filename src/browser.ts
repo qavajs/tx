@@ -1,8 +1,10 @@
+import { domToPng } from 'modern-screenshot';
+
 // ── Global types ──────────────────────────────────────────────────────────────
 
 declare global {
   interface Window {
-    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number }; autorun?: boolean; snapshot?: boolean; grep?: string; grepFlags?: string; actionTimeout?: number; expectTimeout?: number; testTimeout?: number };
+    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number }; autorun?: boolean; snapshot?: boolean; grep?: string; grepFlags?: string; actionTimeout?: number; expectTimeout?: number; testTimeout?: number; retries?: number };
   }
 }
 
@@ -2144,6 +2146,26 @@ export class Keyboard {
   }
 }
 
+// ── Screenshot capture ────────────────────────────────────────────────────────
+
+async function captureScreenshot(): Promise<string> {
+  const doc = iframeDoc();
+  if (!doc) throw new Error('no active tab');
+  const tab = _activeTab()!;
+  const w = viewportW ?? (tab.iframe.offsetWidth || 1280);
+  const h = viewportH ?? (tab.iframe.offsetHeight || 720);
+  return domToPng(doc.documentElement, { width: w, height: h });
+}
+
+async function saveArtifact(name: string, data: string): Promise<void> {
+  const base64 = data.startsWith('data:') ? data.split(',')[1] : data;
+  await fetch(API_BASE + '/api/artifact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, data: base64, ext: 'png' }),
+  });
+}
+
 export const page = {
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -2540,6 +2562,16 @@ export const page = {
     _emitPage('close');
     closeTab(_activeTabId ?? '');
     log('page closed', 'info');
+  },
+
+  async screenshot(opts?: { path?: string }): Promise<string> {
+    return _withCommand(opts?.path ?? '', 'screenshot', async () => {
+      const dataUrl = await captureScreenshot();
+      if (opts?.path) {
+        await saveArtifact(opts.path, dataUrl).catch(() => {});
+      }
+      return dataUrl;
+    });
   },
 };
 

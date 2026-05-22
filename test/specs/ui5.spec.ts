@@ -22,7 +22,6 @@ describe('UI5', () => {
         await page.locator('#container-cart---checkoutView--invoiceAddressAddress-inner').focus();
         await page.locator('[data-sap-ui="container-cart---checkoutView--invoiceStep-nextButton"]').click();
         await page.locator('[data-sap-ui="container-cart---checkoutView--deliveryTypeStep-nextButton"]').click();
-        
         await expect(page.locator('#container-cart---checkoutView--totalPriceTitle-inner')).toHaveText('Total: 16,00 EUR');
         await page.locator('#container-cart---checkoutView--submitOrder').click();
         await page.locator('footer button:has-text("Yes")').click();

@@ -65,6 +65,12 @@ module.exports = {
     ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
   ],
 
+  // Save a PNG screenshot to test-artifacts/ when a test fails
+  screenshotOnFailure: true,
+
+  // Record a WebM video to test-artifacts/ when a test fails
+  videoOnFailure: true,
+
   // Node.js task handlers callable from tests via node.task()
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
@@ -200,6 +206,7 @@ describe('suite', () => {
 | `page.mouse` | Mouse API (see below) |
 | `page.setViewportSize(size)` | Set viewport dimensions |
 | `page.on(event, fn)` | Subscribe to page events |
+| `page.screenshot(opts?)` | Capture iframe as PNG; `opts.path` saves it to `test-artifacts/` via server |
 
 ### `Locator`
 
