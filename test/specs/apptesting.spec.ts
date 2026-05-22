@@ -135,7 +135,7 @@ describe('apptesting widgets', () => {
     });
 });
 
-describe('windows', () => {
+describe('apptesting windows', () => {
     beforeEach(async ({ page }) => {
         await page.goto('https://apptesting.pl/pages/windows.html');
     });
@@ -172,4 +172,43 @@ describe('windows', () => {
         await iframe.locator('#iframe-btn').click();
         await iframe.locator('#iframe-input').fill('iframe input');
     });
+});
+
+describe('apptesting alerts', { tag: ['@alerts'] }, () => {
+    beforeEach(async ({ page }) => {
+        await page.goto('https://apptesting.pl/pages/alerts.html');
+    });
+
+    test('alert', async ({ page, expect }) => {
+        const button = page.locator('#alert-btn');
+        const result = page.locator('#alert-output');
+        const dialogPromise = page.waitForEvent('dialog');
+        await button.click();
+        const dialog = await dialogPromise;
+        expect(dialog.type()).toBe('alert');
+        dialog.accept();
+        await expect(result).toHaveText('Alert was shown and dismissed.');
+    });
+
+    for (const testCase of [{action: 'accept', button: 'OK'}, { action: 'dismiss', button: 'Cancel' }]) {
+        test(`confirm: ${testCase.action}`, async ({ page, expect }) => {
+            const button = page.locator('#confirm-btn');
+            const result = page.locator('#confirm-output');
+            const dialogPromise = page.waitForEvent('dialog');
+            await button.click();
+            const dialog = await dialogPromise;
+            expect(dialog.type()).toBe('confirm');
+            dialog[testCase.action]();
+            await expect(result).toHaveText('User clicked: Cancel');
+        });
+    }
+
+    test('prompt', async ({ page, expect }) => {
+        const button = page.locator('#prompt-btn');
+        const result = page.locator('#prompt-output');
+        page.on('dialog', dialog => dialog.accept('test value'))
+        await button.click();
+        await expect(result).toHaveText('User entered: test value');
+    });
+
 });

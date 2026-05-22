@@ -218,6 +218,7 @@ interface PopupPage {
   on(event: string, fn: (...args: any[]) => any): PopupPage;
   off(event: string, fn: (...args: any[]) => any): PopupPage;
   once(event: string, fn: (...args: any[]) => any): PopupPage;
+  waitForEvent<T = any>(event: string, options?: { predicate?: (arg: T) => boolean | Promise<boolean>; timeout?: number } | ((arg: T) => boolean | Promise<boolean>)): Promise<T>;
 
   bringToFront(): Promise<void>;
   close(): Promise<void>;
@@ -403,6 +404,24 @@ interface Page {
 
   off(event: string, fn: (...args: any[]) => any): Page;
   once(event: string, fn: (...args: any[]) => any): Page;
+
+  waitForEvent(event: 'dialog',        options?: { predicate?: (d: TxDialog)          => boolean | Promise<boolean>; timeout?: number } | ((d: TxDialog)          => boolean | Promise<boolean>)): Promise<TxDialog>;
+  waitForEvent(event: 'popup',         options?: { predicate?: (p: PopupPage)         => boolean | Promise<boolean>; timeout?: number } | ((p: PopupPage)         => boolean | Promise<boolean>)): Promise<PopupPage>;
+  waitForEvent(event: 'console',       options?: { predicate?: (m: TxConsoleMessage)  => boolean | Promise<boolean>; timeout?: number } | ((m: TxConsoleMessage)  => boolean | Promise<boolean>)): Promise<TxConsoleMessage>;
+  waitForEvent(event: 'request',       options?: { predicate?: (r: TxRequest)         => boolean | Promise<boolean>; timeout?: number } | ((r: TxRequest)         => boolean | Promise<boolean>)): Promise<TxRequest>;
+  waitForEvent(event: 'requestfailed', options?: { predicate?: (r: TxFailedRequest)   => boolean | Promise<boolean>; timeout?: number } | ((r: TxFailedRequest)   => boolean | Promise<boolean>)): Promise<TxFailedRequest>;
+  waitForEvent(event: 'requestfinished', options?: { predicate?: (r: TxRequest)       => boolean | Promise<boolean>; timeout?: number } | ((r: TxRequest)         => boolean | Promise<boolean>)): Promise<TxRequest>;
+  waitForEvent(event: 'response',      options?: { predicate?: (r: TxResponse)        => boolean | Promise<boolean>; timeout?: number } | ((r: TxResponse)        => boolean | Promise<boolean>)): Promise<TxResponse>;
+  waitForEvent(event: 'download',      options?: { predicate?: (d: TxDownload)        => boolean | Promise<boolean>; timeout?: number } | ((d: TxDownload)        => boolean | Promise<boolean>)): Promise<TxDownload>;
+  waitForEvent(event: 'filechooser',   options?: { predicate?: (f: TxFileChooser)     => boolean | Promise<boolean>; timeout?: number } | ((f: TxFileChooser)     => boolean | Promise<boolean>)): Promise<TxFileChooser>;
+  waitForEvent(event: 'frameattached', options?: { predicate?: (f: TxFrame)           => boolean | Promise<boolean>; timeout?: number } | ((f: TxFrame)           => boolean | Promise<boolean>)): Promise<TxFrame>;
+  waitForEvent(event: 'framedetached', options?: { predicate?: (f: TxFrame)           => boolean | Promise<boolean>; timeout?: number } | ((f: TxFrame)           => boolean | Promise<boolean>)): Promise<TxFrame>;
+  waitForEvent(event: 'framenavigated', options?: { predicate?: (f: TxFrame)          => boolean | Promise<boolean>; timeout?: number } | ((f: TxFrame)           => boolean | Promise<boolean>)): Promise<TxFrame>;
+  waitForEvent(event: 'pageerror',     options?: { predicate?: (e: Error)             => boolean | Promise<boolean>; timeout?: number } | ((e: Error)             => boolean | Promise<boolean>)): Promise<Error>;
+  waitForEvent(event: 'websocket',     options?: { predicate?: (ws: WebSocket)        => boolean | Promise<boolean>; timeout?: number } | ((ws: WebSocket)        => boolean | Promise<boolean>)): Promise<WebSocket>;
+  waitForEvent(event: 'worker',        options?: { predicate?: (w: Worker)            => boolean | Promise<boolean>; timeout?: number } | ((w: Worker)            => boolean | Promise<boolean>)): Promise<Worker>;
+  waitForEvent(event: 'load' | 'domcontentloaded' | 'close' | 'crash', options?: { timeout?: number }): Promise<void>;
+  waitForEvent<T = any>(event: string, options?: { predicate?: (arg: T) => boolean | Promise<boolean>; timeout?: number } | ((arg: T) => boolean | Promise<boolean>)): Promise<T>;
 
   bringToFront(): Promise<void>;
   close(): Promise<void>;

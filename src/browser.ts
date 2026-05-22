@@ -2389,6 +2389,42 @@ export const page = {
     return page;
   },
 
+  waitForEvent<T = any>(
+    event: string,
+    optionsOrPredicate?: ((arg: T) => boolean | Promise<boolean>) | { predicate?: (arg: T) => boolean | Promise<boolean>; timeout?: number }
+  ): Promise<T> {
+    const predicate = typeof optionsOrPredicate === 'function'
+      ? optionsOrPredicate
+      : optionsOrPredicate?.predicate;
+    const timeout = (typeof optionsOrPredicate === 'object' && optionsOrPredicate?.timeout != null)
+      ? optionsOrPredicate.timeout
+      : window.__CONFIG__?.actionTimeout ?? 30000;
+    return _withCommand(event, 'waitForEvent', () => new Promise<T>((resolve, reject) => {
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        settled = true;
+        clearTimeout(timeoutId);
+        _removePageListener(event, handler);
+        const idx = _abortListeners.indexOf(abortFn);
+        if (idx >= 0) _abortListeners.splice(idx, 1);
+      };
+      const handler = async (arg: T) => {
+        if (settled) return;
+        try { if (predicate && !await Promise.resolve(predicate(arg))) return; } catch { return; }
+        cleanup();
+        resolve(arg);
+      };
+      const abortFn = (err: Error) => { if (!settled) { cleanup(); reject(err); } };
+      if (_testAbortError) { reject(_testAbortError); return; }
+      _abortListeners.push(abortFn);
+      _addPageListener(event, handler);
+      timeoutId = setTimeout(() => {
+        if (!settled) { cleanup(); reject(new Error(`waitForEvent(${JSON.stringify(event)}) timed out after ${timeout}ms`)); }
+      }, timeout);
+    }));
+  },
+
   async bringToFront(): Promise<void> {
     if (_activeTabId) setActiveTab(_activeTabId);
   },
@@ -2848,6 +2884,7 @@ function _makePopupPage(tabId: string) {
     on:   (event: string, fn: any) => { _addPageListener(event, fn); return popupPage; },
     off:  (event: string, fn: any) => { _removePageListener(event, fn); return popupPage; },
     once: (event: string, fn: any) => { page.once(event, fn); return popupPage; },
+    waitForEvent: (event: string, optionsOrPredicate?: any) => page.waitForEvent(event, optionsOrPredicate),
     async close() { closeTab(tabId); },
   };
   return popupPage;
