@@ -353,6 +353,32 @@ interface Page {
   /** Remove a handler previously registered with {@link Page.addLocatorHandler}. */
   removeLocatorHandler(locator: Locator): void;
 
+  // ── Route interception ────────────────────────────────────────────────────────
+
+  /**
+   * Intercept requests matching `url` and invoke `handler` with a {@link Route} object.
+   *
+   * - **string** — treated as a glob pattern (`*` = single segment, `**` = any).
+   * - **RegExp** — tested against the full request URL.
+   * - **function** — called with the URL string; return `true` to match.
+   *
+   * The handler must call `route.fulfill()`, `route.abort()`, or `route.continue()`.
+   * If it returns without calling any of these, the request continues unchanged.
+   */
+  route(
+    url: string | RegExp | ((url: string) => boolean),
+    handler: (route: Route, request: TxRequest) => void | Promise<void>
+  ): Promise<void>;
+
+  /**
+   * Remove a previously registered route handler.
+   * If `handler` is omitted, all handlers for `url` are removed.
+   */
+  unroute(
+    url: string | RegExp | ((url: string) => boolean),
+    handler?: (route: Route, request: TxRequest) => void | Promise<void>
+  ): Promise<void>;
+
   // ── Events ────────────────────────────────────────────────────────────────────
   on(event: 'close',            fn: () => any): Page;
   on(event: 'console',          fn: (msg: TxConsoleMessage) => any): Page;
@@ -380,6 +406,30 @@ interface Page {
 
   bringToFront(): Promise<void>;
   close(): Promise<void>;
+}
+
+// ── Route ─────────────────────────────────────────────────────────────────────
+
+interface TxRouteFulfillOptions {
+  status?: number;
+  contentType?: string;
+  headers?: Record<string, string>;
+  body?: string | Uint8Array;
+  json?: any;
+}
+
+interface TxRouteContinueOptions {
+  url?: string;
+  method?: string;
+  headers?: Record<string, string>;
+  postData?: string;
+}
+
+interface Route {
+  fulfill(options?: TxRouteFulfillOptions): Promise<void>;
+  abort(errorCode?: string): Promise<void>;
+  continue(options?: TxRouteContinueOptions): Promise<void>;
+  request(): TxRequest;
 }
 
 // ── APIResponse ───────────────────────────────────────────────────────────────
@@ -487,6 +537,7 @@ declare module 'tx' {
   export { Keyboard };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
   export { APIResponse, APIRequestContext };
+  export { Route, TxRouteFulfillOptions, TxRouteContinueOptions };
 
   export const page: Page;
   export const browser: Browser;

@@ -1100,6 +1100,103 @@ function _isTextContent(contentType: string): boolean {
   return ct.includes('text') || ct.includes('json') || ct.includes('xml') || ct.includes('javascript') || ct.includes('form');
 }
 
+// ── Route interception ────────────────────────────────────────────────────────
+
+function _globToRegex(pattern: string): RegExp {
+  const reStr = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '\x01')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\x01/g, '.*');
+  return new RegExp('^' + reStr + '$');
+}
+
+function _matchesRoutePattern(pattern: string | RegExp | ((url: string) => boolean), url: string): boolean {
+  if (typeof pattern === 'function') return pattern(url);
+  if (pattern instanceof RegExp) return pattern.test(url);
+  try { return _globToRegex(pattern).test(url); } catch { return false; }
+}
+
+interface _RouteDecision {
+  action: 'fulfill' | 'abort' | 'continue';
+  response?: Response;
+  errorCode?: string;
+  continueOpts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit };
+}
+
+export class Route {
+  private _decided = false;
+  private _resolve!: (d: _RouteDecision) => void;
+  private _promise: Promise<_RouteDecision>;
+
+  constructor(
+    private readonly _req: {
+      url(): string; method(): string; headers(): Record<string, string>;
+      postData(): any; isNavigationRequest(): boolean; resourceType(): string;
+    }
+  ) {
+    this._promise = new Promise(r => { this._resolve = r; });
+  }
+
+  private _decide(d: _RouteDecision): void {
+    if (this._decided) return;
+    this._decided = true;
+    this._resolve(d);
+  }
+
+  async fulfill(options: {
+    status?: number;
+    contentType?: string;
+    headers?: Record<string, string>;
+    body?: string | Uint8Array;
+    json?: any;
+  } = {}): Promise<void> {
+    let body: BodyInit = options.body !== undefined ? options.body as BodyInit : '';
+    const hdrs: Record<string, string> = {};
+    if (options.json !== undefined) { body = JSON.stringify(options.json); hdrs['content-type'] = 'application/json'; }
+    if (options.contentType) hdrs['content-type'] = options.contentType;
+    Object.assign(hdrs, options.headers ?? {});
+    this._decide({ action: 'fulfill', response: new Response(body, { status: options.status ?? 200, headers: hdrs }) });
+  }
+
+  async abort(errorCode = 'failed'): Promise<void> {
+    this._decide({ action: 'abort', errorCode });
+  }
+
+  async continue(opts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit }): Promise<void> {
+    this._decide({ action: 'continue', continueOpts: opts });
+  }
+
+  request() { return this._req; }
+
+  /** @internal */
+  _getDecision(): Promise<_RouteDecision> { return this._promise; }
+  /** @internal */
+  _isDecided(): boolean { return this._decided; }
+}
+
+interface _RouteHandlerEntry {
+  pattern: string | RegExp | ((url: string) => boolean);
+  handler: (route: Route, request: any) => void | Promise<void>;
+}
+
+const _routeHandlers: _RouteHandlerEntry[] = [];
+
+async function _dispatchRoute(
+  url: string,
+  req: { url(): string; method(): string; headers(): Record<string, string>; postData(): any; isNavigationRequest(): boolean; resourceType(): string }
+): Promise<_RouteDecision | null> {
+  for (let i = _routeHandlers.length - 1; i >= 0; i--) {
+    if (_matchesRoutePattern(_routeHandlers[i].pattern, url)) {
+      const route = new Route(req);
+      try { await Promise.resolve(_routeHandlers[i].handler(route, req)); } catch { /* ignore handler errors */ }
+      if (!route._isDecided()) await route.continue();
+      return route._getDecision();
+    }
+  }
+  return null;
+}
+
 function _bridgeFetch(win: any): void {
   if (typeof win.fetch !== 'function') return;
   const origFetch = (win.fetch as typeof fetch).bind(win);
@@ -1120,9 +1217,39 @@ function _bridgeFetch(win: any): void {
     const method = ((init?.method) ?? (isReqObj ? (input as any).method : undefined) ?? 'GET').toUpperCase();
     const reqHeaders = _normalizeHeaders(init?.headers ?? (isReqObj ? (input as any).headers : undefined));
     const req    = { url: () => url, method: () => method, headers: () => reqHeaders, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
+
+    const decision = await _dispatchRoute(url, req);
     _emitPage('request', req);
+
+    if (decision?.action === 'abort') {
+      const err = new TypeError(decision.errorCode ?? 'Failed to fetch');
+      _emitPage('requestfailed', { ...req, failure: () => ({ errorText: String(err) }) });
+      throw err;
+    }
+
+    if (decision?.action === 'fulfill' && decision.response) {
+      const resp = decision.response;
+      const respHeaders = _normalizeHeaders(resp.headers);
+      let respBody: string | null = null;
+      if (_isTextContent(resp.headers.get('content-type') ?? '')) {
+        try { const text = await resp.clone().text(); respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text; } catch { /* ignore */ }
+      }
+      _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, headers: () => respHeaders, body: () => respBody, request: () => req });
+      _emitPage('requestfinished', req);
+      return resp;
+    }
+
+    // 'continue' or no route — proceed with origFetch, possibly with modified options
+    let fetchInput: RequestInfo | URL = input;
+    let fetchInit: RequestInit | undefined = init;
+    if (decision?.action === 'continue' && decision.continueOpts) {
+      const o = decision.continueOpts;
+      if (o.url) fetchInput = o.url;
+      fetchInit = { ...init, ...(o.method ? { method: o.method } : {}), ...(o.headers ? { headers: o.headers } : {}), ...(o.postData !== undefined ? { body: o.postData } : {}) };
+    }
+
     try {
-      const resp = await origFetch(input, init);
+      const resp = await origFetch(fetchInput, fetchInit);
       const respHeaders = _normalizeHeaders(resp.headers);
       let respBody: string | null = null;
       if (_isTextContent(resp.headers.get('content-type') ?? '')) {
@@ -1160,7 +1287,76 @@ function _bridgeXHR(win: any): void {
   };
   proto.send = function (body?: XMLHttpRequestBodyInit | Document | null) {
     const self = this as any;
-    const req  = { url: () => self._xUrl ?? '', method: () => (self._xMethod ?? 'GET').toUpperCase(), headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
+    const xUrl = self._xUrl ?? '';
+    const xMethod = (self._xMethod ?? 'GET').toUpperCase();
+    const req  = { url: () => xUrl, method: () => xMethod, headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
+
+    const routeEntry = _routeHandlers.slice().reverse().find(h => _matchesRoutePattern(h.pattern, xUrl));
+    if (routeEntry) {
+      (async () => {
+        const route = new Route(req);
+        try { await Promise.resolve(routeEntry.handler(route, req)); } catch { /* ignore */ }
+        if (!route._isDecided()) await route.continue();
+        const decision = await route._getDecision();
+
+        _emitPage('request', req);
+
+        if (decision.action === 'abort') {
+          _emitPage('requestfailed', { ...req, failure: () => ({ errorText: decision.errorCode ?? 'aborted' }) });
+          try { const ev = new Event('abort'); self.dispatchEvent(ev); if (self.onabort) self.onabort(ev); } catch { /* ignore */ }
+          return;
+        }
+
+        if (decision.action === 'fulfill' && decision.response) {
+          const resp = decision.response;
+          const hdrs: Record<string, string> = {};
+          resp.headers.forEach((v: string, k: string) => { hdrs[k] = v; });
+          let responseText = '';
+          try { responseText = await resp.clone().text(); } catch { /* ignore */ }
+
+          Object.defineProperty(self, 'status',       { value: resp.status,     configurable: true, writable: true });
+          Object.defineProperty(self, 'statusText',   { value: resp.statusText, configurable: true, writable: true });
+          Object.defineProperty(self, 'responseText', { value: responseText,    configurable: true, writable: true });
+          Object.defineProperty(self, 'response',     { value: responseText,    configurable: true, writable: true });
+          Object.defineProperty(self, 'readyState',   { value: 4,               configurable: true, writable: true });
+          self.getAllResponseHeaders = () => Object.entries(hdrs).map(([k, v]) => `${k}: ${v}`).join('\r\n');
+          self.getResponseHeader = (name: string) => hdrs[name.toLowerCase()] ?? null;
+
+          _emitPage('response', { url: () => xUrl, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, headers: () => hdrs, body: () => responseText, request: () => req });
+          _emitPage('requestfinished', req);
+          try {
+            const rsc = new Event('readystatechange'); self.dispatchEvent(rsc); if (self.onreadystatechange) self.onreadystatechange(rsc);
+            const load = new ProgressEvent('load'); self.dispatchEvent(load); if (self.onload) self.onload(load);
+            const loadend = new ProgressEvent('loadend'); self.dispatchEvent(loadend); if (self.onloadend) self.onloadend(loadend);
+          } catch { /* ignore */ }
+          return;
+        }
+
+        // 'continue' — call origSend
+        self.addEventListener('load', () => {
+          const respHeaders: Record<string, string> = {};
+          try {
+            const raw = (self.getAllResponseHeaders() as string) ?? '';
+            for (const line of raw.trim().split('\r\n')) {
+              const idx = line.indexOf(':');
+              if (idx > 0) respHeaders[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+            }
+          } catch { /* ignore */ }
+          let respBody: string | null = null;
+          if (_isTextContent(self.getResponseHeader?.('content-type') ?? '')) {
+            try { const text = String(self.responseText ?? ''); respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text; } catch { /* ignore */ }
+          }
+          _emitPage('response', { url: () => xUrl, status: () => self.status, statusText: () => self.statusText, ok: () => self.status >= 200 && self.status < 300, headers: () => respHeaders, body: () => respBody, request: () => req });
+          _emitPage('requestfinished', req);
+        });
+        self.addEventListener('error', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Network error' }) }));
+        self.addEventListener('abort', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Request aborted' }) }));
+        origSend.call(self, body);
+      })();
+      return;
+    }
+
+    // No route match — original behavior
     _emitPage('request', req);
     this.addEventListener('load', () => {
       const respHeaders: Record<string, string> = {};
@@ -2547,6 +2743,27 @@ export const page = {
     });
   },
 
+  // ── Route interception ────────────────────────────────────────────────────────
+
+  async route(
+    pattern: string | RegExp | ((url: string) => boolean),
+    handler: (route: Route, request: any) => void | Promise<void>
+  ): Promise<void> {
+    _routeHandlers.push({ pattern, handler });
+    log(typeof pattern === 'string' ? pattern : String(pattern), 'info', 'route');
+  },
+
+  async unroute(
+    pattern: string | RegExp | ((url: string) => boolean),
+    handler?: (route: Route, request: any) => void | Promise<void>
+  ): Promise<void> {
+    for (let i = _routeHandlers.length - 1; i >= 0; i--) {
+      if (_routeHandlers[i].pattern === pattern && (!handler || _routeHandlers[i].handler === handler)) {
+        _routeHandlers.splice(i, 1);
+      }
+    }
+  },
+
   async close(): Promise<void> {
     _emitPage('close');
     closeTab(_activeTabId ?? '');
@@ -2942,6 +3159,7 @@ export function initIframe() {
   _tabs = []; _activeTabId = null; _tabCounter = 0;
   _initScripts.length = 0;
   _locatorHandlers.length = 0;
+  _routeHandlers.length = 0;
   document.getElementById('iframe-container')!.innerHTML = '';
   viewportObserver?.disconnect();
   viewportObserver = new ResizeObserver(reapplyViewport);
