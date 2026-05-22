@@ -2,7 +2,7 @@
   "name": "tx-flow",
   "version": "0.0.1",
   "description": "tx-flow — a Cypress-like virtual browser testing framework via Hammerhead proxy",
-  "license": "ISC",
+  "license": "MIT",
   "author": "",
   "type": "commonjs",
   "main": "dist/index.js",

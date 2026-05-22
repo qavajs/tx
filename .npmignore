@@ -1,0 +1,20 @@
+# Source & dev
+src/
+test/
+.claude/
+
+# Config & build tooling
+tsconfig.json
+build.mjs
+*.config.js
+
+# Docs (not the public README)
+API.md
+IMPLEMENTATION.md
+
+# Misc
+node_modules/
+.git/
+.gitignore
+package-lock.json
+report/
