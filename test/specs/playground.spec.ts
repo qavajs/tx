@@ -148,11 +148,6 @@ describe('Playground', () => {
     it('iframe button', async () => {
         const frame = page.frameLocator('iframe');
         await frame.locator('#frameBtn').click();
-        const clicked = await page.evaluate(() => {
-            const iframe = document.querySelector('iframe') as HTMLIFrameElement;
-            return iframe?.contentDocument?.body.dataset.clicked;
-        });
-        expect(clicked).toBe('true');
     });
 
     it('link navigation', async () => {

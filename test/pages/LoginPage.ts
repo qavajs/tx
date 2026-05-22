@@ -32,10 +32,12 @@ export class LoginPage {
   async loginWithCookie(
     username: string = 'standard_user'
   ): Promise<void> {
-    await this.page.addInitScript((user: string) => {
+    await this.page.goto(
+      'https://www.saucedemo.com/'
+    );
+    await this.page.evaluate((user: string) => {
       document.cookie = `session-username=${user}; domain=saucedemo.com; path=/;`;
     }, username);
-
     await this.page.goto(
       'https://www.saucedemo.com/inventory.html'
     );

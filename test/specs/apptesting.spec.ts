@@ -143,7 +143,7 @@ describe('windows', () => {
     test('new tab', async ({ browser, page, expect }) => {
         const newTab = page.locator('#new-tab-link');
         await newTab.click();
-        await expect(page.locator('[aria-label="Search"]')).toBeVisible();
+        await expect(page.locator('textarea[aria-label]')).toBeVisible();
         await browser.pages()[0].bringToFront();
         expect(page.locator('#new-tab-link')).toBeVisible();
     });

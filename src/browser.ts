@@ -587,11 +587,15 @@ export class Locator {
       const win = iframeWin() as any;
       const ME = (win?.MouseEvent ?? MouseEvent) as typeof MouseEvent;
       const init: MouseEventInit = { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: cx, clientY: cy };
-      target.dispatchEvent(new ME('mouseover',  init));
+      target.dispatchEvent(new ME('mouseover', init));
       target.dispatchEvent(new ME('mouseenter', { ...init, bubbles: false }));
-      target.dispatchEvent(new ME('mousedown',  init));
-      target.dispatchEvent(new ME('mouseup',    init));
-      target.click();
+      target.dispatchEvent(new ME('mousedown', init));
+      target.dispatchEvent(new ME('mouseup', init));
+      if (typeof (target as any).click === 'function') {
+        target.click();
+      } else {
+        target.dispatchEvent(new ME('click', init));
+      }
       entry.success();
     } catch (error: any) {
       entry.fail(error?.message ?? String(error));
