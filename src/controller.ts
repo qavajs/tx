@@ -139,7 +139,7 @@ function setTopbarStatus(state: 'ready'|'running'|'passed'|'failed'|'connected'|
 
 // ── Spec list ─────────────────────────────────────────────────────────────────
 
-interface ParsedTest { suite: string; name: string; }
+interface ParsedTest { suite: string; name: string; tags?: string[]; }
 interface ParsedFile { filename: string; relPath?: string; tests: ParsedTest[]; }
 
 async function loadTestList() {
@@ -155,7 +155,7 @@ async function loadTestList() {
   }
 }
 
-function renderTestItemHtml(filename: string, suite: string, name: string): string {
+function renderTestItemHtml(filename: string, suite: string, name: string, tags: string[]): string {
   const fullName = suite === '(root)' ? name : suite + ' > ' + name;
   const stateIcons =
     '<svg class="tx-state-svg tx-state-svg--idle" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
@@ -171,37 +171,42 @@ function renderTestItemHtml(filename: string, suite: string, name: string): stri
       '<circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="2"/>' +
     '</svg>';
   const key = escAttr(filename + '\x01' + fullName);
+  const tagsHtml = tags.length > 0
+    ? '<span class="tx-test-tags">' + tags.map(t => '<span class="tx-test-tag">' + escHtml(t) + '</span>').join('') + '</span>'
+    : '';
   return '<div class="tx-test-item"' +
     ' data-testkey="' + key + '"' +
     ' data-suite="' + escHtml(suite) + '"' +
-    ' data-fullname="' + escHtml(fullName) + '">' +
+    ' data-fullname="' + escHtml(fullName) + '"' +
+    ' data-tags="' + escHtml(tags.join(' ')) + '">' +
     '<span class="tx-test-chevron">&#9658;</span>' +
     '<span class="tx-test-dot">' + stateIcons + '</span>' +
     '<span class="tx-test-name">' + escHtml(name) + '</span>' +
+    tagsHtml +
     '<span class="tx-test-badge"></span>' +
     '<button class="tx-test-run-btn" onclick="event.stopPropagation();window.runTest(' + jsq(filename) + ',' + jsq(fullName) + ')">&#9654;</button>' +
   '</div>' +
   '<div class="tx-test-log" id="tlog-' + key + '"></div>';
 }
 
-function renderSuiteHtml(filename: string, suite: string, names: string[]): string {
+function renderSuiteHtml(filename: string, suite: string, items: Array<{ name: string; tags: string[] }>): string {
   const key = escAttr(filename + '\x01' + suite);
   return '<div class="tx-suite-row" data-suite-key="' + key + '" onclick="window.toggleSuite(' + jsq(filename) + ',' + jsq(suite) + ')">' +
     '<span class="tx-suite-chevron">&#9658;</span>' +
     '<span class="tx-suite-name">' + escHtml(suite) + '</span>' +
     '<span class="tx-suite-badges" id="sbadges-' + key + '"></span>' +
     '<button class="tx-suite-run-btn" onclick="event.stopPropagation();window.runSuite(' + jsq(filename) + ',' + jsq(suite) + ')">&#9654;</button>' +
-  '</div>' + names.map(n => renderTestItemHtml(filename, suite, n)).join('');
+  '</div>' + items.map(({ name, tags }) => renderTestItemHtml(filename, suite, name, tags)).join('');
 }
 
 function renderTestFileCard(f: ParsedFile): string {
-  const suites: Record<string, string[]> = Object.create(null);
+  const suites: Record<string, Array<{ name: string; tags: string[] }>> = Object.create(null);
   f.tests.forEach(t => {
     const k = t.suite || '(root)';
     if (!suites[k]) suites[k] = [];
-    suites[k].push(t.name);
+    suites[k].push({ name: t.name, tags: t.tags ?? [] });
   });
-  const suiteHtml = Object.entries(suites).map(([s, names]) => renderSuiteHtml(f.filename, s, names)).join('');
+  const suiteHtml = Object.entries(suites).map(([s, items]) => renderSuiteHtml(f.filename, s, items)).join('');
   const display  = f.relPath ?? f.filename;
   const ext      = display.split('.').pop() ?? 'js';
   const noExt    = display.slice(0, -(ext.length + 1));
@@ -247,7 +252,7 @@ type HookFn = (...args: any[]) => any;
 type HookEntry = { fn: HookFn; expectsFixtures: boolean };
 type HookScope = { beforeEachs: HookEntry[]; afterEachs: HookEntry[]; beforeAlls: HookFn[]; afterAlls: HookFn[] };
 type QueueItem = {
-  name: string; fn: HookFn;
+  name: string; fn: HookFn; tags: string[];
   fixtureDefs: FixtureDefs; expectsFixtures: boolean;
   beforeEachs: HookEntry[]; afterEachs: HookEntry[];
   setupBeforeAlls: HookFn[]; teardownAfterAlls: HookFn[];
@@ -283,6 +288,7 @@ function buildTestQueue(
   const { filterSuite, filterTest, filterTests } = filters;
   const queue: QueueItem[] = [];
   const stack: string[] = [];
+  const tagStack: string[][] = [];
   const hookStack: HookScope[] = [];
 
   const beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push({ fn, expectsFixtures: fn.length > 0 }); };
@@ -298,14 +304,18 @@ function buildTestQueue(
   };
 
   const makeTestFn = (fixtureDefs: FixtureDefs): any => {
-    const testFn = (name: string, fn: HookFn) => {
+    const testFn = (name: string, optsOrFn: HookFn | { tag?: string[] }, maybeFn?: HookFn) => {
+      const opts = typeof optsOrFn === 'object' ? optsOrFn : undefined;
+      const fn   = (typeof optsOrFn === 'function' ? optsOrFn : maybeFn) as HookFn;
+      const inheritedTags = ([] as string[]).concat(...tagStack);
+      const tags = [...inheritedTags, ...(opts?.tag ?? [])];
       const suite    = stack.join(' > ');
       const fullName = stack.length ? suite + ' > ' + name : name;
       if (filterSuite  && suite    !== filterSuite)              return;
       if (filterTest   && fullName !== filterTest)               return;
       if (filterTests  && !filterTests.includes(fullName))       return;
       queue.push({
-        name: fullName, fn,
+        name: fullName, fn, tags,
         fixtureDefs, expectsFixtures: fn.length > 0,
         beforeEachs: hookStack.flatMap(s => s.beforeEachs),
         afterEachs:  hookStack.flatMap(s => s.afterEachs).reverse(),
@@ -317,10 +327,12 @@ function buildTestQueue(
   };
 
   const baseTest = makeTestFn(defaultFixtureDefs);
-  const it = (name: string, fn: HookFn) => baseTest(name, fn);
 
-  const describe = (name: string, fn: () => void) => {
+  const describe = (name: string, optsOrFn: (() => void) | { tag?: string[] }, maybeFn?: () => void) => {
+    const fn = typeof optsOrFn === 'function' ? optsOrFn : maybeFn!;
+    const tags = (optsOrFn && typeof optsOrFn === 'object' && Array.isArray(optsOrFn.tag)) ? optsOrFn.tag as string[] : [];
     stack.push(name);
+    tagStack.push(tags);
     hookStack.push({ beforeEachs: [], afterEachs: [], beforeAlls: [], afterAlls: [] });
     const lenBefore = queue.length;
     try { fn(); } finally {
@@ -333,12 +345,12 @@ function buildTestQueue(
         if (scope.afterAlls.length)  scopeTests[scopeTests.length - 1].teardownAfterAlls = [...scopeTests[scopeTests.length - 1].teardownAfterAlls, ...scope.afterAlls];
       }
       stack.pop();
+      tagStack.pop();
       hookStack.pop();
     }
   };
 
   (window as any).describe   = describe;
-  (window as any).it         = it;
   (window as any).test       = baseTest;
   (window as any).beforeEach = beforeEach;
   (window as any).afterEach  = afterEach;
@@ -791,7 +803,8 @@ window.applyFilter = (query: string) => {
     for (const item of card.querySelectorAll<HTMLElement>('.tx-test-item')) {
       const name = item.querySelector('.tx-test-name')?.textContent ?? '';
       const fullName = item.dataset.fullname ?? name;
-      const matches = !matcher || matcher(name) || matcher(fullName);
+      const itemTags = (item.dataset.tags ?? '').split(/\s+/).filter(Boolean);
+      const matches = !matcher || matcher(name) || matcher(fullName) || itemTags.some(t => matcher(t));
       item.style.display = matches ? '' : 'none';
       const logEl = item.nextElementSibling as HTMLElement | null;
       if (logEl?.classList.contains('tx-test-log')) logEl.style.display = matches ? '' : 'none';

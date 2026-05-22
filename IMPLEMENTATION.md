@@ -66,19 +66,25 @@ At startup the proxy opens two sessions:
 
 ## Test File Format
 
-Tests are standard `describe` / `it` / `test` blocks, identical to Playwright/Jest:
+Tests are standard `describe` / `test` blocks, identical to Playwright/Jest:
 
 ```typescript
 describe('Login flow', () => {
   beforeEach(async () => { /* ... */ });
 
-  it('logs in with valid credentials', async () => {
+  test('logs in with valid credentials', async () => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
     await page.getByTestId('password').fill('secret_sauce');
     await page.getByTestId('login-button').click();
     await page.waitForURL(/inventory/);
     await expect(page.locator('[data-test="title"]')).toHaveText('Products');
+  });
+
+  // Tags are shown as chips in the control panel and matched by grep
+  test('smoke check', { tag: ['@smoke'] }, async () => {
+    await page.goto('https://www.saucedemo.com');
+    await expect(page.getByTestId('login-button')).toBeVisible();
   });
 });
 ```
@@ -246,9 +252,10 @@ module.exports = {
   port1: 1337,              // Hammerhead proxy port 1
   port2: 1338,              // Hammerhead proxy port 2
   controlPanelPort: 3000,   // Control panel HTTP port
-  headless: false,          // Skip opening the browser
+  headless: false,          // Run browser in headless mode
+  browser: 'chrome',        // 'chrome' | 'firefox' | 'edge' | 'safari' | 'chromium' | absolute path
   testFiles: ['./specs/**/*.spec.ts'],  // Glob patterns
-  grep: 'login',            // Filter tests by name (string or /regexp/flags)
+  grep: 'login',            // Filter tests by name or tag (string or /regexp/flags)
   viewport: { width: 1600, height: 900 },
   testMode: false,          // Run all tests then exit with code 0/1
   snapshot: false,          // Capture DOM snapshots after each command
@@ -259,6 +266,11 @@ module.exports = {
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
     dirname:  () => __dirname,
+  },
+  // Named profiles — select with --profile <name>; merged before CLI args
+  profiles: {
+    ci:    { headless: true, browser: 'chromium', testMode: true },
+    debug: { headless: false, actionTimeout: 30000, testTimeout: 120000 },
   },
 };
 ```
@@ -286,6 +298,7 @@ CLI overrides:
 node dist/index.js --config test/tx.config.js
 node dist/index.js --config test/tx.config.js --test
 node dist/index.js --config test/tx.config.js --grep login
+node dist/index.js --config test/tx.config.js --profile ci
 node dist/index.js --headless true
 ```
 
@@ -365,7 +378,7 @@ export class LoginPage {
 
 ## Limitations
 
-- Runs in a single browser window (Safari on macOS via the system `open` command).
+- Runs in a single browser window. The browser is spawned directly by the process and killed on `stop()`.
 - Cross-origin sub-frames inside the target site are not accessible (sandboxed by the browser).
 - No built-in screenshot/PDF capture — snapshotting is DOM-based (computed styles, no rasterization).
 - Hammerhead proxies HTTP/HTTPS; WebSocket traffic passes through but is not interceptable at the network level.

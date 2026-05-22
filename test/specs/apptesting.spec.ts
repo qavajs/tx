@@ -1,15 +1,15 @@
-describe('apptesting forms', () => {
+describe('apptesting forms', { tag: ['@smoke'] }, () => {
     beforeEach(async ({ page }) => {
         await page.goto('https://apptesting.pl/pages/forms.html');
     });
 
-    it('simple input', async ({ page, expect }) => {
+    test('simple input', { tag: ['@tag1'] }, async ({ page, expect }) => {
         const input = page.locator('#text-input');
         await input.fill('test input');
         await expect(input).toHaveValue('test input');
     });
 
-    test('slider input', async ({ page, expect }) => {
+    test('slider input', { tag: ['@tag2'] }, async ({ page, expect }) => {
         const input = page.locator('#range-slider');
         await input.fill('42');
         await expect(input).toHaveValue('42');

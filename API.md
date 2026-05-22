@@ -43,18 +43,21 @@
 }
 ```
 
-| Field              | Type                          | Default       | Description                                      |
-|--------------------|-------------------------------|---------------|--------------------------------------------------|
-| `proxyHost`        | `string`                      | `"localhost"` | Hostname for the Hammerhead proxy                |
-| `port1`            | `number`                      | `1337`        | Proxy port 1                                     |
-| `port2`            | `number`                      | `1338`        | Proxy port 2                                     |
-| `controlPanelPort` | `number`                      | `3000`        | HTTP server port for the control panel           |
-| `headless`         | `boolean`                     | `false`       | Skip opening a browser window                    |
-| `testFiles`        | `string[]`                    | —             | Explicit list of test file paths (relative to config) |
-| `testMatch`        | `string \| string[]`          | —             | Glob pattern(s) for test file discovery          |
-| `viewport`         | `{ width, height }`           | —             | Fixed iframe viewport size; scales to fit panel  |
-| `reporters`        | `[path, config][]`            | —             | Reporter modules — see [Reporters](#reporters)   |
-| `tasks`            | `Record<string, TaskHandler>` | —             | Named Node.js task handlers — see [browser.task](#browsertask) |
+| Field              | Type                                    | Default       | Description                                      |
+|--------------------|-----------------------------------------|---------------|--------------------------------------------------|
+| `proxyHost`        | `string`                                | `"localhost"` | Hostname for the Hammerhead proxy                |
+| `port1`            | `number`                                | `1337`        | Proxy port 1                                     |
+| `port2`            | `number`                                | `1338`        | Proxy port 2                                     |
+| `controlPanelPort` | `number`                                | `3000`        | HTTP server port for the control panel           |
+| `headless`         | `boolean`                               | `false`       | Run the browser in headless mode                 |
+| `browser`          | `string`                                | —             | Browser to launch: `chrome`, `firefox`, `edge`, `safari`, `chromium`, or an absolute path to a binary. Falls back to the first browser found on the system when omitted. |
+| `testFiles`        | `string[]`                              | —             | Explicit list of test file paths (relative to config) |
+| `testMatch`        | `string \| string[]`                    | —             | Glob pattern(s) for test file discovery          |
+| `grep`             | `string`                                | —             | Filter tests by name or tag (substring or `/regex/flags`) |
+| `viewport`         | `{ width, height }`                     | —             | Fixed iframe viewport size; scales to fit panel  |
+| `reporters`        | `[path, config][]`                      | —             | Reporter modules — see [Reporters](#reporters)   |
+| `tasks`            | `Record<string, TaskHandler>`           | —             | Named Node.js task handlers — see [browser.task](#browsertask) |
+| `profiles`         | `Record<string, Omit<TxConfig, 'profiles'>>` | —      | Named config profiles — select at runtime with `--profile <name>`; merged on top of base config, before CLI args |
 
 ### Reporters
 
@@ -99,11 +102,12 @@ describe('Suite name', () => {
     // cleanup
   });
 
-  it('test name', async () => {
+  test('test name', async () => {
     await expect(page.locator('h1')).toBeVisible();
   });
 
-  test('alias for it', async () => {
+  // Optional tags — displayed as chips in the control panel; matched by --grep
+  test('smoke check', { tag: ['@smoke', '@fast'] }, async () => {
     expect(page.url()).toContain('example.com');
   });
 });
@@ -111,17 +115,32 @@ describe('Suite name', () => {
 
 ### Globals available in test files
 
-| Global        | Description                                              |
-|---------------|----------------------------------------------------------|
-| `describe`    | Define a test suite                                      |
-| `it` / `test` | Define a test case                                       |
-| `beforeEach`  | Hook run before each test in the nearest `describe`      |
-| `afterEach`   | Hook run after each test in the nearest `describe`       |
-| `page`        | Playwright-style page object (see [page](#page))         |
-| `browser`     | Multi-tab browser object (see [browser](#browser))       |
-| `request`     | HTTP request context (see [request](#request))           |
-| `expect`      | Assertion function (see [expect](#expect))               |
-| `log`         | `(message, type?) => void` — write to the panel console  |
+| Global      | Description                                              |
+|-------------|----------------------------------------------------------|
+| `describe`  | Define a test suite                                      |
+| `test`      | Define a test case (see signature below)                 |
+| `beforeEach`| Hook run before each test in the nearest `describe`      |
+| `afterEach` | Hook run after each test in the nearest `describe`       |
+| `page`      | Playwright-style page object (see [page](#page))         |
+| `browser`   | Multi-tab browser object (see [browser](#browser))       |
+| `request`   | HTTP request context (see [request](#request))           |
+| `expect`    | Assertion function (see [expect](#expect))               |
+| `log`       | `(message, type?) => void` — write to the panel console  |
+
+### test() signature
+
+```ts
+test(name: string, fn: (fixtures) => void | Promise<void>): void
+test(name: string, options: { tag?: string[] }, fn: (fixtures) => void | Promise<void>): void
+```
+
+The optional `options` object currently accepts:
+
+| Option | Type       | Description                                                                 |
+|--------|------------|-----------------------------------------------------------------------------|
+| `tag`  | `string[]` | Labels attached to the test. Shown as chips in the spec list. Matched by `grep` / `--grep`. |
+
+Tags are freeform strings — conventionally prefixed with `@` (e.g. `'@smoke'`, `'@regression'`), but any string is valid.
 
 ### Fixtures
 
@@ -873,7 +892,7 @@ const file: ParsedFile = parseTestFile(filePath: string)
 ### Types
 
 ```ts
-interface ParsedTest  { suite: string; name: string; }
+interface ParsedTest  { suite: string; name: string; tags?: string[]; }
 interface ParsedFile  { filename: string; tests: ParsedTest[]; error?: string; }
 interface TestResult  { name: string; passed: boolean; error?: string; duration: number; }
 interface RunResults  { passed: number; failed: number; total: number; duration: number; tests: TestResult[]; }
@@ -944,7 +963,7 @@ All endpoints respond with `Access-Control-Allow-Origin: *`.
 const res = await fetch('http://localhost:3000/api/run-test', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ code: `it('x', () => {})` }),
+  body: JSON.stringify({ code: `test('x', () => {})` }),
 });
 const { passed, failed, total, duration, tests } = await res.json();
 ```

@@ -5,82 +5,82 @@ describe('Playground', () => {
         await page.goto(`file://${dirname}/app/testPage.html`);
     });
 
-    it('click', async () => {
+    test('click', async () => {
         const clickElement = page.locator('#clickBtn');
         await clickElement.click();
         const actionLabel = page.locator('#mouseResult');
         await expect(actionLabel).toHaveText('Clicked');
     });
 
-    it('double click', async () => {
+    test('double click', async () => {
         const clickElement = page.locator('#dblClickBtn');
         await clickElement.dblclick();
         const actionLabel = page.locator('#mouseResult');
         await expect(actionLabel).toHaveText('Double clicked');
     });
 
-    it('right click', async () => {
+    test('right click', async () => {
         const clickElement = page.locator('#rightClickBtn');
         await clickElement.rightClick();
         const actionLabel = page.locator('#mouseResult');
         await expect(actionLabel).toHaveText('Right clicked');
     });
 
-    it('hover', async () => {
+    test('hover', async () => {
         const clickElement = page.locator('#hoverTarget');
         await clickElement.hover();
         await expect(clickElement).toHaveAttribute('data-hammerhead-hovered');
     });
 
-    it('type to input', async () => {
+    test('type to input', async () => {
         const typeElement = page.locator('#textInput');
         await typeElement.type('type smth!');
         await expect(typeElement).toHaveValue('type smth!');
     });
 
-    it('type to textarea', async () => {
+    test('type to textarea', async () => {
         const typeElement = page.locator('#textareaInput');
         await typeElement.type('type smth!');
         await expect(typeElement).toHaveValue('type smth!');
     });
 
-    it('type to password', async () => {
+    test('type to password', async () => {
         const typeElement = page.locator('#passwordInput');
         await typeElement.type('type smth!');
         await expect(typeElement).toHaveValue('type smth!');
     });
 
-    it('check checkbox', async () => {
+    test('check checkbox', async () => {
         const checkbox = page.locator('#checkbox');
         await checkbox.check();
         await expect(checkbox).toBeChecked();
     });
 
-    it('check radio', async () => {
+    test('check radio', async () => {
         const radio = page.locator('[name=role][value=user]');
         await radio.check();
         await expect(radio).toBeChecked();
     });
 
-    it('select option', async () => {
+    test('select option', async () => {
         const select = page.locator('#countrySelect');
         await select.selectOption('Latvia');
         await expect(select).toHaveValue('Latvia');
     });
 
-    it('select date', async () => {
+    test('select date', async () => {
         const select = page.locator('#datePicker');
         await select.fill('2026-05-04');
         await expect(select).toHaveValue('2026-05-04');
     });
 
-    it('select file', async () => {
+    test('select file', async () => {
         const select = page.locator('#fileUpload');
         await select.setInputFiles('test/specs/playground.spec.ts');
         await expect(select).toHaveValue('test/specs/playground.spec.ts');
     });
 
-    it('drag and drop', async () => {
+    test('drag and drop', async () => {
         await page.evaluate(() => {
             const dragItem = document.getElementById('dragItem')!;
             const dropZone = document.getElementById('dropZone')!;
@@ -93,13 +93,13 @@ describe('Playground', () => {
         await expect(page.locator('#dragResult')).toHaveText('Dropped successfully');
     });
 
-    it('scroll into view', async () => {
+    test('scroll into view', async () => {
         const scrollTarget = page.locator('#scrollTarget');
         await scrollTarget.scrollIntoViewIfNeeded();
         await expect(scrollTarget).toBeVisible();
     });
 
-    it('alert dialog', async () => {
+    test('alert dialog', async () => {
         let message = '';
         page.once('dialog', dialog => {
             message = dialog.message();
@@ -109,7 +109,7 @@ describe('Playground', () => {
         expect(message).toBe('Alert dialog');
     });
 
-    it('confirm dialog', async () => {
+    test('confirm dialog', async () => {
         let message = '';
         page.once('dialog', dialog => {
             message = dialog.message();
@@ -119,7 +119,7 @@ describe('Playground', () => {
         expect(message).toBe('Confirm dialog?');
     });
 
-    it('prompt dialog', async () => {
+    test('prompt dialog', async () => {
         let message = '';
         page.once('dialog', dialog => {
             message = dialog.message();
@@ -129,7 +129,7 @@ describe('Playground', () => {
         expect(message).toBe('Enter text');
     });
 
-    it('toggle visibility', async () => {
+    test('toggle visibility', async () => {
         const target = page.locator('#visibilityTarget');
         await expect(target).toBeVisible();
         await page.locator('#toggleVisibility').click();
@@ -138,31 +138,31 @@ describe('Playground', () => {
         await expect(target).toBeVisible();
     });
 
-    it('toggle enabled', async () => {
+    test('toggle enabled', async () => {
         const btn = page.locator('#disabledBtn');
         await expect(btn).toBeDisabled();
         await page.locator('#toggleEnabled').click();
         await expect(btn).toBeEnabled();
     });
 
-    it('iframe button', async () => {
+    test('iframe button', async () => {
         const frame = page.frameLocator('iframe');
         await frame.locator('#frameBtn').click();
     });
 
-    it('link navigation', async () => {
+    test('link navigation', async () => {
         await page.locator('#linkNav').click();
         await expect(page.locator('#bottom')).toBeVisible();
     });
 
-    it('page reload', async () => {
+    test('page reload', async () => {
         await page.locator('#clickBtn').click();
         await expect(page.locator('#mouseResult')).toHaveText('Clicked');
         await page.reload();
         await expect(page.locator('#mouseResult')).toHaveText('', { exact: true });
     });
 
-    it('delayed element appears', async () => {
+    test('delayed element appears', async () => {
         const delayed = page.locator('#delayedElement');
         await expect(delayed).toBeHidden();
         await page.locator('#showDelayed').click();
@@ -170,7 +170,7 @@ describe('Playground', () => {
         await expect(delayed).toBeVisible();
     });
 
-    it('keyboard press', async () => {
+    test('keyboard press', async () => {
         await page.locator('#textInput').press('Tab');
         await expect(page.locator('#lastKey')).toHaveText('Tab');
     });
@@ -182,37 +182,37 @@ describe('nth/first/last verify', () => {
         await page.goto(`file://${dirname}/app/testPage.html`);
     });
 
-    it('first() returns the first card heading', async () => {
+    test('first() returns the first card heading', async () => {
         const first = page.locator('.card h2').first();
         await expect(first).toHaveText('Mouse / Pointer');
     });
 
-    it('last() returns the last card heading', async () => {
+    test('last() returns the last card heading', async () => {
         const last = page.locator('.card h2').last();
         await expect(last).toHaveText('Hidden / Dynamic Element');
     });
 
-    it('nth(0) is same as first()', async () => {
+    test('nth(0) is same as first()', async () => {
         const byNth = page.locator('.card h2').nth(0);
         await expect(byNth).toHaveText('Mouse / Pointer');
     });
 
-    it('nth(1) returns the second card heading', async () => {
+    test('nth(1) returns the second card heading', async () => {
         const second = page.locator('.card h2').nth(1);
         await expect(second).toHaveText('Keyboard & Inputs');
     });
 
-    it('nth(2) returns the third card heading', async () => {
+    test('nth(2) returns the third card heading', async () => {
         const third = page.locator('.card h2').nth(2);
         await expect(third).toHaveText('Form Controls');
     });
 
-    it('nth() out of range returns empty (count = 0)', async () => {
+    test('nth() out of range returns empty (count = 0)', async () => {
         const oob = page.locator('.card h2').nth(999);
         await expect(oob).toHaveCount(0);
     });
 
-    it('count() matches total cards', async () => {
+    test('count() matches total cards', async () => {
         const all = page.locator('.card h2');
         await expect(all).toHaveCount(10);
     });

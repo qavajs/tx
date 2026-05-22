@@ -45,7 +45,7 @@ module.exports = {
   // Test files — glob patterns relative to this config file
   testFiles: ['./specs/**/*.spec.ts'],
 
-  // Filter tests by name substring or /regex/flags
+  // Filter tests by name substring or /regex/flags (also matches tags)
   // grep: 'login',
 
   // Viewport applied to the iframe
@@ -70,6 +70,21 @@ module.exports = {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
     dirname:  () => __dirname,
   },
+
+  // Named config profiles — select one at runtime with --profile <name>.
+  // Profile values are merged on top of the base config, before CLI args.
+  profiles: {
+    ci: {
+      headless: true,
+      browser: 'chromium',
+      testMode: true,
+    },
+    debug: {
+      headless: false,
+      actionTimeout: 30000,
+      testTimeout: 120000,
+    },
+  },
 };
 ```
 
@@ -80,11 +95,12 @@ All fields are optional. CLI flags override the config file.
 | Flag | Description |
 |------|-------------|
 | `--config <path>` | Path to config file (auto-detected if omitted) |
+| `--profile <name>` | Apply a named profile from `profiles` in the config file |
 | `--test` | Run all tests then exit; non-zero exit on failures |
-| `--grep <pattern>` | Filter tests by name (substring or `/regex/flags`) |
-| `--browser <name>` | Browser to open |
+| `--grep <pattern>` | Filter tests by name or tag (substring or `/regex/flags`) |
+| `--browser <name>` | Browser to open (`chrome`, `firefox`, `edge`, `safari`, or an absolute path) |
 | `--port <n>` | Control panel port |
-| `--headless` | Skip opening the browser |
+| `--headless` | Run the browser in headless mode |
 
 ## Writing Tests
 
@@ -92,13 +108,19 @@ Tests look and feel like Playwright. Globals `page`, `browser`, `expect`, and `r
 
 ```ts
 describe('Login', () => {
-  it('navigates to inventory after valid credentials', async () => {
+  test('navigates to inventory after valid credentials', async () => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
     await page.getByTestId('password').fill('secret_sauce');
     await page.getByTestId('login-button').click();
     await page.waitForURL(/inventory/, { timeout: 5000 });
     await expect(page.getByTestId('title')).toHaveText('Products');
+  });
+
+  // Tags are displayed as chips in the control panel and matched by --grep
+  test('smoke check', { tag: ['@smoke'] }, async () => {
+    await page.goto('https://www.saucedemo.com');
+    await expect(page.getByTestId('login-button')).toBeVisible();
   });
 });
 ```

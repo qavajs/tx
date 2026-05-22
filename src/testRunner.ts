@@ -2,28 +2,42 @@ import * as vm from 'vm';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export interface ParsedTest { suite: string; name: string; }
+export interface ParsedTest { suite: string; name: string; tags?: string[]; }
 export interface ParsedFile { filename: string; relPath?: string; tests: ParsedTest[]; error?: string; }
 
 export function parseTestCode(code: string): ParsedTest[] {
   const tests: ParsedTest[] = [];
   const stack: string[] = [];
-  const pushTest = (name: string) => tests.push({ suite: stack.join(' > '), name: String(name) });
-  const makeParserTestFn = (push: (name: string) => void): any => {
-    const fn: any = (name: string) => push(name);
+  const tagStack: string[][] = [];
+  const pushTest = (name: string, tags?: string[]) => {
+    const inheritedTags = ([] as string[]).concat(...tagStack);
+    const mergedTags = tags ? [...inheritedTags, ...tags] : (inheritedTags.length ? inheritedTags : undefined);
+    tests.push({ suite: stack.join(' > '), name: String(name), tags: mergedTags });
+  };
+  const makeParserTestFn = (push: (name: string, tags?: string[]) => void): any => {
+    const fn: any = (name: string, optsOrFn?: any, _maybeFn?: any) => {
+      const tags = (optsOrFn && typeof optsOrFn === 'object' && Array.isArray(optsOrFn.tag))
+        ? optsOrFn.tag as string[]
+        : undefined;
+      push(name, tags);
+    };
     fn.extend = (_defs: any) => makeParserTestFn(push);
     return fn;
   };
-  const it = makeParserTestFn(pushTest);
-  const describe = (name: string, fn: () => void) => {
+  const test = makeParserTestFn(pushTest);
+  const describe = (name: string, optsOrFn: any, maybeFn?: () => void) => {
+    const fn = typeof optsOrFn === 'function' ? optsOrFn : maybeFn!;
+    const tags = (optsOrFn && typeof optsOrFn === 'object' && Array.isArray(optsOrFn.tag)) ? optsOrFn.tag as string[] : [];
     stack.push(String(name));
+    tagStack.push(tags);
     try { fn(); } catch { /* ignore body errors during parse */ }
+    tagStack.pop();
     stack.pop();
   };
   const noop: any = () => noop;
   const pageProxy: any = new Proxy({}, { get: () => noop });
   const sandbox = vm.createContext({
-    describe, it, test: it,
+    describe, test,
     beforeEach: noop, afterEach: noop, beforeAll: noop, afterAll: noop,
     expect: () => noop,
     tx: new Proxy({}, { get: () => noop }),

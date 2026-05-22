@@ -241,7 +241,7 @@ export class TestServer {
               parsedFiles = parsedFiles
                 .map(f => ({ ...f, tests: f.tests.filter(t => {
                   const fullName = t.suite ? `${t.suite} > ${t.name}` : t.name;
-                  return grep.test(fullName) || grep.test(t.name);
+                  return grep.test(fullName) || grep.test(t.name) || (t.tags ?? []).some(tag => grep.test(tag));
                 }) }))
                 .filter(f => f.tests.length > 0);
             }

@@ -382,7 +382,18 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         }
         .tx-suite-row:hover .tx-suite-run-btn { opacity: 1; border-color: var(--jade); color: var(--jade); }
 
-        .tx-test-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tx-test-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        .tx-test-tags { display: flex; gap: 3px; flex-shrink: 0; }
+        .tx-test-tag {
+            font-size: 10px;
+            font-weight: 500;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background: rgba(0, 208, 132, 0.12);
+            color: var(--jade);
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+        }
         .tx-test-run-btn {
             width: 20px;
             height: 20px;

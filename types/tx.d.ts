@@ -501,8 +501,14 @@ interface TxBaseFixtures {
   };
 }
 
+interface TxTestOptions {
+  /** Tags for filtering, e.g. `['@smoke', '@regression']` */
+  tag?: string[];
+}
+
 interface TestFactory<F extends Record<string, any> = TxBaseFixtures> {
   (name: string, fn: (fixtures: F) => void | Promise<void>): void;
+  (name: string, options: TxTestOptions, fn: (fixtures: F) => void | Promise<void>): void;
   extend<NewF extends Record<string, any>>(defs: TxFixtureDefs<NewF>): TestFactory<F & NewF>;
 }
 
@@ -516,8 +522,12 @@ declare function expect(actual: Page): PageAssertions;
 declare function expect(actual: Locator): LocatorAssertions;
 declare function expect(actual: any): ValueAssertions;
 
+interface TxDescribeOptions {
+  /** Tags inherited by every test in this describe block, e.g. `['@smoke']` */
+  tag?: string[];
+}
 declare function describe(name: string, fn: () => void): void;
-declare function it(name: string, fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
+declare function describe(name: string, options: TxDescribeOptions, fn: () => void): void;
 declare const test: TestFactory<TxBaseFixtures>;
 declare function beforeAll(fn: () => void | Promise<void>): void;
 declare function afterAll(fn: () => void | Promise<void>): void;
@@ -533,7 +543,7 @@ declare module 'tx' {
   export { LocatorAssertions, PageAssertions, ValueAssertions };
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
-  export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory };
+  export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions };
   export { Keyboard };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
   export { APIResponse, APIRequestContext };
