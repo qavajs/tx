@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { TestServer } from './server';
-import { parseTestCode, ParsedFile } from './testRunner';
+import { bundleTestFile, parseTestFile } from './testRunner';
 
 function matchGlob(pattern: string, str: string): boolean {
   const re = new RegExp(
@@ -20,28 +20,13 @@ function matchGlob(pattern: string, str: string): boolean {
   return re.test(str);
 }
 
-async function bundleFile(filePath: string): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const esbuild = require('esbuild');
-  const result = await esbuild.build({
-    entryPoints: [filePath],
-    bundle: true,
-    platform: 'browser',
-    format: 'iife',
-    write: false,
-    logLevel: 'silent',
-    // 'tx' is provided at runtime via window.tx — test files can import from it
-    external: ['tx'],
-  });
-  return result.outputFiles[0].text;
-}
-
 async function processFile(filePath: string, server: TestServer, baseDir?: string): Promise<void> {
   const basename = path.basename(filePath);
   const relPath = baseDir ? path.relative(baseDir, filePath).replace(/\\/g, '/') : undefined;
   try {
-    const code = await bundleFile(filePath);
-    const parsed: ParsedFile = { filename: basename, relPath, tests: parseTestCode(code) };
+    const code = await bundleTestFile(filePath);
+    const parsed = parseTestFile(filePath);
+    parsed.relPath = relPath;
     server.updateFile(basename, code, parsed);
     console.log(`📦 Bundled: ${basename}`);
   } catch (err: any) {

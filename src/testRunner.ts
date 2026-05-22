@@ -35,26 +35,62 @@ export function parseTestCode(code: string): ParsedTest[] {
     stack.pop();
   };
   const noop: any = () => noop;
+  const deepNoop: any = new Proxy(noop, { get: (_t, _k) => deepNoop });
+  // Module stub returned by require(). __esModule must be falsy so esbuild's
+  // __toESM helper sets a .default, otherwise `import foo from 'lib'` produces
+  // import_lib.default === undefined and top-level destructuring throws.
+  const moduleStub: any = new Proxy(
+    Object.assign(() => deepNoop, { __esModule: false, default: deepNoop }),
+    { get: (t, k) => (k in t ? (t as any)[k] : deepNoop) },
+  );
   const pageProxy: any = new Proxy({}, { get: () => noop });
+  const exportsObj: any = {};
   const sandbox = vm.createContext({
     describe, test,
     beforeEach: noop, afterEach: noop, beforeAll: noop, afterAll: noop,
     expect: () => noop,
-    tx: new Proxy({}, { get: () => noop }),
+    tx: deepNoop,
     page: pageProxy,
-    require: () => ({ page: pageProxy, expect: () => noop }),
-    console: { log: noop, error: noop, warn: noop },
+    require: () => moduleStub,
+    exports: exportsObj,
+    module: { exports: exportsObj },
+    console: { log: noop, error: noop, warn: noop, info: noop, debug: noop },
     setTimeout: noop, clearTimeout: noop,
     Promise: { resolve: () => ({ then: noop }) },
+    __dirname: '/',
+    __filename: '/test.ts',
   });
   try { vm.runInContext(code, sandbox); } catch { /* syntax errors */ }
   return tests;
 }
 
+export async function bundleTestFile(filePath: string): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const esbuild = require('esbuild') as typeof import('esbuild');
+  const result = await esbuild.build({
+    entryPoints: [filePath],
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    write: false,
+    logLevel: 'silent',
+    external: ['tx'],
+  });
+  return result.outputFiles[0].text;
+}
+
 export function parseTestFile(filePath: string): ParsedFile {
   const filename = path.basename(filePath);
   try {
-    const code = fs.readFileSync(filePath, 'utf-8');
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const esbuild = require('esbuild') as typeof import('esbuild');
+    const { code } = esbuild.transformSync(raw, {
+      loader: 'ts',
+      target: 'node18',
+      format: 'cjs',
+      sourcefile: filePath,
+    });
     return { filename, tests: parseTestCode(code) };
   } catch (err: any) {
     return { filename, tests: [], error: err.message };

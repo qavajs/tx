@@ -6,7 +6,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { generateControlPanelHTML } from './controlPanel';
-import { parseTestFile, ParsedFile } from './testRunner';
+import { parseTestFile, bundleTestFile, ParsedFile } from './testRunner';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from './reporter';
 import type { TaskHandler } from './types';
 
@@ -227,10 +227,15 @@ export class TestServer {
         if (req.url === '/api/tests' && req.method === 'GET') {
           try {
             let parsedFiles: ParsedFile[];
-            if (this.parsedCache.size > 0) {
+            if (this.testFileMap.size > 0) {
+              // Use cached parse result when available; fall back to on-demand parse
+              // so files that failed to bundle still appear in the test list.
+              parsedFiles = Array.from(this.testFileMap.values()).map(absPath => {
+                const base = path.basename(absPath);
+                return this.parsedCache.get(base) ?? parseTestFile(absPath);
+              });
+            } else if (this.parsedCache.size > 0) {
               parsedFiles = Array.from(this.parsedCache.values());
-            } else if (this.testFileMap.size > 0) {
-              parsedFiles = Array.from(this.testFileMap.values()).map(parseTestFile);
             } else {
               const examplesDir = path.join(__dirname, 'examples');
               parsedFiles = fs.readdirSync(examplesDir)
@@ -272,16 +277,22 @@ export class TestServer {
             res.end(bundled);
             return;
           }
-          // Fall back to file on disk (custom testFiles or examples dir)
+          // Bundle on demand — this path is hit when the watcher hasn't run yet
+          // (e.g. no testFiles in config) or when a bundle failed during watch.
           const filePath = this.testFileMap.get(file) ?? path.join(__dirname, 'examples', file);
-          try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end(content);
-          } catch {
+          if (!fs.existsSync(filePath)) {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             res.end('Not found');
+            return;
           }
+          bundleTestFile(filePath).then(code => {
+            this.bundledCodeMap.set(file, code);
+            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end(code);
+          }).catch((err: any) => {
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            res.end(`Bundle error: ${err.message}`);
+          });
           return;
         }
 
