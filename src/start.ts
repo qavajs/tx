@@ -95,6 +95,9 @@ function setConfigField(config: TxConfig, key: string, value: string): void {
         case 'grep':
             config.grep = value;
             break;
+        case 'retries':
+            config.retries = parseInt(value, 10);
+            break;
         case 'browser':
             config.browser = value;
             break;
@@ -243,6 +246,7 @@ async function main() {
         actionTimeout:    fileConfig.actionTimeout,
         expectTimeout:    fileConfig.expectTimeout,
         testTimeout:      fileConfig.testTimeout,
+        retries:          cliConfig.retries          ?? fileConfig.retries,
     };
 
     // Resolve testFiles into absolute paths

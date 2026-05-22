@@ -55,6 +55,9 @@ export interface TxConfig {
   /** Maximum time a single test function may run in ms (default: 30000) */
   testTimeout?: number;
 
+  /** Number of times to retry a failing test before marking it failed (default: 0) */
+  retries?: number;
+
   /**
    * Browser to open the control panel in.
    * Accepts a well-known name ("chrome", "chromium", "firefox", "edge", "safari")

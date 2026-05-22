@@ -173,6 +173,7 @@ export class TxWrapper {
       actionTimeout?: number;
       expectTimeout?: number;
       testTimeout?: number;
+      retries?: number;
     } = {}
   ) {
     config.proxyHost = config.proxyHost || 'localhost';
@@ -245,7 +246,7 @@ export class TxWrapper {
       this.testApi = new TestApi(this.injector);
 
       // Start control panel server (on localhost:3000)
-      this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters, this.config.testMode, this.config.snapshot, this.config.tasks, this.config.grep, this.config.actionTimeout, this.config.expectTimeout, this.config.testTimeout);
+      this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters, this.config.testMode, this.config.snapshot, this.config.tasks, this.config.grep, this.config.actionTimeout, this.config.expectTimeout, this.config.testTimeout, this.config.retries);
       await this.server.start(this.proxyUrl, this.config.viewport);
 
       console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);

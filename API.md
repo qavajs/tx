@@ -7,9 +7,15 @@
 ## Table of Contents
 
 - [Configuration](#configuration)
+  - [CLI flags](#cli-flags)
 - [Writing Tests](#writing-tests)
   - [Fixtures](#fixtures)
 - [page](#page)
+  - [page.route / page.unroute](#pageroute--pageunroute)
+  - [Route](#route)
+  - [page.frameLocator](#pageframelocator)
+  - [FrameLocator](#framelocator)
+  - [page.mouse](#pagemouse)
 - [browser](#browser)
   - [browser.newPage](#browsernewpage)
   - [browser.pages](#browserpages)
@@ -58,6 +64,41 @@
 | `reporters`        | `[path, config][]`                      | —             | Reporter modules — see [Reporters](#reporters)   |
 | `tasks`            | `Record<string, TaskHandler>`           | —             | Named Node.js task handlers — see [browser.task](#browsertask) |
 | `profiles`         | `Record<string, Omit<TxConfig, 'profiles'>>` | —      | Named config profiles — select at runtime with `--profile <name>`; merged on top of base config, before CLI args |
+| `retries`          | `number`                                | `0`           | Number of times to retry a failing test before marking it failed. Each retry re-runs the full test (including `beforeEach`/`afterEach` hooks). The duration shown is that of the final attempt only. |
+| `testMode`         | `boolean`                               | `false`       | Run all tests automatically on startup, then exit — exit code `0` if all passed, `1` if any failed |
+| `snapshot`         | `boolean`                               | `false`       | Capture a DOM snapshot after each command and show it in the Snapshots panel |
+| `actionTimeout`    | `number`                                | `5000`        | Default timeout in ms for locator actions (`click`, `fill`, `waitFor`, etc.) |
+| `expectTimeout`    | `number`                                | `5000`        | Default timeout in ms for `expect()` assertion retry loops |
+| `testTimeout`      | `number`                                | `30000`       | Maximum time in ms a single test function may run before it is cancelled |
+
+`headless` can also be enabled via the environment variable `HEADLESS=true` without changing the config file.
+
+### CLI flags
+
+All config-file fields can be overridden at the command line. CLI values take precedence over the config file and over profile overrides.
+
+```sh
+npx tx [options]
+
+  --config <path>          Path to config file (auto-detected: tx.config.json / .js / .mjs)
+  --profile <name>         Activate a named profile defined in the config file
+  --headless               Run browser in headless mode
+  --test                   Enable testMode (run all tests then exit)
+  --grep <pattern>         Filter tests by name or tag (substring or /regex/flags)
+  --browser <name|path>    Browser to launch: chrome, firefox, edge, safari, chromium, or an absolute path
+  --retries <n>            Number of retry attempts for failing tests
+  --port <n>               Control panel port (alias for --controlPanelPort)
+  --controlPanelPort <n>   Control panel port
+  --port1 <n>              Proxy port 1
+  --port2 <n>              Proxy port 2
+  --proxyHost <host>       Proxy hostname
+```
+
+**Environment variables:**
+
+| Variable       | Effect                                      |
+|----------------|---------------------------------------------|
+| `HEADLESS=true`| Same as `--headless` / `headless: true` in config |
 
 ### Reporters
 
@@ -481,6 +522,198 @@ Switch the tab bar focus to this page (makes it the active/visible tab).
 await page.close(): Promise<void>
 ```
 Close this tab and emit the `close` event. If other tabs are open the most recent one becomes active.
+
+---
+
+## page.route / page.unroute
+
+Intercept, modify, mock, or abort network requests made by the page.
+
+```js
+await page.route(
+  pattern: string | RegExp | ((url: string) => boolean),
+  handler: (route: Route, request: any) => void | Promise<void>
+): Promise<void>
+```
+
+Register a route handler. When a fetch or XHR request URL matches `pattern`, `handler` is called instead of letting the request proceed normally. Multiple handlers can be registered; the most recently registered matching handler wins.
+
+- **`pattern`** — a URL string (exact match), a `RegExp`, or a predicate function.
+- **`handler`** — receives a [`Route`](#route) object and the original request. Must call `route.fulfill()`, `route.abort()`, or `route.continue()` (called automatically if the handler returns without deciding).
+
+```js
+await page.unroute(
+  pattern: string | RegExp | ((url: string) => boolean),
+  handler?: (route: Route, request: any) => void | Promise<void>
+): Promise<void>
+```
+
+Remove a previously registered handler. If `handler` is omitted, all handlers for that pattern are removed.
+
+**Examples:**
+
+```js
+// Mock a REST endpoint
+await page.route('https://api.example.com/users', async route => {
+  await route.fulfill({
+    json: [{ id: 1, name: 'Alice' }],
+  });
+});
+
+// Block all image requests
+await page.route(/\.(png|jpe?g|gif|webp|svg)$/i, route => route.abort());
+
+// Rewrite a URL
+await page.route('https://api.example.com/v1/data', async (route, req) => {
+  await route.continue({ url: 'https://api.example.com/v2/data' });
+});
+
+// Add an auth header to every API call
+await page.route(/api\.example\.com/, async (route, req) => {
+  await route.continue({
+    headers: { ...req.headers(), Authorization: 'Bearer test-token' },
+  });
+});
+
+// Remove a specific handler
+const handler = async (route) => { await route.fulfill({ json: {} }); };
+await page.route('/api/data', handler);
+// … later:
+await page.unroute('/api/data', handler);
+```
+
+---
+
+## Route
+
+Passed to the handler registered with `page.route()`. Controls what happens to the intercepted request.
+
+```js
+await route.fulfill(options?: {
+  status?:      number;                  // HTTP status code (default: 200)
+  contentType?: string;                  // Sets Content-Type header
+  headers?:     Record<string, string>;  // Additional response headers
+  body?:        string | Uint8Array;     // Raw response body
+  json?:        any;                     // Body as JSON (sets Content-Type: application/json)
+}): Promise<void>
+```
+
+Respond with custom data. `json` and `body` are mutually exclusive; `json` takes precedence.
+
+```js
+await route.abort(errorCode?: string): Promise<void>
+```
+
+Abort the request. `errorCode` defaults to `'failed'`. Common values: `'aborted'`, `'blockedbyclient'`, `'connectionrefused'`, `'timedout'`.
+
+```js
+await route.continue(opts?: {
+  url?:     string;                  // Override the request URL
+  method?:  string;                  // Override the HTTP method
+  headers?: Record<string, string>;  // Override request headers
+  postData?: BodyInit;               // Override the request body
+}): Promise<void>
+```
+
+Pass the request through, optionally modifying it. Unspecified fields keep their original values.
+
+```js
+route.request(): object
+```
+
+Returns the original request object. Supports `.url()`, `.method()`, `.headers()`, `.postData()`, `.resourceType()`, `.isNavigationRequest()`.
+
+---
+
+## page.frameLocator
+
+```js
+page.frameLocator(selector: string): FrameLocator
+```
+
+Return a `FrameLocator` scoped to the `<iframe>` matched by `selector`. Use it to query elements inside a nested iframe.
+
+```js
+// Interact with content inside an iframe
+const frame = page.frameLocator('#payment-iframe');
+await frame.getByLabel('Card number').fill('4242 4242 4242 4242');
+await frame.getByRole('button', { name: 'Pay' }).click();
+```
+
+`FrameLocator` can also be chained to reach doubly-nested iframes:
+
+```js
+const inner = page.frameLocator('#outer').frameLocator('#inner');
+await inner.locator('.result').waitFor();
+```
+
+---
+
+## FrameLocator
+
+Returned by `page.frameLocator()` or `frameLocator.frameLocator()`. All methods return a [`Locator`](#locator) scoped to the target iframe's document.
+
+```js
+frameLocator.locator(selector: string): Locator
+frameLocator.getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator
+frameLocator.getByRole(role: string, opts?: { name?: string | RegExp; exact?: boolean }): Locator
+frameLocator.getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator
+frameLocator.getByPlaceholder(text: string | RegExp): Locator
+frameLocator.getByTestId(id: string): Locator
+frameLocator.getByAltText(text: string | RegExp): Locator
+frameLocator.getByTitle(text: string | RegExp): Locator
+frameLocator.frameLocator(selector: string): FrameLocator  // nest further
+```
+
+These behave identically to their `page.*` counterparts but operate on the iframe's DOM. The returned `Locator` objects support the full [Locator](#locator) API.
+
+---
+
+## page.mouse
+
+Low-level mouse control. Coordinates are relative to the iframe viewport.
+
+```js
+await page.mouse.move(x: number, y: number, opts?: { steps?: number }): Promise<void>
+```
+Move the cursor to `(x, y)`. `steps` interpolates the movement in that many increments (useful for triggering hover transitions).
+
+```js
+await page.mouse.down(opts?: { button?: 'left' | 'middle' | 'right' }): Promise<void>
+await page.mouse.up(opts?: { button?: 'left' | 'middle' | 'right' }): Promise<void>
+```
+Press or release a mouse button at the current cursor position.
+
+```js
+await page.mouse.click(x: number, y: number, opts?: {
+  button?:     'left' | 'middle' | 'right';
+  clickCount?: number;
+  delay?:      number;  // ms between mousedown and mouseup
+}): Promise<void>
+```
+Move to `(x, y)` and perform a full click (pointerdown → mousedown → mouseup → click).
+
+```js
+await page.mouse.dblclick(x: number, y: number, opts?: {
+  button?: 'left' | 'middle' | 'right';
+  delay?:  number;
+}): Promise<void>
+```
+Perform two clicks in sequence and dispatch a `dblclick` event.
+
+```js
+await page.mouse.wheel(deltaX: number, deltaY: number): Promise<void>
+```
+Dispatch a `wheel` event at the current cursor position.
+
+**Example — drag and drop:**
+
+```js
+await page.mouse.move(100, 200);
+await page.mouse.down();
+await page.mouse.move(300, 200, { steps: 10 });
+await page.mouse.up();
+```
 
 ---
 

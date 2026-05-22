@@ -378,66 +378,88 @@ async function executeTests(
   }
 
   const results: TestResult[] = [];
+  const maxRetries = (window as any).__CONFIG__?.retries ?? 0;
   for (const t of queue) {
     if (_stopRequested) break;
-    if (filename) {
-      setTestItemStatus(filename, t.name, 'running');
-      activateTestLog(filename, t.name);
+    let attempt = 0;
+    let lastError: any;
+    let passed = false;
+    let duration = 0;
+    let finalLogs: ReturnType<typeof stopCollectingLogs> = [];
+    while (attempt <= maxRetries && !passed && !_stopRequested) {
+      if (filename) {
+        if (attempt > 0) {
+          const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
+          if (logEl) { logEl.innerHTML = ''; logEl.classList.add('open'); }
+        }
+        setTestItemStatus(filename, t.name, 'running');
+        activateTestLog(filename, t.name);
+      }
+      const t0 = Date.now();
+      let _timeoutId: ReturnType<typeof setTimeout> | undefined;
+      startCollectingLogs();
+      try {
+        closeExtraTabs();
+        await page.resetSession();
+        for (const hook of t.setupBeforeAlls)    await Promise.resolve(hook());
+        for (const hook of t.beforeEachs) {
+          if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
+          else await Promise.resolve(hook.fn());
+        }
+        const runTestFn = t.expectsFixtures
+          ? () => runWithFixtures(t.fixtureDefs, t.fn)
+          : () => Promise.resolve(t.fn());
+        const testTimeout = (window as any).__CONFIG__?.testTimeout ?? 30000;
+        const _stopPromise = new Promise<never>((_, reject) => {
+          _currentTestCancel = (err: Error) => { setTestAbort(err); reject(err); };
+        });
+        await Promise.race([
+          runTestFn(),
+          new Promise<never>((_, reject) => {
+            _timeoutId = setTimeout(() => {
+              const err = new Error(`Test timed out after ${testTimeout}ms`);
+              setTestAbort(err);
+              reject(err);
+            }, testTimeout);
+          }),
+          _stopPromise,
+        ]);
+        for (const hook of t.afterEachs) {
+          if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
+          else await Promise.resolve(hook.fn());
+        }
+        for (const hook of t.teardownAfterAlls)   await Promise.resolve(hook());
+        duration = Date.now() - t0;
+        finalLogs = stopCollectingLogs();
+        passed = true;
+      } catch (e: any) {
+        duration = Date.now() - t0;
+        finalLogs = stopCollectingLogs();
+        lastError = e;
+        if (attempt < maxRetries && !_stopRequested) {
+          appendErrorToLog(`Attempt ${attempt + 1} failed — retrying…\n` + (e.stack || e.message));
+        } else {
+          appendErrorToLog(e.stack || e.message);
+        }
+      } finally {
+        clearTimeout(_timeoutId);
+        setTestAbort(null);
+        _currentTestCancel = null;
+        if (filename) {
+          const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
+          if (!passed || attempt < maxRetries) logEl?.classList.remove('open');
+        }
+        setLogContainer(null);
+        _activeTestLog = null;
+      }
+      attempt++;
     }
-    const t0 = Date.now();
-    let _timeoutId: ReturnType<typeof setTimeout> | undefined;
-    startCollectingLogs();
-    try {
-      closeExtraTabs();
-      await page.resetSession();
-      for (const hook of t.setupBeforeAlls)    await Promise.resolve(hook());
-      for (const hook of t.beforeEachs) {
-        if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
-        else await Promise.resolve(hook.fn());
-      }
-      const runTestFn = t.expectsFixtures
-        ? () => runWithFixtures(t.fixtureDefs, t.fn)
-        : () => Promise.resolve(t.fn());
-      const testTimeout = (window as any).__CONFIG__?.testTimeout ?? 30000;
-      const _stopPromise = new Promise<never>((_, reject) => {
-        _currentTestCancel = (err: Error) => { setTestAbort(err); reject(err); };
-      });
-      await Promise.race([
-        runTestFn(),
-        new Promise<never>((_, reject) => {
-          _timeoutId = setTimeout(() => {
-            const err = new Error(`Test timed out after ${testTimeout}ms`);
-            setTestAbort(err);
-            reject(err);
-          }, testTimeout);
-        }),
-        _stopPromise,
-      ]);
-      for (const hook of t.afterEachs) {
-        if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
-        else await Promise.resolve(hook.fn());
-      }
-      for (const hook of t.teardownAfterAlls)   await Promise.resolve(hook());
-      const dur = Date.now() - t0;
-      results.push({ name: t.name, passed: true, duration: dur, logs: stopCollectingLogs() });
-      if (filename) {
-        setTestItemStatus(filename, t.name, 'pass', dur);
-      }
-    } catch (e: any) {
-      const dur = Date.now() - t0;
-      results.push({ name: t.name, passed: false, error: e.stack || e.message, duration: dur, logs: stopCollectingLogs() });
-      if (filename) setTestItemStatus(filename, t.name, 'fail', dur);
-      appendErrorToLog(e.stack || e.message);
-    } finally {
-      clearTimeout(_timeoutId);
-      setTestAbort(null);
-      _currentTestCancel = null;
-      if (filename) {
-        const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
-        logEl?.classList.remove('open');
-      }
-      setLogContainer(null);
-      _activeTestLog = null;
+    if (passed) {
+      results.push({ name: t.name, passed: true, duration, logs: finalLogs });
+      if (filename) setTestItemStatus(filename, t.name, 'pass', duration);
+    } else {
+      results.push({ name: t.name, passed: false, error: lastError?.stack || lastError?.message, duration, logs: finalLogs });
+      if (filename) setTestItemStatus(filename, t.name, 'fail', duration);
     }
   }
   return results;
