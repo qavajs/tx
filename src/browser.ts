@@ -2446,6 +2446,7 @@ export const page = {
 
   async resetSession(): Promise<void> {
     _locatorHandlers.length = 0;
+    _routeHandlers.length = 0;
     _pageListeners.clear();
 
     try {

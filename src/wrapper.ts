@@ -17,12 +17,16 @@ const hammerhead = require('testcafe-hammerhead');
   const transforms = require('testcafe-hammerhead/lib/request-pipeline/header-transforms/transforms');
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const headerNames = require('testcafe-hammerhead/lib/request-pipeline/builtin-header-names');
-  const orig = transforms.responseTransforms[headerNames.xFrameOptions];
+  const origXFrame = transforms.responseTransforms[headerNames.xFrameOptions];
   transforms.responseTransforms[headerNames.xFrameOptions] = (src: string, ctx: unknown) => {
     const upper = src.trim().toUpperCase();
     if (upper === 'DENY' || upper === 'SAMEORIGIN') return undefined;
-    return orig(src, ctx);
+    return origXFrame(src, ctx);
   };
+
+  transforms.requestTransforms['accept-encoding'] = (src: string) => {
+    return src.split(', ').filter(e => e !== 'zstd').join(', ')
+  }
 }
 import { IframeInjector } from './iframeInjector';
 
@@ -135,6 +139,7 @@ import { TestServer } from './server';
 import { startWatcher } from './watcher';
 import type { Reporter } from './reporter';
 import type { TaskHandler } from './types';
+import { log } from 'node:console';
 
 export class TxWrapper {
   private proxy: any;
