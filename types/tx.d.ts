@@ -223,6 +223,43 @@ interface PopupPage {
   close(): Promise<void>;
 }
 
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+
+interface Keyboard {
+  /**
+   * Dispatches a `keydown` event for `key` and marks it as held.
+   * Modifier keys (`Shift`, `Control`, `Alt`, `Meta`) affect the `shiftKey` /
+   * `ctrlKey` / `altKey` / `metaKey` flags of subsequent events until `up()` is called.
+   */
+  down(key: string): Promise<void>;
+
+  /** Dispatches a `keyup` event for `key` and releases it from the held-modifier set. */
+  up(key: string): Promise<void>;
+
+  /**
+   * Fires `keydown` → `keypress` (for printable keys) → `keyup` on the focused element.
+   *
+   * Supports modifier combos via `+` notation, e.g. `'Shift+A'`, `'Control+c'`, `'Meta+a'`.
+   * Named keys: `'Enter'`, `'Tab'`, `'Escape'`, `'Backspace'`, `'Delete'`, `'ArrowUp'`,
+   * `'ArrowDown'`, `'ArrowLeft'`, `'ArrowRight'`, `'Home'`, `'End'`, `'PageUp'`,
+   * `'PageDown'`, `'Space'`, `'F1'`–`'F12'`, modifier names, etc.
+   */
+  press(key: string, opts?: { delay?: number }): Promise<void>;
+
+  /**
+   * Types `text` character by character into the focused element.
+   * For each character fires `keydown` → `keypress` → `input` → `keyup` and
+   * updates the element's value (React / Vue native-setter compatible).
+   */
+  type(text: string, opts?: { delay?: number }): Promise<void>;
+
+  /**
+   * Inserts `text` directly into the focused input or textarea value and fires
+   * an `input` event — without generating any key events.
+   */
+  insertText(text: string): Promise<void>;
+}
+
 // ── Mouse ─────────────────────────────────────────────────────────────────────
 
 interface TxMouseClickOptions { button?: 'left' | 'right' | 'middle'; clickCount?: number; delay?: number; }
@@ -263,10 +300,7 @@ interface Page {
   waitForTimeout(ms: number): Promise<void>;
 
   // ── Keyboard ──────────────────────────────────────────────────────────────────
-  keyboard: {
-    press(key: string): Promise<void>;
-    type(text: string, opts?: { delay?: number }): Promise<void>;
-  };
+  keyboard: Keyboard;
 
   // ── Mouse ─────────────────────────────────────────────────────────────────────
   mouse: Mouse;
@@ -450,6 +484,7 @@ declare module 'tx' {
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory };
+  export { Keyboard };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
   export { APIResponse, APIRequestContext };
 
