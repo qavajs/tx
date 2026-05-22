@@ -90,6 +90,9 @@ function setConfigField(config: TxConfig, key: string, value: string): void {
         case 'grep':
             config.grep = value;
             break;
+        case 'browser':
+            config.browser = value;
+            break;
         default:
             console.warn(`Unknown CLI option: --${key}`);
     }
@@ -216,6 +219,7 @@ async function main() {
         port2:            cliConfig.port2            ?? fileConfig.port2            ?? 1338,
         controlPanelPort: cliConfig.controlPanelPort ?? fileConfig.controlPanelPort ?? 3000,
         headless:         cliConfig.headless         ?? fileConfig.headless         ?? (process.env.HEADLESS === 'true'),
+        browser:          cliConfig.browser          ?? fileConfig.browser,
         viewport:         fileConfig.viewport,
         testMode:         cliConfig.testMode         ?? fileConfig.testMode         ?? false,
         snapshot:         fileConfig.snapshot        ?? false,

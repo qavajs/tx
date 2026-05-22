@@ -1159,7 +1159,7 @@ export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: num
         .tx-nd-key {
             color: var(--text-muted);
             flex-shrink: 0;
-            width: 38%;
+            width: 20%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;

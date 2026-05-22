@@ -11,6 +11,7 @@ module.exports = {
   actionTimeout: 10000,   // 10s for actions
   expectTimeout: 8000,    // 8s for expect assertions
   testTimeout: 30000,     // 30s per test
+  browser: 'chrome',
   reporters: [
     ['./ConsoleReporter.ts', {}],
     ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],

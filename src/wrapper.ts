@@ -22,6 +22,45 @@ const hammerhead = require('testcafe-hammerhead');
   };
 }
 import { IframeInjector } from './iframeInjector';
+
+// ── Browser launch helpers ─────────────────────────────────────────────────────
+
+const BROWSER_NAMES: Record<string, { darwin: string; linux: string; win32: string }> = {
+  chrome:   { darwin: 'Google Chrome',  linux: 'google-chrome',   win32: 'chrome'         },
+  chromium: { darwin: 'Chromium',       linux: 'chromium-browser', win32: 'chromium'       },
+  firefox:  { darwin: 'Firefox',        linux: 'firefox',         win32: 'firefox'         },
+  edge:     { darwin: 'Microsoft Edge', linux: 'microsoft-edge',  win32: 'msedge'          },
+  safari:   { darwin: 'Safari',         linux: '',                win32: ''                },
+};
+
+function buildOpenCommand(url: string, browser?: string): string {
+  const platform = process.platform as 'darwin' | 'linux' | 'win32';
+  const q = (s: string) => `"${s.replace(/"/g, '\\"')}"`;
+
+  if (!browser) {
+    if (platform === 'win32') return `start "" ${q(url)}`;
+    if (platform === 'darwin') return `open ${q(url)}`;
+    return `xdg-open ${q(url)}`;
+  }
+
+  const known = BROWSER_NAMES[browser.toLowerCase()];
+
+  if (platform === 'darwin') {
+    const appName = known ? known.darwin : browser;
+    if (!appName) throw new Error(`Browser "${browser}" is not supported on macOS`);
+    return `open -a ${q(appName)} ${q(url)}`;
+  }
+
+  if (platform === 'win32') {
+    const exe = known ? known.win32 : browser;
+    return `start "" ${q(exe)} ${q(url)}`;
+  }
+
+  // linux / other
+  const cmd = known ? known.linux : browser;
+  if (!cmd) throw new Error(`Browser "${browser}" is not supported on Linux`);
+  return `${cmd} ${q(url)}`;
+}
 import { TestApi } from './testApi';
 import { TestServer } from './server';
 import { startWatcher } from './watcher';
@@ -45,6 +84,7 @@ export class TxWrapper {
       port2?: number;
       controlPanelPort?: number;
       headless?: boolean;
+      browser?: string;
       testFiles?: string[];
       testPatterns?: string[];
       watchBaseDir?: string;
@@ -147,11 +187,11 @@ export class TxWrapper {
       }
 
       if (!this.config.headless) {
-        // Open in browser via proxy to bypass CSP
         const { exec } = require('child_process');
+        const cmd = buildOpenCommand(this.controlPanelProxyUrl, this.config.browser);
         console.log(`\n🌐 Opening browser...`);
 
-        exec(`open "${this.controlPanelProxyUrl}"`, (err: Error | null) => {
+        exec(cmd, (err: Error | null) => {
           if (err) {
             console.error('Failed to open browser:', err.message);
             console.log(`\n📍 Visit via proxy: ${this.controlPanelProxyUrl}`);
@@ -161,7 +201,6 @@ export class TxWrapper {
           }
         });
 
-        // Add small delay to ensure browser opens
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 

@@ -54,6 +54,14 @@ export interface TxConfig {
 
   /** Maximum time a single test function may run in ms (default: 30000) */
   testTimeout?: number;
+
+  /**
+   * Browser to open the control panel in.
+   * Accepts a well-known name ("chrome", "chromium", "firefox", "edge", "safari")
+   * or an absolute path to a browser executable.
+   * When omitted the OS default browser is used.
+   */
+  browser?: string;
 }
 
 export interface WaitOptions {
