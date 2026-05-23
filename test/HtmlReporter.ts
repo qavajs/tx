@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from '../src/reporter';
+import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult, LogEntry } from '../src/reporter';
 
 interface TestEntry {
   title: string;
@@ -8,6 +8,7 @@ interface TestEntry {
   status: 'passed' | 'failed' | 'skipped';
   duration: number;
   error?: string;
+  attachments: Array<{ label: string; body: string; contentType: string }>;
 }
 
 export interface HtmlReporterConfig {
@@ -27,12 +28,16 @@ export class HtmlReporter implements Reporter {
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
+    const attachments = (result.logs ?? [])
+      .filter((l: LogEntry) => l.cmd === 'attach' && l.attachment)
+      .map((l: LogEntry) => ({ label: l.message, body: l.attachment!.body, contentType: l.attachment!.contentType }));
     this.tests.push({
       title: test.title,
       fullTitle: test.fullTitle,
       status: result.status,
       duration: result.duration,
       error: result.error,
+      attachments,
     });
   }
 
@@ -50,18 +55,33 @@ function escape(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function renderAttachment(a: { label: string; body: string; contentType: string }): string {
+  const isImage = a.contentType.startsWith('image/');
+  const src = isImage
+    ? (a.body.startsWith('data:') ? a.body : `data:${a.contentType};base64,${a.body}`)
+    : null;
+  const inner = src
+    ? `<img src="${src}" alt="${escape(a.label)}" style="max-width:100%;max-height:300px;display:block;border-radius:4px">`
+    : `<pre class="attach-body">${escape(a.body.slice(0, 4000))}${a.body.length > 4000 ? '\n…' : ''}</pre>`;
+  return `<div class="attachment"><span class="attach-label">📎 ${escape(a.label)}</span>${inner}</div>`;
+}
+
 function buildHtml(tests: TestEntry[], result: FullResult): string {
   const rows = tests.map(t => {
     const statusClass = t.status === 'passed' ? 'pass' : t.status === 'failed' ? 'fail' : 'skip';
     const errorHtml = t.error
       ? `<pre class="error">${escape(t.error)}</pre>`
       : '';
+    const attachHtml = t.attachments.length > 0
+      ? `<div class="attachments">${t.attachments.map(renderAttachment).join('')}</div>`
+      : '';
+    const extraHtml = errorHtml + attachHtml;
     return `
     <tr class="${statusClass}">
       <td class="badge">${t.status}</td>
       <td>${escape(t.fullTitle)}</td>
       <td class="dur">${t.duration}ms</td>
-    </tr>${errorHtml ? `\n    <tr class="${statusClass} error-row"><td colspan="3">${errorHtml}</td></tr>` : ''}`;
+    </tr>${extraHtml ? `\n    <tr class="${statusClass} extra-row"><td colspan="3">${extraHtml}</td></tr>` : ''}`;
   }).join('');
 
   const overallClass = result.status === 'passed' ? 'pass' : 'fail';
@@ -91,10 +111,14 @@ function buildHtml(tests: TestEntry[], result: FullResult): string {
     .badge { font-weight: 600; font-size: 0.85rem; white-space: nowrap; }
     .dur { color: #888; font-size: 0.85rem; white-space: nowrap; }
     pre.error { margin: 0; font-size: 0.82rem; color: #c0392b; white-space: pre-wrap; word-break: break-all; }
-    tr.error-row td { padding-top: 0; background: #fff8f8; }
+    tr.extra-row td { padding-top: 0; background: #fafafa; }
     .overall { margin-bottom: 12px; font-size: 1rem; }
     .overall.pass { color: #1a9c4e; font-weight: 700; }
     .overall.fail { color: #c0392b; font-weight: 700; }
+    .attachments { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0 4px; }
+    .attachment { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; background: #fff; max-width: 420px; }
+    .attach-label { display: block; font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 6px; }
+    pre.attach-body { margin: 0; font-size: 0.8rem; background: #1e1e1e; color: #d4d4d4; padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto; }
   </style>
 </head>
 <body>

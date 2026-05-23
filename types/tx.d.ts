@@ -309,6 +309,13 @@ interface Page {
   // ── Viewport ──────────────────────────────────────────────────────────────────
   setViewportSize(size: { width: number; height: number }): void;
 
+  // ── Screenshot ────────────────────────────────────────────────────────────────
+  /**
+   * Capture the current iframe as a PNG and return a data URL.
+   * Pass `path` to also save the file to `test-artifacts/<path>.png` on the server.
+   */
+  screenshot(opts?: { path?: string }): Promise<string>;
+
   // ── Script evaluation ─────────────────────────────────────────────────────────
   /**
    * Evaluate a function or expression in the page's JavaScript context and return the result.
@@ -503,21 +510,37 @@ interface Browser {
   task<T = unknown>(name: string, payload?: unknown): Promise<T>;
 }
 
+// ── NodeContext ───────────────────────────────────────────────────────────────
+
+interface NodeContext {
+  /** Execute a named task defined in `tx.config.js` under the `tasks` key. */
+  task<T = unknown>(name: string, payload?: unknown): Promise<T>;
+}
+
 // ── Fixture types ─────────────────────────────────────────────────────────────
 
 type TxUseCallback<T> = (value: T) => Promise<void>;
 type TxFixtureFn<T, F extends Record<string, any>> = (fixtures: F, use: TxUseCallback<T>) => Promise<void>;
 type TxFixtureDefs<F extends Record<string, any>> = { [K in keyof F]: TxFixtureFn<F[K], any> };
 
+/** Writes a message to the command log panel during a test. */
+type TxLogFn = (message: string, type?: 'info' | 'success' | 'error', cmd?: string) => void;
+
+/** Attaches named data to the test result for reporters to display. */
+type TxAttachFn = (label: string, body: string, contentType?: string) => void;
+
 interface TxBaseFixtures {
   page: Page;
   browser: Browser;
+  node: NodeContext;
   request: APIRequestContext;
   expect: {
     (actual: Page): PageAssertions;
     (actual: Locator): LocatorAssertions;
     (actual: any): ValueAssertions;
   };
+  log: TxLogFn;
+  attach: TxAttachFn;
 }
 
 interface TxTestOptions {
@@ -535,11 +558,15 @@ interface TestFactory<F extends Record<string, any> = TxBaseFixtures> {
 
 declare const page: Page;
 declare const browser: Browser;
+declare const node: NodeContext;
 declare const request: APIRequestContext;
 
 declare function expect(actual: Page): PageAssertions;
 declare function expect(actual: Locator): LocatorAssertions;
 declare function expect(actual: any): ValueAssertions;
+
+declare const log: TxLogFn;
+declare const attach: TxAttachFn;
 
 interface TxDescribeOptions {
   /** Tags inherited by every test in this describe block, e.g. `['@smoke']` */
@@ -562,6 +589,8 @@ declare module 'tx' {
   export { LocatorAssertions, PageAssertions, ValueAssertions };
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
+  export { NodeContext };
+  export { TxLogFn, TxAttachFn };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions };
   export { Keyboard };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
@@ -570,8 +599,11 @@ declare module 'tx' {
 
   export const page: Page;
   export const browser: Browser;
+  export const node: NodeContext;
   export const request: APIRequestContext;
   export const test: TestFactory<TxBaseFixtures>;
+  export const log: TxLogFn;
+  export const attach: TxAttachFn;
 
   export function expect(actual: Page): PageAssertions;
   export function expect(actual: Locator): LocatorAssertions;

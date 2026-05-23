@@ -312,6 +312,7 @@ export interface LogEntry {
   message: string;
   state: 'pass' | 'fail' | 'info';
   duration?: number;
+  attachment?: { body: string; contentType: string };
 }
 
 let _collectedLogs: LogEntry[] | null = null;
@@ -379,6 +380,13 @@ export function log(message: string, type: 'info' | 'success' | 'error' = 'info'
   const state = type === 'success' ? 'pass' : type === 'error' ? 'fail' : 'info';
   createLogEntry(message, state, cmd, duration);
   if (_collectedLogs) _collectedLogs.push({ cmd: cmd ?? state, message, state, duration });
+}
+
+export function attach(label: string, body: string, contentType = 'text/plain'): void {
+  if (_collectedLogs) {
+    _collectedLogs.push({ cmd: 'attach', message: label, state: 'info', attachment: { body, contentType } });
+  }
+  createLogEntry(label, 'info', 'attach');
 }
 
 export function logCommand(message: string, cmd: string) {

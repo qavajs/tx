@@ -303,6 +303,47 @@ const json = await resp.json();
 expect(resp.ok()).toBe(true);
 ```
 
+### `page.screenshot`
+
+Captures the current iframe as a PNG and returns a data URL. Pass `path` to also save the file to `test-artifacts/` on the server.
+
+```ts
+// Capture and use in-memory
+const dataUrl = await page.screenshot();
+
+// Capture and persist to disk
+await page.screenshot({ path: 'my-screenshot' }); // saved as test-artifacts/my-screenshot.png
+```
+
+### `log` and `attach`
+
+`log` writes a message to the command panel during a test. `attach` adds named data (text, JSON, images, …) to the test result so reporters can display or store it.
+
+```ts
+log('starting checkout flow');
+
+// Attach plain text
+attach('cart state', JSON.stringify(cart), 'application/json');
+
+// Attach a screenshot inline
+attach('page state', await page.screenshot(), 'image/png');
+```
+
+Both are available as globals and as fixtures:
+
+```ts
+const myTest = test.extend<{ cartData: object }>({
+  cartData: async ({ node, log, attach }, use) => {
+    const raw = await node.task('readFile', { path: './fixtures/cart.json' });
+    log('loaded cart fixture');
+    attach('cart fixture', raw, 'application/json');
+    await use(JSON.parse(raw));
+  },
+});
+```
+
+The HTML reporter renders image attachments inline and text/JSON attachments in a code block, grouped under the test row they belong to.
+
 ### `page.keyboard`
 
 ```ts
@@ -357,13 +398,33 @@ reporters: [
 A custom reporter exports a class with the `Reporter` interface:
 
 ```ts
-export default class MyReporter {
+import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from 'tx-flow/reporter';
+
+export default class MyReporter implements Reporter {
   constructor(config: Record<string, unknown>) {}
-  onRunBegin?(specs: Array<{ file: string; tests: string[] | null }>): void {}
-  onTestResult?(result: { name: string; passed: boolean; error?: string; duration: number }, filename: string): void {}
-  onRunEnd?(summary: { passed: number; failed: number; total: number; duration: number }): void {}
+
+  onBegin(config: FullConfig, suite: Suite): void {}
+  onTestBegin(test: TestCase, result: TestResult): void {}
+  onTestEnd(test: TestCase, result: TestResult): void {
+    // result.logs contains all log() calls and attach() entries for this test
+    const attachments = result.logs
+      ?.filter(l => l.cmd === 'attach' && l.attachment)
+      .map(l => ({ label: l.message, ...l.attachment! }));
+    console.log(test.fullTitle, result.status, attachments);
+  }
+  onEnd(result: FullResult): void {}
 }
 ```
+
+`TestResult.logs` is an array of `LogEntry` objects:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cmd` | `string` | Command name (e.g. `'click'`, `'attach'`, `'info'`) |
+| `message` | `string` | Human-readable description or attachment label |
+| `state` | `'pass' \| 'fail' \| 'info'` | Outcome of the step |
+| `duration` | `number?` | Step duration in ms |
+| `attachment` | `{ body: string; contentType: string }?` | Present only for `attach()` entries |
 
 ## Control Panel
 

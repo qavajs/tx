@@ -14,7 +14,6 @@ describe('UI5', () => {
         await page.locator('#container-cart---checkoutView--creditCardSecurityNumber-inner').fill('123');
         await page.locator('#container-cart---checkoutView--creditCardHolderName-inner').focus();
         await page.locator('[data-sap-ui="container-cart---checkoutView--creditCardStep-nextButton"]').click();
-
         await page.locator('#container-cart---checkoutView--invoiceAddressAddress-inner').fill('Main St 123');
         await page.locator('#container-cart---checkoutView--invoiceAddressZip-inner').fill('12345');
         await page.locator('#container-cart---checkoutView--invoiceAddressCity-inner').fill('Anytown');

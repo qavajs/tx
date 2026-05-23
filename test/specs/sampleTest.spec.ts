@@ -8,7 +8,7 @@ describe('Utilities', () => {
   test('should return the correct answer to the Ultimate Question of Life, The Universe, and Everything', () => {
     expect(theAnswer).toBe(42);
   });
-  
+
   test('adds numbers correctly', () => {
     expect(1 + 1).toBe(2);
     expect(10 - 3).toBe(7);
@@ -29,5 +29,13 @@ describe('Utilities', () => {
   test('task', async () => {
     const file = await browser.task<string>('readFile', { path: './test/serverFile.json' });
     expect(JSON.parse(file)).toEqual({ data: 42 });
+  });
+
+  test('log', async ({ log }) => {
+    log('this is custom log')
+  });
+
+  test('attach', async ({ attach }) => {
+    attach('payload', '{ "answer": 42 }', 'application/json');
   });
 });

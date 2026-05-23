@@ -11,11 +11,17 @@ export interface TestCase {
   fullTitle: string;
 }
 
+export interface Attachment {
+  body: string;
+  contentType: string;
+}
+
 export interface LogEntry {
   cmd: string;
   message: string;
   state: 'pass' | 'fail' | 'info';
   duration?: number;
+  attachment?: Attachment;
 }
 
 export interface TestResult {
