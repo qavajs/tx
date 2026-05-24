@@ -11,7 +11,7 @@ cypress-safari/
 ├── src/
 │   ├── start.ts          # CLI entry point — config loading, arg parsing
 │   ├── wrapper.ts        # TxWrapper — starts proxy + server + watcher
-│   ├── server.ts         # HTTP server (port 3000) — serves control panel + test API
+│   ├── server.ts         # HTTP server — serves control panel + test API
 │   ├── browser.ts        # Browser-side runtime — page, Locator, tab management
 │   ├── panel.ts          # Browser-side UI wiring — test runner panel
 │   ├── testRunner.ts     # Node.js vm sandbox test runner
@@ -44,8 +44,8 @@ cypress-safari/
 ```
 CLI (start.ts)
   └── TxWrapper (wrapper.ts)
-        ├── Hammerhead Proxy      ports 1337 / 1338
-        ├── TestServer (server.ts) port 3000
+        ├── Hammerhead Proxy      ports 11337 / 11338
+        ├── TestServer (server.ts) port 11339
         │     ├── GET /           → control panel HTML
         │     ├── GET /panel.js   → bundled browser runtime
         │     ├── GET /mock       → blank page served through proxy
@@ -60,7 +60,7 @@ CLI (start.ts)
 At startup the proxy opens two sessions:
 
 - **Proxy session** — wraps the target website URL through Hammerhead.
-- **Control panel session** — wraps `http://localhost:3000` so the control panel loads through the proxy, bypassing CSP restrictions.
+- **Control panel session** — wraps `http://localhost:11339` so the control panel loads through the proxy, bypassing CSP restrictions.
 
 ---
 
@@ -249,9 +249,9 @@ const result = await browser.task('readFile', { path: './data.json' })
 ```javascript
 module.exports = {
   proxyHost: 'localhost',
-  port1: 1337,              // Hammerhead proxy port 1
-  port2: 1338,              // Hammerhead proxy port 2
-  controlPanelPort: 3000,   // Control panel HTTP port
+  port1: 11337,              // Hammerhead proxy port 1
+  port2: 11338,              // Hammerhead proxy port 2
+  controlPanelPort: 11339,   // Control panel HTTP port
   headless: false,          // Run browser in headless mode
   browser: 'chrome',        // 'chrome' | 'firefox' | 'edge' | 'safari' | 'chromium' | absolute path
   testFiles: ['./specs/**/*.spec.ts'],  // Glob patterns

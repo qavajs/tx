@@ -2,7 +2,7 @@
  * Control Panel - Tx HTML UI
  */
 
-export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: number = 3000, viewport?: { width: number; height: number }, testMode?: boolean, snapshot?: boolean, grep?: RegExp, actionTimeout?: number, expectTimeout?: number, testTimeout?: number, retries?: number): string {
+export function generateControlPanelHTML(proxyUrl: string, controlPanelPort: number = 11339, viewport?: { width: number; height: number }, testMode?: boolean, snapshot?: boolean, grep?: RegExp, actionTimeout?: number, expectTimeout?: number, testTimeout?: number, retries?: number): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
