@@ -137,6 +137,7 @@ function headlessArgs(exePath: string): string[] {
 import { TestApi } from './testApi';
 import { TestServer } from './server';
 import { startWatcher } from './watcher';
+import { ProxyCollector } from './proxyCollector';
 import type { Reporter } from './reporter';
 import type { TaskHandler } from './types';
 
@@ -144,6 +145,7 @@ export class TxWrapper {
   private proxy: any;
   private session: any;
   private controlPanelSession: any;
+  private _collector: ProxyCollector | null = null;
   private proxyUrl: string = '';
   private controlPanelProxyUrl: string = '';
   private testApi: TestApi | null = null;
@@ -220,6 +222,8 @@ export class TxWrapper {
     this.controlPanelSession = new ProxySession([], {});
     const controlPanelLocalUrl = `http://localhost:${this.config.controlPanelPort}`;
     this.controlPanelProxyUrl = this.proxy.openSession(controlPanelLocalUrl, this.controlPanelSession);
+
+    this._collector = new ProxyCollector([this.session, this.controlPanelSession], (msg) => this.server?.sendToClients(msg));
   }
 
   /**
@@ -247,6 +251,7 @@ export class TxWrapper {
       // Start control panel server (on localhost:11339)
       this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters, this.config.testMode, this.config.snapshot, this.config.tasks, this.config.grep, this.config.actionTimeout, this.config.expectTimeout, this.config.testTimeout, this.config.retries);
       await this.server.start(this.proxyUrl, this.config.viewport);
+      this._collector?.attach();
 
       console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);
       console.log(`✅ Control Panel via proxy at ${this.controlPanelProxyUrl}`);

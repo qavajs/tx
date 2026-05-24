@@ -932,7 +932,7 @@ interface NetworkEntry {
 const _networkEntries: NetworkEntry[] = [];
 let _networkCounter = 0;
 const _MAX_NETWORK = 500;
-const _reqMap = new WeakMap<object, NetworkEntry>();
+const _hhReqMap = new Map<string, NetworkEntry>();
 
 function _netStatusClass(status: number | null): string {
   if (status === null) return '';
@@ -1078,6 +1078,7 @@ function _openNetworkDetail(id: number) {
 (window as any).clearNetwork = () => {
   _networkEntries.length = 0;
   _networkCounter = 0;
+  _hhReqMap.clear();
   _selectedNetworkId = null;
   document.getElementById('networkDetail')?.classList.remove('open');
   const list = document.getElementById('networkList');
@@ -1358,20 +1359,14 @@ function initNetworkResizer() {
 }
 
 function initNetworkListeners() {
-  page.onPermanent('request', (req: any) => {
-    const rawBody = req.postData();
-    const requestBody: string | null = rawBody == null ? null
-      : typeof rawBody === 'string' ? rawBody
-        : (rawBody as any) instanceof URLSearchParams ? (rawBody as URLSearchParams).toString()
-          : typeof rawBody === 'object' ? (() => { try { return JSON.stringify(rawBody); } catch { return String(rawBody); } })()
-            : String(rawBody);
+  wsOnMessage('hh-request', (msg: any) => {
     const entry: NetworkEntry = {
       id: ++_networkCounter,
-      url: req.url() ?? '',
-      method: req.method() ?? 'GET',
-      type: req.resourceType() ?? '',
-      requestHeaders: req.headers() ?? {},
-      requestBody,
+      url: msg.url ?? '',
+      method: msg.method ?? 'GET',
+      type: msg.isAjax ? 'fetch' : 'document',
+      requestHeaders: msg.headers ?? {},
+      requestBody: msg.body ?? null,
       status: null,
       statusText: '',
       responseHeaders: {},
@@ -1382,34 +1377,19 @@ function initNetworkListeners() {
     };
     if (_networkEntries.length >= _MAX_NETWORK) _networkEntries.shift();
     _networkEntries.push(entry);
-    _reqMap.set(req, entry);
+    _hhReqMap.set(msg.requestId, entry);
     _appendNetworkEntry(entry);
   });
 
-  page.onPermanent('response', (resp: any) => {
-    const entry = _reqMap.get(resp.request());
+  wsOnMessage('hh-response', (msg: any) => {
+    const entry = _hhReqMap.get(msg.requestId);
     if (!entry) return;
-    entry.status = resp.status();
-    entry.statusText = resp.statusText();
-    entry.responseHeaders = resp.headers?.() ?? {};
-    entry.responseBody = resp.body?.() ?? null;
-    _refreshNetworkRow(entry);
-  });
-
-  page.onPermanent('requestfinished', (req: any) => {
-    const entry = _reqMap.get(req);
-    if (!entry) return;
+    entry.status = msg.statusCode ?? null;
+    entry.statusText = '';
+    entry.responseHeaders = msg.headers ?? {};
     entry.duration = Date.now() - entry.startTime;
     entry.state = 'complete';
-    _refreshNetworkRow(entry);
-  });
-
-  page.onPermanent('requestfailed', (req: any) => {
-    const entry = _reqMap.get(req);
-    if (!entry) return;
-    entry.duration = Date.now() - entry.startTime;
-    entry.state = 'failed';
-    entry.error = req.failure?.()?.errorText ?? 'Failed';
+    _hhReqMap.delete(msg.requestId);
     _refreshNetworkRow(entry);
   });
 

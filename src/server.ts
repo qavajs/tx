@@ -262,6 +262,13 @@ export class TestServer {
     }
   }
 
+  sendToClients(msg: object): void {
+    const payload = JSON.stringify(msg);
+    for (const client of this._wsClients) {
+      if (client.readyState === WebSocket.OPEN) client.send(payload);
+    }
+  }
+
   stop(): Promise<void> {
     return new Promise((resolve) => {
       if (this._wss) {
