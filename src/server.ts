@@ -11,6 +11,20 @@ import { parseTestFile, bundleTestFile, ParsedFile } from './testRunner';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from './reporter';
 import type { TaskHandler } from './types';
 
+export interface TestServerConfig {
+  port?: number;
+  testFiles?: string[];
+  reporters?: Reporter[];
+  testMode?: boolean;
+  snapshot?: boolean;
+  tasks?: Record<string, TaskHandler>;
+  grep?: RegExp;
+  actionTimeout?: number;
+  expectTimeout?: number;
+  testTimeout?: number;
+  retries?: number;
+}
+
 export class TestServer {
   private server: http.Server | null = null;
   private port: number;
@@ -33,25 +47,25 @@ export class TestServer {
   private _wss: WebSocketServer | null = null;
   private _wsClients = new Set<WebSocket>();
 
-  constructor(port: number = 11339, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean, tasks?: Record<string, TaskHandler>, grep?: RegExp, actionTimeout?: number, expectTimeout?: number, testTimeout?: number, retries?: number) {
-    this.port = port;
-    this.reporters = reporters ?? [];
+  constructor(config: TestServerConfig = {}) {
+    this.port = config.port ?? 11339;
+    this.reporters = config.reporters ?? [];
     this.emitter = new ReporterEmitter();
     for (const r of this.reporters) this.emitter.add(r);
     this.testFileMap = new Map();
-    if (testFiles) {
-      for (const f of testFiles) {
+    if (config.testFiles) {
+      for (const f of config.testFiles) {
         this.testFileMap.set(path.basename(f), f);
       }
     }
-    this.testMode = testMode ?? false;
-    this.snapshot = snapshot ?? false;
-    this.tasks = tasks ?? {};
-    this.grep = grep;
-    this.actionTimeout = actionTimeout;
-    this.expectTimeout = expectTimeout;
-    this.testTimeout = testTimeout;
-    this.retries = retries;
+    this.testMode = config.testMode ?? false;
+    this.snapshot = config.snapshot ?? false;
+    this.tasks = config.tasks ?? {};
+    this.grep = config.grep;
+    this.actionTimeout = config.actionTimeout;
+    this.expectTimeout = config.expectTimeout;
+    this.testTimeout = config.testTimeout;
+    this.retries = config.retries;
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 

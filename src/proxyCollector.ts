@@ -1,4 +1,4 @@
-import * as zlib from 'zlib';
+import * as zlib from 'node:zlib';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { RequestFilterRule } = require('testcafe-hammerhead');
 

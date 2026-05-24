@@ -249,7 +249,19 @@ export class TxWrapper {
       this.testApi = new TestApi(this.injector);
 
       // Start control panel server (on localhost:11339)
-      this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters, this.config.testMode, this.config.snapshot, this.config.tasks, this.config.grep, this.config.actionTimeout, this.config.expectTimeout, this.config.testTimeout, this.config.retries);
+      this.server = new TestServer({
+        port:          this.config.controlPanelPort,
+        testFiles:     this.config.testFiles,
+        reporters:     this.config.reporters,
+        testMode:      this.config.testMode,
+        snapshot:      this.config.snapshot,
+        tasks:         this.config.tasks,
+        grep:          this.config.grep,
+        actionTimeout: this.config.actionTimeout,
+        expectTimeout: this.config.expectTimeout,
+        testTimeout:   this.config.testTimeout,
+        retries:       this.config.retries,
+      });
       await this.server.start(this.proxyUrl, this.config.viewport);
       this._collector?.attach();
 

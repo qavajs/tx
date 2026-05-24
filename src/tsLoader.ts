@@ -3,8 +3,8 @@
  * can be require()'d directly without a prior build step.
  */
 
-import Module from 'module';
-import fs from 'fs';
+import Module from 'node:module';
+import fs from 'node:fs';
 
 export function register(): void {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
