@@ -6,10 +6,10 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { generateControlPanelHTML, type ControlPanelConfig } from './controlPanel';
-import { parseTestFile, bundleTestFile, ParsedFile } from './testRunner';
-import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from './reporter';
-import type { TaskHandler } from './types';
+import { generateControlPanelHTML, type ControlPanelConfig } from '../panel/controlPanel';
+import { parseTestFile, bundleTestFile, ParsedFile } from '../runner/runner';
+import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from '../runner/reporter';
+import type { TaskHandler } from '../types';
 
 export interface TestServerConfig {
   port?: number;

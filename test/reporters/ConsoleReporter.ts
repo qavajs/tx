@@ -1,4 +1,4 @@
-import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from '../src/reporter';
+import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from '../../src/runner/reporter';
 
 export class ConsoleReporter implements Reporter {
   constructor(_config: Record<string, unknown> = {}) { }

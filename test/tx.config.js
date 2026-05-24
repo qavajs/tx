@@ -11,8 +11,8 @@ module.exports = {
   testTimeout: 30000,     // 30s per test
   browser: 'chrome',
   reporters: [
-    ['./ConsoleReporter.ts', {}],
-    ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
+    ['./reporters/ConsoleReporter.ts', {}],
+    ['./reporters/HtmlReporter.ts', { outputPath: 'report/report.html' }],
   ],
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
@@ -20,8 +20,8 @@ module.exports = {
   },
   profiles: {
     ci: {
-      headless: true,
-      browser: 'chromium',
+      //headless: true,
+      browser: 'chrome',
       testMode: true,
     },
     debug: {

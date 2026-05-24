@@ -28,7 +28,7 @@ const hammerhead = require('testcafe-hammerhead');
     return src.split(', ').filter(e => e !== 'zstd').join(', ')
   }
 }
-import { IframeInjector } from './iframeInjector';
+import { IframeInjector } from '../panel/iframeInjector';
 
 // ── Browser launch helpers ─────────────────────────────────────────────────────
 
@@ -134,12 +134,12 @@ function headlessArgs(exePath: string): string[] {
   return ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'];
 }
 
-import { TestApi } from './testApi';
+import { TestApi } from '../runner/api';
 import { TestServer } from './server';
-import { startWatcher } from './watcher';
-import { ProxyCollector } from './proxyCollector';
-import type { Reporter } from './reporter';
-import type { TaskHandler } from './types';
+import { startWatcher } from '../runner/watcher';
+import { ProxyCollector } from '../proxy/collector';
+import type { Reporter } from '../runner/reporter';
+import type { TaskHandler } from '../types';
 
 export class TxWrapper {
   private proxy: any;

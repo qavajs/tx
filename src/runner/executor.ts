@@ -1,4 +1,4 @@
-import type { LogEntry } from './browser';
+import type { LogEntry } from '../browser/browser';
 
 export interface TestResult {
   name: string;

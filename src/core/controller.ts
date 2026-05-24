@@ -1,7 +1,7 @@
-import { log, attach, logCommand, setLogContainer, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, setTestAbort, startCollectingLogs, stopCollectingLogs, wsConnect, wsSend, wsRequest, wsOnMessage } from './browser';
-import { escHtml, escAttr, jsq } from './htmlUtils';
-import { type TestResult, runWithFixtures, buildTestQueue } from './testExecutor';
-import { initNetworkListeners, initNetworkResizer } from './devPanel';
+import { log, attach, logCommand, setLogContainer, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, setTestAbort, startCollectingLogs, stopCollectingLogs, wsConnect, wsSend, wsRequest, wsOnMessage } from '../browser/browser';
+import { escHtml, escAttr, jsq } from '../utils/htmlUtils';
+import { type TestResult, runWithFixtures, buildTestQueue } from '../runner/executor';
+import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
 
 declare global {
   interface Window {

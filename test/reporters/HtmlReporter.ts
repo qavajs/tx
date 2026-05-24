@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult, LogEntry } from '../src/reporter';
+import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult, LogEntry } from '../../src/runner/reporter';
 
 interface TestEntry {
   title: string;

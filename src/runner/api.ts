@@ -2,7 +2,7 @@
  * Test API - Tx API for browser automation
  */
 
-import { IframeInjector } from './iframeInjector';
+import { IframeInjector } from '../panel/iframeInjector';
 
 export class TestApi {
   private injector: IframeInjector;

@@ -1,5 +1,5 @@
 import { fromProxiedUrl, iframeDoc, wsOnMessage, page } from './browser';
-import { escHtml } from './htmlUtils';
+import { escHtml } from '../utils/htmlUtils';
 
 // ── Network panel ─────────────────────────────────────────────────────────────
 

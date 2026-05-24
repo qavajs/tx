@@ -4,9 +4,9 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { TestServer } from './server';
-import { bundleTestFile, parseTestFile } from './testRunner';
-import { matchGlob } from './glob';
+import { TestServer } from '../core/server';
+import { bundleTestFile, parseTestFile } from './runner';
+import { matchGlob } from '../utils/glob';
 
 async function processFile(filePath: string, server: TestServer, baseDir?: string): Promise<void> {
   const basename = path.basename(filePath);

@@ -4,11 +4,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { TxWrapper } from './wrapper';
+import { TxWrapper } from './core/wrapper';
 import { TxConfig, ReporterEntry } from './types';
-import type { Reporter } from './reporter';
-import { register as registerTsLoader } from './tsLoader';
-import { matchGlob } from './glob';
+import type { Reporter } from './runner/reporter';
+import { register as registerTsLoader } from './core/tsLoader';
+import { matchGlob } from './utils/glob';
 
 registerTsLoader();
 
