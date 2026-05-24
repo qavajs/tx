@@ -1,6 +1,13 @@
 import * as vm from 'vm';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { Preprocessor } from '../types';
+
+let _preprocessor: Preprocessor | null = null;
+
+export function setPreprocessor(fn: Preprocessor | null | undefined): void {
+  _preprocessor = fn ?? null;
+}
 
 export interface ParsedTest { suite: string; name: string; tags?: string[]; }
 export interface ParsedFile { filename: string; relPath?: string; tests: ParsedTest[]; error?: string; }
@@ -70,8 +77,10 @@ export function parseTestCode(code: string): ParsedTest[] {
 export async function bundleTestFile(filePath: string): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const esbuild = require('esbuild') as typeof import('esbuild');
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const contents = _preprocessor ? _preprocessor(raw, filePath) : raw;
   const result = await esbuild.build({
-    entryPoints: [filePath],
+    stdin: { contents, resolveDir: path.dirname(filePath), sourcefile: filePath, loader: 'ts' },
     bundle: true,
     platform: 'browser',
     format: 'iife',
@@ -86,9 +95,10 @@ export function parseTestFile(filePath: string): ParsedFile {
   const filename = path.basename(filePath);
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
+    const source = _preprocessor ? _preprocessor(raw, filePath) : raw;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const esbuild = require('esbuild') as typeof import('esbuild');
-    const { code } = esbuild.transformSync(raw, {
+    const { code } = esbuild.transformSync(source, {
       loader: 'ts',
       target: 'node18',
       format: 'cjs',

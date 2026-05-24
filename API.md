@@ -8,6 +8,7 @@
 
 - [Configuration](#configuration)
   - [CLI flags](#cli-flags)
+  - [Preprocessor](#preprocessor)
 - [Writing Tests](#writing-tests)
   - [Fixtures](#fixtures)
 - [page](#page)
@@ -64,6 +65,7 @@
 | `viewport`         | `{ width, height }`                     | —             | Fixed iframe viewport size; scales to fit panel  |
 | `reporters`        | `[path, config][]`                      | —             | Reporter modules — see [Reporters](#reporters)   |
 | `tasks`            | `Record<string, TaskHandler>`           | —             | Named Node.js task handlers — see [node.task](#nodetask) |
+| `preprocessor`     | `(source, filePath) => string`          | —             | Transform each spec file's raw TypeScript source before bundling/parsing — see [Preprocessor](#preprocessor) |
 | `profiles`         | `Record<string, Omit<TxConfig, 'profiles'>>` | —      | Named config profiles — select at runtime with `--profile <name>`; merged on top of base config, before CLI args |
 | `retries`          | `number`                                | `0`           | Number of times to retry a failing test before marking it failed. Each retry re-runs the full test (including `beforeEach`/`afterEach` hooks). The duration shown is that of the final attempt only. |
 | `testMode`         | `boolean`                               | `false`       | Run all tests automatically on startup, then exit — exit code `0` if all passed, `1` if any failed |
@@ -127,6 +129,64 @@ interface Reporter {
 ```
 
 The constructor receives the config object from the tuple as its sole argument.
+
+---
+
+### Preprocessor
+
+A `preprocessor` function in `tx.config.js` receives the raw TypeScript source of each spec file and its absolute path, and must return the transformed source string. It runs before esbuild compiles the file — for both bundling (browser execution) and parsing (test discovery).
+
+```ts
+(source: string, filePath: string) => string
+```
+
+**`tx.config.js`:**
+
+```js
+module.exports = {
+  preprocessor(source, filePath) {
+    return source; // return the (possibly transformed) TypeScript source
+  },
+};
+```
+
+#### When it runs
+
+The preprocessor is called in two places for each spec file:
+
+| Phase | Trigger | What happens next |
+|---|---|---|
+| **Discovery** | File loaded by the watcher or requested by the server | Preprocessed source → esbuild `transformSync` (TS→CJS) → vm sandbox to extract test names |
+| **Execution** | Test run requested from the control panel | Preprocessed source → esbuild `build` (bundle + IIFE) → sent to browser |
+
+Both phases use the same preprocessor, so the test tree visible in the UI always matches what actually runs.
+
+#### Examples
+
+**Inject a shared import into every spec file:**
+
+```js
+preprocessor(source) {
+  return `import { myHelper } from '../support/helpers';\n` + source;
+},
+```
+
+**Rewrite a path alias:**
+
+```js
+preprocessor(source, filePath) {
+  return source.replace(/from '@app\//g, `from '${path.resolve(__dirname, 'src')}/`);
+},
+```
+
+**Wrap every file in a describe block based on its path:**
+
+```js
+preprocessor(source, filePath) {
+  const rel = path.relative(__dirname, filePath);
+  return `import { describe } from 'tx';\ndescribe(${JSON.stringify(rel)}, () => {\n${source}\n});\n`;
+},
+```
 
 ---
 

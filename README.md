@@ -77,6 +77,9 @@ module.exports = {
     dirname:  () => __dirname,
   },
 
+  // Transform each spec file's TypeScript source before it is bundled/parsed.
+  // preprocessor(source, filePath) { return source; },
+
   // Named config profiles — select one at runtime with --profile <name>.
   // Profile values are merged on top of the base config, before CLI args.
   profiles: {

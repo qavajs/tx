@@ -8,12 +8,26 @@ export type ReporterEntry = [path: string, config: Record<string, unknown>];
 /** A task handler executed in the Node.js context */
 export type TaskHandler = (payload: unknown) => unknown | Promise<unknown>;
 
+/**
+ * A preprocessor applied to raw spec file source before bundling/parsing.
+ * Receives the raw TypeScript source and the absolute file path; returns
+ * the (possibly transformed) source that esbuild will compile.
+ */
+export type Preprocessor = (source: string, filePath: string) => string;
+
 export interface TxConfig {
   /** Reporter entries — each is a [modulePath, configObject] tuple. */
   reporters?: ReporterEntry[];
 
   /** Named task handlers executed in Node.js context, callable via browser.task() */
   tasks?: Record<string, TaskHandler>;
+
+  /**
+   * Optional preprocessor applied to each spec file's raw TypeScript source
+   * before it is bundled for the browser or parsed for test discovery.
+   * Useful for code injection, import rewriting, or custom syntax transforms.
+   */
+  preprocessor?: Preprocessor;
   /** Proxy hostname (default: localhost) */
   proxyHost?: string;
 

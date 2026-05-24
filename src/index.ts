@@ -272,6 +272,7 @@ async function main() {
     watchBaseDir: configDir,
     reporters,
     tasks: fileConfig.tasks,
+    preprocessor: fileConfig.preprocessor,
     grep,
   });
 

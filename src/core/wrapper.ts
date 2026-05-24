@@ -139,9 +139,10 @@ function headlessArgs(exePath: string): string[] {
 import { TestApi } from '../runner/api';
 import { TestServer } from './server';
 import { startWatcher } from '../runner/watcher';
+import { setPreprocessor } from '../runner/runner';
 import { ProxyCollector } from '../proxy/collector';
 import type { Reporter } from '../runner/reporter';
-import type { TaskHandler } from '../types';
+import type { TaskHandler, Preprocessor } from '../types';
 
 export class TxWrapper {
   private proxy: any;
@@ -171,6 +172,7 @@ export class TxWrapper {
       viewport?: { width: number; height: number };
       reporters?: Reporter[];
       tasks?: Record<string, TaskHandler>;
+      preprocessor?: Preprocessor;
       testMode?: boolean;
       snapshot?: boolean;
       grep?: RegExp;
@@ -271,6 +273,8 @@ export class TxWrapper {
       console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);
       console.log(`✅ Control Panel via proxy at ${this.controlPanelProxyUrl}`);
       console.log(`📦 Proxy URL: ${this.proxyUrl}`);
+
+      setPreprocessor(this.config.preprocessor);
 
       if (this.config.testFiles?.length) {
         // In test mode, await initial bundling so all sources are ready before the browser opens
