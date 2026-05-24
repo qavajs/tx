@@ -109,7 +109,7 @@ export class TestServer {
           return;
         }
 
-        if (req.url === '/mock' && req.method === 'GET') {
+        if (req.url === '/about-blank' && req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(generateMockHTML());
           return;

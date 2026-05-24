@@ -61,7 +61,7 @@ function appendErrorToLog(error: string) {
 
 function setCardRunning(filename: string) {
   const b = document.getElementById('badges-' + escAttr(filename));
-  if (b) b.innerHTML = '<span class="tx-badge" style="color:var(--warn)">●</span>';
+  if (b) b.innerHTML = '<span class="tx-badge tx-badge--running">●</span>';
 }
 
 function updateCardStatus(filename: string, passed: number, failed: number) {
@@ -119,7 +119,7 @@ function refreshSuiteBadge(filename: string, suiteName: string) {
   const b = document.getElementById('sbadges-' + escAttr(filename + '\x01' + suiteName));
   if (!b) return;
   if (running > 0) {
-    b.innerHTML = '<span class="tx-badge" style="color:var(--warn)">●</span>';
+    b.innerHTML = '<span class="tx-badge tx-badge--running">●</span>';
   } else {
     b.innerHTML = (pass > 0 ? `<span class="tx-badge tx-badge--pass">${pass}</span>` : '')
                 + (fail > 0 ? `<span class="tx-badge tx-badge--fail">${fail}</span>` : '');
@@ -180,7 +180,7 @@ function renderTestItemHtml(filename: string, suite: string, name: string, tags:
     '<span class="tx-test-name">' + escHtml(name) + '</span>' +
     tagsHtml +
     '<span class="tx-test-badge"></span>' +
-    '<button class="tx-test-run-btn" onclick="event.stopPropagation();window.runTest(' + jsq(filename) + ',' + jsq(fullName) + ')">&#9654;</button>' +
+    '<button class="tx-test-run-btn" aria-label="Run ' + escHtml(name) + '" onclick="event.stopPropagation();window.runTest(' + jsq(filename) + ',' + jsq(fullName) + ')">&#9654;</button>' +
   '</div>' +
   '<div class="tx-test-log" id="tlog-' + key + '"></div>';
 }
@@ -191,7 +191,7 @@ function renderSuiteHtml(filename: string, suite: string, items: Array<{ name: s
     '<span class="tx-suite-chevron">&#9658;</span>' +
     '<span class="tx-suite-name">' + escHtml(suite) + '</span>' +
     '<span class="tx-suite-badges" id="sbadges-' + key + '"></span>' +
-    '<button class="tx-suite-run-btn" onclick="event.stopPropagation();window.runSuite(' + jsq(filename) + ',' + jsq(suite) + ')">&#9654;</button>' +
+    '<button class="tx-suite-run-btn" aria-label="Run suite ' + escHtml(suite) + '" onclick="event.stopPropagation();window.runSuite(' + jsq(filename) + ',' + jsq(suite) + ')">&#9654;</button>' +
   '</div>' + items.map(({ name, tags }) => renderTestItemHtml(filename, suite, name, tags)).join('');
 }
 
@@ -216,14 +216,15 @@ function renderTestFileCard(f: ParsedFile): string {
         (dir ? '<span class="tx-spec-dir">' + escHtml(dir) + '</span>' : '') +
         escHtml(stem) + '<span class="ext">.' + escHtml(ext) + '</span>' +
       '</span>' +
-      '<button class="tx-spec-run-btn" onclick="event.stopPropagation();window.runTestByFilename(' + jsq(f.filename) + ')">&#9654;</button>' +
+      '<span class="tx-suite-badges" id="badges-' + escAttr(f.filename) + '"></span>' +
+      '<button class="tx-spec-run-btn" aria-label="Run ' + escHtml(display) + '" onclick="event.stopPropagation();window.runTestByFilename(' + jsq(f.filename) + ')">&#9654;</button>' +
     '</div>' +
     (Object.keys(suites).length ? '<div class="tx-spec-body">' + suiteHtml + '</div>' : '') +
   '</div>';
 }
 
 window.toggleCard = (filename: string) =>
-  document.getElementById('card-' + filename)?.classList.toggle('open');
+  document.getElementById('card-' + escAttr(filename))?.classList.toggle('open');
 
 window.toggleSuite = (filename: string, suiteName: string) => {
   const key = escAttr(filename + '\x01' + suiteName);
@@ -449,7 +450,7 @@ window.runSuite = async (filename: string, suiteName: string) => {
         if (logEl?.classList.contains('tx-test-log')) { logEl.innerHTML = ''; logEl.classList.remove('open'); }
       });
       const sbadge = document.getElementById('sbadges-' + escAttr(filename + '\x01' + suiteName));
-      if (sbadge) sbadge.innerHTML = '<span class="tx-badge" style="color:var(--warn)">●</span>';
+      if (sbadge) sbadge.innerHTML = '<span class="tx-badge tx-badge--running">●</span>';
       setCardRunning(filename);
       suiteTests = Array.from(
         document.getElementById('card-' + escAttr(filename))
@@ -526,7 +527,7 @@ let _currentTestCancel: ((err: Error) => void) | null = null;
 function setStopBtnVisible(visible: boolean) {
   const btn = document.getElementById('stopBtn') as HTMLButtonElement | null;
   if (!btn) return;
-  btn.style.display = visible ? 'flex' : 'none';
+  btn.classList.toggle('tx-hidden', !visible);
   btn.disabled = false;
 }
 
@@ -548,6 +549,7 @@ function renderTabBar() {
     closeBtn.className = 'tx-tab-close';
     closeBtn.textContent = '×';
     closeBtn.title = 'Close tab';
+    closeBtn.setAttribute('aria-label', 'Close tab');
     closeBtn.onclick = (e) => { e.stopPropagation(); closeTab(t.id); };
     item.appendChild(title);
     item.appendChild(closeBtn);
@@ -556,6 +558,7 @@ function renderTabBar() {
   const newBtn = document.createElement('button');
   newBtn.className = 'tx-new-tab-btn';
   newBtn.title = 'New tab';
+  newBtn.setAttribute('aria-label', 'New tab');
   newBtn.textContent = '+';
   newBtn.onclick = () => createTab();
   bar.appendChild(newBtn);
@@ -665,7 +668,7 @@ function buildFilterMatcher(query: string): ((name: string) => boolean) | null {
 window.applyFilter = (query: string) => {
   const matcher = buildFilterMatcher(query);
   const runBtn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
-  if (runBtn) runBtn.style.display = matcher ? 'flex' : 'none';
+  if (runBtn) runBtn.classList.toggle('tx-hidden', !matcher);
 
   for (const card of document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]')) {
     let cardHasMatch = false;

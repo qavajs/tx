@@ -33,7 +33,7 @@ export class ProxyCollector {
       {
         onRequest: async (event: any) => {
           const info = event._requestInfo;
-          try { if (new URL(info.url).pathname === '/mock') return; } catch { /* ignore */ }
+          try { if (new URL(info.url).pathname === '/about-blank') return; } catch { /* ignore */ }
           if (info.isAjax) ajaxRequestIds.add(info.requestId);
           this._sendToClients({
             type: 'hh-request',

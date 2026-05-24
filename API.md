@@ -1323,7 +1323,7 @@ The control panel server (`http://localhost:13339` by default) exposes these end
 | `GET`  | `/api/version`                 | `{ version: number }` — increments on each file-change           |
 | `POST` | `/api/run-test`                | Run test code server-side. Body: `{ code: string }`. Returns `RunResults` |
 | `POST` | `/api/task`                    | Execute a named Node.js task. Body: `{ name, payload? }`. Returns `{ result }` or `{ error }` |
-| `GET`  | `/mock`                        | Placeholder HTML page                                            |
+| `GET`  | `/about-blank`                        | Placeholder HTML page                                            |
 
 All endpoints respond with `Access-Control-Allow-Origin: *`.
 

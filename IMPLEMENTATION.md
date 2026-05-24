@@ -48,7 +48,7 @@ CLI (start.ts)
         ├── TestServer (server.ts) port 11339
         │     ├── GET /           → control panel HTML
         │     ├── GET /panel.js   → bundled browser runtime
-        │     ├── GET /mock       → blank page served through proxy
+        │     ├── GET /about-blank       → blank page served through proxy
         │     ├── POST /api/run-test
         │     ├── POST /api/task
         │     ├── GET /api/tests

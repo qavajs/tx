@@ -350,7 +350,7 @@ export function createTab(url?: string) {
   document.getElementById('iframe-container')!.appendChild(iframeEl);
   _tabs.push(tab);
   // Resolve src BEFORE switching active tab so toProxiedUrl can use the origin tab's URL as base
-  iframeEl.src = url ? toProxiedUrl(url) : API_BASE + '/mock';
+  iframeEl.src = url ? toProxiedUrl(url) : API_BASE + '/about-blank';
   setActiveTab(tabId);
   log('new tab');
   _onTabsChanged?.();
@@ -2221,7 +2221,7 @@ export const page = {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('resetSession: blank page load timed out')), 10_000);
       tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-      tab.iframe.src = API_BASE + '/mock';
+      tab.iframe.src = API_BASE + '/about-blank';
     });
   },
 

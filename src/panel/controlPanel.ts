@@ -21,7 +21,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tx</title>
+    <title>Test Expert</title>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -135,7 +135,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         }
 
         .tx-stop-btn {
-            display: none;
+            display: flex;
             align-items: center;
             gap: 6px;
             padding: 5px 14px;
@@ -151,6 +151,15 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         }
         .tx-stop-btn:hover  { background: var(--fail-bg); }
         .tx-stop-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .tx-hidden { display: none !important; }
+        .tx-console-error-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 8px;
+            background: var(--fail-bg);
+            color: var(--fail);
+        }
 
         .tx-topbar-right {
             margin-left: auto;
@@ -200,6 +209,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
 
         .tx-specs {
             width: 400px;
+            min-width: 180px;
             flex-shrink: 0;
             background: var(--bg-panel);
             display: flex;
@@ -253,9 +263,9 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             background: var(--jade);
             border: none;
             color: #000;
-            font-size: 8px;
+            font-size: 10px;
             cursor: pointer;
-            display: none;
+            display: flex;
             align-items: center;
             justify-content: center;
             transition: opacity 0.15s;
@@ -320,8 +330,9 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             border-radius: 10px;
             line-height: 1.5;
         }
-        .tx-badge--pass { background: var(--pass-bg); color: var(--pass); }
-        .tx-badge--fail { background: var(--fail-bg); color: var(--fail); }
+        .tx-badge--pass    { background: var(--pass-bg); color: var(--pass); }
+        .tx-badge--fail    { background: var(--fail-bg); color: var(--fail); }
+        .tx-badge--running { color: var(--warn); }
 
         .tx-spec-run-btn {
             width: 20px;
@@ -330,7 +341,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             background: transparent;
             border: 1px solid transparent;
             color: var(--text-muted);
-            font-size: 8px;
+            font-size: 10px;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -342,9 +353,9 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-spec-hdr:hover .tx-spec-run-btn { opacity: 1; border-color: var(--jade); color: var(--jade); }
 
         /* spec body: suites + test items */
-        .tx-spec-body { display: none; padding: 0 0 6px; border-bottom: 1px solid var(--border); }
+        .tx-spec-body { display: none; padding: 0 0 6px; }
         .tx-spec-card.open .tx-spec-body { display: block; }
-        .tx-spec-card:not(.open) + .tx-spec-card { border-top: 1px solid var(--border); }
+        .tx-spec-card { border-bottom: 1px solid var(--border); }
 
         .tx-suite-row {
             display: flex;
@@ -384,7 +395,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             border: 1px solid transparent;
             border-radius: 4px;
             color: var(--text-muted);
-            font-size: 8px;
+            font-size: 10px;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -414,7 +425,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             border: 1px solid transparent;
             border-radius: 4px;
             color: var(--text-muted);
-            font-size: 8px;
+            font-size: 10px;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -493,7 +504,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             font-variant-numeric: tabular-nums;
             min-height: 32px;
         }
-        #testRunnerStatus:empty { display: none; }
         .tx-runner-pass { color: var(--pass); }
         .tx-runner-fail { color: var(--fail); }
 
@@ -919,6 +929,24 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             font-size: 11px;
             line-height: 1.6;
         }
+        .tx-loading {
+            padding: 24px 14px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+        .tx-loading::after {
+            content: '';
+            display: inline-block;
+            width: 3px;
+            animation: tx-ellipsis 1.2s steps(4, end) infinite;
+        }
+        @keyframes tx-ellipsis {
+            0%   { content: ''; }
+            25%  { content: '.'; }
+            50%  { content: '..'; }
+            75%  { content: '...'; }
+        }
 
         /* ══ Network panel ═══════════════════════════════════════════ */
 
@@ -1063,7 +1091,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             flex: 1;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: pre;
+            white-space: pre-wrap;
             min-width: 0;
         }
         .tx-con-url {
@@ -1113,8 +1141,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
 
         .tx-network-detail {
             display: none;
-            width: 65%;
-            min-width: 240px;
+            width: clamp(240px, 45%, 420px);
             flex-shrink: 0;
             border-left: 1px solid var(--border);
             background: var(--bg-app);
@@ -1383,10 +1410,10 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             <span class="tx-logo-name">Test Expert</span>
         </div>
         <div class="tx-topbar-div"></div>
-        <button class="tx-run-all-btn" id="runAllBtn" onclick="window.runAll && window.runAll()">
+        <button class="tx-run-all-btn" id="runAllBtn" onclick="window.runAll && window.runAll()" aria-label="Run all specs">
             &#9654;&nbsp; Run all specs
         </button>
-        <button class="tx-stop-btn" id="stopBtn" onclick="window.stopExecution && window.stopExecution()">
+        <button class="tx-stop-btn tx-hidden" id="stopBtn" onclick="window.stopExecution && window.stopExecution()" aria-label="Stop execution">
             &#9632;&nbsp; Stop
         </button>
         <div class="tx-topbar-right">
@@ -1404,10 +1431,10 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             <div class="tx-panel-hdr">Specs</div>
             <div class="tx-filter-bar">
                 <input type="text" id="testFilter" class="tx-filter-input" placeholder="Filter tests…" oninput="window.applyFilter && window.applyFilter(this.value)" autocomplete="off" spellcheck="false">
-                <button class="tx-filter-run-btn" id="filterRunBtn" onclick="window.runFiltered && window.runFiltered()" title="Run filtered tests">&#9654;</button>
+                <button class="tx-filter-run-btn tx-hidden" id="filterRunBtn" onclick="window.runFiltered && window.runFiltered()" title="Run filtered tests" aria-label="Run filtered tests">&#9654;</button>
             </div>
             <div class="tx-specs-scroll" id="testList">
-                <div class="tx-empty">Loading specs…</div>
+                <div class="tx-loading">Loading specs</div>
             </div>
             <div id="testRunnerStatus"></div>
         </nav>
@@ -1417,13 +1444,13 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         <!-- ── Browser ───────────────────────────────────────────── -->
         <main class="tx-browser">
             <div class="tx-browser-toolbar">
-                <button class="tx-nav-btn" onclick="window.testApi && window.testApi.reload()" title="Reload">&#8635;</button>
+                <button class="tx-nav-btn" onclick="window.testApi && window.testApi.reload()" title="Reload" aria-label="Reload page">&#8635;</button>
                 <div class="tx-url-bar">
                     <input type="text" id="navUrl" class="tx-url-input" placeholder="Enter URL…" value="">
                     <button class="tx-go-btn" onclick="window.testApi && window.testApi.visit(document.getElementById('navUrl').value)">Go</button>
                 </div>
                 <span class="tx-viewport-tag" id="viewportTag">—</span>
-                <button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle DevTools panel">DevTools <span id="consoleErrorBadge" style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:var(--fail-bg);color:var(--fail);display:none"></span></button>
+                <button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle DevTools panel">DevTools <span id="consoleErrorBadge" class="tx-console-error-badge tx-hidden"></span></button>
             </div>
             <div class="tx-tab-bar" id="tabBar"></div>
             <div class="tx-browser-main">
@@ -1439,7 +1466,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
                             </div>
                             <span class="tx-viewport-tag" id="snapshotViewportTag">—</span>
                         </div>
-                        <button class="tx-snapshot-close-btn" onclick="window.setBrowserView && window.setBrowserView('browser')" title="Return to browser">Close</button>
+                        <button class="tx-snapshot-close-btn" onclick="window.setBrowserView && window.setBrowserView('browser')" title="Return to browser" aria-label="Close snapshot view">Close</button>
                     </div>
                     <div id="snapshotViewportWrapper">
                         <iframe id="snapshotFrame" sandbox="allow-same-origin"></iframe>
@@ -1472,7 +1499,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
                         <div class="tx-network-detail" id="networkDetail">
                             <div class="tx-network-detail-toolbar">
                                 <span class="tx-network-detail-title" id="networkDetailTitle">Details</span>
-                                <button class="tx-network-detail-close" onclick="window.closeNetworkDetail && window.closeNetworkDetail()" title="Close">×</button>
+                                <button class="tx-network-detail-close" onclick="window.closeNetworkDetail && window.closeNetworkDetail()" title="Close" aria-label="Close network detail">×</button>
                             </div>
                             <div class="tx-network-detail-body" id="networkDetailBody"></div>
                         </div>

@@ -55,7 +55,9 @@ function _renderNetworkRow(entry: NetworkEntry): string {
 
 function _updateNetworkCount() {
   const el = document.getElementById('networkCount');
-  if (el) el.textContent = _networkEntries.length + ' request' + (_networkEntries.length !== 1 ? 's' : '');
+  if (el) el.textContent = _networkEntries.length > 0
+    ? _networkEntries.length + ' request' + (_networkEntries.length !== 1 ? 's' : '')
+    : '';
 }
 
 function _appendNetworkEntry(entry: NetworkEntry) {
@@ -205,16 +207,12 @@ function _updateConsoleBadge() {
   const panel = document.getElementById('networkPanel');
   const isConsoleTab = panel?.dataset.activeTab === 'console';
   if (count) {
-    count.textContent = _consoleEntries.length ? String(_consoleEntries.length) : '';
+    count.textContent = _consoleEntries.length > 0 ? String(_consoleEntries.length) : '';
     count.classList.toggle('has-errors', _consoleErrorCount > 0);
   }
   if (badge) {
-    if (_consoleErrorCount > 0 && !isConsoleTab) {
-      badge.textContent = String(_consoleErrorCount);
-      badge.style.display = '';
-    } else {
-      badge.style.display = 'none';
-    }
+    badge.classList.toggle('tx-hidden', !(_consoleErrorCount > 0 && !isConsoleTab));
+    badge.textContent = _consoleErrorCount > 0 ? String(_consoleErrorCount) : '';
   }
 }
 
