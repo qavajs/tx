@@ -471,10 +471,22 @@ export function attach(label: string, body: string, contentType = 'text/plain'):
 }
 
 export interface TxCommandHandle {
+  /** Resolve the entry as passed. `duration` defaults to elapsed ms since `logCommand` was called. */
   success(duration?: number): void;
+  /** Resolve the entry as failed, optionally appending `error` to the log message. */
   fail(error?: string): void;
 }
 
+/**
+ * Open a pending command entry in the test log and return a handle to resolve it.
+ *
+ * The entry shows a spinner (pending state) until `success` or `fail` is called.
+ * If the command name is in the snapshot-capture list, `success` also captures
+ * a DOM snapshot that can be inspected in the UI.
+ *
+ * @param message Human-readable description shown in the log panel.
+ * @param cmd     Short label displayed as the command type (e.g. `'click'`, `'request'`).
+ */
 export function logCommand(message: string, cmd: string): TxCommandHandle {
   const entry = createLogEntry(message, 'pending', cmd);
   const startedAt = Date.now();

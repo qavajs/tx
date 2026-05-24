@@ -529,15 +529,44 @@ type TxLogFn = (message: string, type?: 'info' | 'success' | 'error', cmd?: stri
 /** Attaches named data to the test result for reporters to display. */
 type TxAttachFn = (label: string, body: string, contentType?: string) => void;
 
-/** Handle returned by {@link TxLogCommandFn}. Call `success` or `fail` to resolve the pending log entry. */
+/** Handle returned by `logCommand`. Must be resolved by calling `success` or `fail`. */
 interface TxCommandHandle {
-  /** Mark the command as passed. Supply `duration` in ms to override the elapsed time. */
+  /**
+   * Resolve the entry as passed and record its duration.
+   *
+   * @param duration Elapsed time in milliseconds. Defaults to the time since
+   *   `logCommand` was called.
+   */
   success(duration?: number): void;
-  /** Mark the command as failed, appending `error` to the log entry message. */
+
+  /**
+   * Resolve the entry as failed.
+   *
+   * @param error Optional message appended to the log entry.
+   */
   fail(error?: string): void;
 }
 
-/** Opens a pending command log entry and returns a handle to resolve it as pass or fail. */
+/**
+ * Open a pending command entry in the test log and return a handle to resolve it.
+ *
+ * Use this to wrap asynchronous steps so the log shows a spinner while the
+ * operation is in progress, then flips to a pass/fail indicator when done.
+ *
+ * @param message Human-readable description shown in the log panel.
+ * @param cmd     Short label for the command type (e.g. `'request'`, `'step'`).
+ * @returns A {@link TxCommandHandle} whose `success` or `fail` must be called to close the entry.
+ *
+ * @example
+ * const step = logCommand('fetch user data', 'request');
+ * try {
+ *   await fetchUserData();
+ *   step.success();
+ * } catch (err) {
+ *   step.fail(err.message);
+ *   throw err;
+ * }
+ */
 type TxLogCommandFn = (message: string, cmd: string) => TxCommandHandle;
 
 interface TxBaseFixtures {
