@@ -40,9 +40,11 @@
   },
   "dependencies": {
     "modern-screenshot": "^4.7.0",
-    "testcafe-hammerhead": "^31.7.8"
+    "testcafe-hammerhead": "^31.7.8",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
     "chai": "^6.2.2",

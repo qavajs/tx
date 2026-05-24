@@ -98,6 +98,87 @@ export const API_BASE = 'http://localhost:' + window.__CONFIG__.port;
 // e.g. "http://host/proxy/SESSION/about:blank" → "http://host/proxy/SESSION/"
 const _proxyPrefix = window.__CONFIG__.proxyUrl.replace(/[^/]+$/, '');
 
+// ── WebSocket connection ───────────────────────────────────────────────────────
+
+let _ws: WebSocket | null = null;
+let _wsReqCounter = 0;
+const _wsCallbacks = new Map<string, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+const _wsListeners = new Map<string, Set<(msg: any) => void>>();
+let _wsConnectedCb: (() => void) | null = null;
+let _wsDisconnectedCb: (() => void) | null = null;
+
+function _wsConnectInternal(): void {
+  try {
+    const ws = new WebSocket('ws://localhost:' + window.__CONFIG__.port);
+    _ws = ws;
+
+    ws.addEventListener('open', () => {
+      _wsConnectedCb?.();
+    });
+
+    ws.addEventListener('message', (event: MessageEvent) => {
+      let msg: any;
+      try { msg = JSON.parse(event.data as string); } catch { return; }
+      if (msg.id && _wsCallbacks.has(msg.id)) {
+        const { resolve, reject } = _wsCallbacks.get(msg.id)!;
+        _wsCallbacks.delete(msg.id);
+        if (msg.error) reject(new Error(msg.error));
+        else resolve(msg);
+        return;
+      }
+      const fns = _wsListeners.get(msg.type);
+      if (fns) for (const fn of fns) { try { fn(msg); } catch { /* ignore */ } }
+    });
+
+    ws.addEventListener('close', () => {
+      _ws = null;
+      for (const { reject } of _wsCallbacks.values()) reject(new Error('WebSocket disconnected'));
+      _wsCallbacks.clear();
+      _wsDisconnectedCb?.();
+      setTimeout(_wsConnectInternal, 2000);
+    });
+
+    ws.addEventListener('error', () => {});
+  } catch { /* ignore */ }
+}
+
+export function wsConnect(onConnected?: () => void, onDisconnected?: () => void): void {
+  _wsConnectedCb = onConnected ?? null;
+  _wsDisconnectedCb = onDisconnected ?? null;
+  _wsConnectInternal();
+}
+
+export function wsOnMessage(type: string, fn: (msg: any) => void): () => void {
+  if (!_wsListeners.has(type)) _wsListeners.set(type, new Set());
+  _wsListeners.get(type)!.add(fn);
+  return () => _wsListeners.get(type)?.delete(fn);
+}
+
+export function wsSend(type: string, data?: Record<string, unknown>): void {
+  if (_ws?.readyState === WebSocket.OPEN) {
+    _ws.send(JSON.stringify({ type, ...data }));
+  }
+}
+
+export async function wsRequest<T>(type: string, data?: Record<string, unknown>): Promise<T> {
+  const t0 = Date.now();
+  while ((!_ws || _ws.readyState !== WebSocket.OPEN) && Date.now() - t0 < 10000) {
+    await new Promise<void>(r => setTimeout(r, 50));
+  }
+  if (!_ws || _ws.readyState !== WebSocket.OPEN) throw new Error('WebSocket not connected');
+  return new Promise<T>((resolve, reject) => {
+    const id = String(++_wsReqCounter);
+    _wsCallbacks.set(id, { resolve, reject });
+    _ws!.send(JSON.stringify({ type, id, ...data }));
+    setTimeout(() => {
+      if (_wsCallbacks.has(id)) {
+        _wsCallbacks.delete(id);
+        reject(new Error(`wsRequest(${type}) timed out`));
+      }
+    }, 30000);
+  });
+}
+
 export interface SnapshotEntry {
   id: number;
   label: string;
@@ -2165,13 +2246,9 @@ async function captureScreenshot(): Promise<string> {
   return domToPng(doc.documentElement, { width: w, height: h });
 }
 
-async function saveArtifact(name: string, data: string): Promise<void> {
+function saveArtifact(name: string, data: string): void {
   const base64 = data.startsWith('data:') ? data.split(',')[1] : data;
-  await fetch(API_BASE + '/api/artifact', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, data: base64, ext: 'png' }),
-  });
+  wsSend('artifact', { name, ext: 'png', data: base64 });
 }
 
 export const page = {
@@ -2575,9 +2652,7 @@ export const page = {
   async screenshot(opts?: { path?: string }): Promise<string> {
     return _withCommand(opts?.path ?? '', 'screenshot', async () => {
       const dataUrl = await captureScreenshot();
-      if (opts?.path) {
-        await saveArtifact(opts.path, dataUrl).catch(() => {});
-      }
+      if (opts?.path) saveArtifact(opts.path, dataUrl);
       return dataUrl;
     });
   },
@@ -3057,14 +3132,9 @@ export const node = {
   /** Execute a named task in the Node.js context and return its result */
   async task<T = unknown>(name: string, payload?: unknown): Promise<T> {
     return _withCommand(name, 'task', async () => {
-      const resp = await fetch(API_BASE + '/api/task', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, payload: payload ?? null }),
-      });
-      const data = await resp.json() as { result?: T; error?: string };
-      if (!resp.ok || data.error) throw new Error(data.error ?? `task "${name}" failed`);
-      return data.result as T;
+      const resp = await wsRequest<{ result?: T; error?: string }>('task', { name, payload: payload ?? null } as Record<string, unknown>);
+      if (resp.error) throw new Error(resp.error ?? `task "${name}" failed`);
+      return resp.result as T;
     });
   },
 };

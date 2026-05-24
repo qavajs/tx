@@ -1,4 +1,4 @@
-import { log, attach, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort, startCollectingLogs, stopCollectingLogs, type LogEntry } from './browser';
+import { log, attach, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort, startCollectingLogs, stopCollectingLogs, wsConnect, wsSend, wsRequest, wsOnMessage, type LogEntry } from './browser';
 
 declare global {
   interface Window {
@@ -148,8 +148,8 @@ interface ParsedFile { filename: string; relPath?: string; tests: ParsedTest[]; 
 async function loadTestList() {
   const container = document.getElementById('testList')!;
   try {
-    const files = (await fetch(API_BASE + '/api/tests').then(r => r.json()) as ParsedFile[])
-      .sort((a, b) => a.filename.localeCompare(b.filename));
+    const msg = await wsRequest<{ data: ParsedFile[] }>('get-tests');
+    const files = msg.data.sort((a, b) => a.filename.localeCompare(b.filename));
     container.innerHTML = files.length
       ? files.map(renderTestFileCard).join('')
       : '<div class="tx-empty">No .js files in examples/</div>';
@@ -474,27 +474,15 @@ async function executeTests(
 // ── Server communication ──────────────────────────────────────────────────────
 
 function reportToServer(results: TestResult[], filename?: string): void {
-  fetch(API_BASE + '/api/report', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename, tests: results }),
-  }).catch(() => {});
+  wsSend('report', { filename, tests: results } as Record<string, unknown>);
 }
 
-async function notifyRunBegin(specs: Array<{ file: string; tests: string[] | null }>): Promise<void> {
-  await fetch(API_BASE + '/api/run-begin', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ specs }),
-  }).catch(() => {});
+function notifyRunBegin(specs: Array<{ file: string; tests: string[] | null }>): void {
+  wsSend('run-begin', { specs } as Record<string, unknown>);
 }
 
 function notifyRunEnd(passed: number, failed: number, total: number, duration: number): void {
-  fetch(API_BASE + '/api/run-end', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ passed, failed, total, duration }),
-  }).catch(() => {});
+  wsSend('run-end', { passed, failed, total, duration });
 }
 
 function renderTestResults(results: TestResult[], filename?: string) {
@@ -535,9 +523,9 @@ async function fetchAndRun(
   filename: string,
   opts?: Parameters<typeof executeTests>[1]
 ): Promise<TestResult[]> {
-  const resp = await fetch(API_BASE + '/api/test-source?file=' + encodeURIComponent(filename));
-  if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  const results = await executeTests(await resp.text(), opts);
+  const msg = await wsRequest<{ data?: string; error?: string }>('get-test-source', { file: filename });
+  if (msg.error || !msg.data) throw new Error(msg.error ?? 'Failed to load test source');
+  const results = await executeTests(msg.data, opts);
   renderTestResults(results, filename);
   reportToServer(results, filename);
   return results;
@@ -550,7 +538,7 @@ window.runTestByFilename = async (filename: string) => {
   setStopBtnVisible(true);
   openAndResetCard(filename);
   log(`run  ${filename}`, 'info');
-  await notifyRunBegin([{ file: filename, tests: null }]);
+  notifyRunBegin([{ file: filename, tests: null }]);
   try {
     const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filename }));
     notifyRunEnd(passed, failed, passed + failed, duration);
@@ -583,7 +571,7 @@ window.runSuite = async (filename: string, suiteName: string) => {
     document.getElementById('card-' + escAttr(filename))
       ?.querySelectorAll<HTMLElement>('.tx-test-item') ?? []
   ).filter(el => el.dataset.suite === suiteName).map(el => el.dataset.fullname!).filter(Boolean);
-  await notifyRunBegin([{ file: filename, tests: suiteTests.length ? suiteTests : null }]);
+  notifyRunBegin([{ file: filename, tests: suiteTests.length ? suiteTests : null }]);
   try {
     const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filterSuite: suiteName, filename }));
     notifyRunEnd(passed, failed, passed + failed, duration);
@@ -601,7 +589,7 @@ window.runTest = async (filename: string, fullName: string) => {
   document.getElementById('card-' + escAttr(filename))?.classList.add('open');
   setTestItemStatus(filename, fullName, 'running');
   setCardRunning(filename);
-  await notifyRunBegin([{ file: filename, tests: [fullName] }]);
+  notifyRunBegin([{ file: filename, tests: [fullName] }]);
   try {
     const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filterTest: fullName, filename }));
     notifyRunEnd(passed, failed, passed + failed, duration);
@@ -626,7 +614,7 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   setStopBtnVisible(true);
   setTopbarStatus('running', 'Running…');
   const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'));
-  await notifyRunBegin(allCards.map(c => ({ file: c.dataset.filename!, tests: null })));
+  notifyRunBegin(allCards.map(c => ({ file: c.dataset.filename!, tests: null })));
   let totalPass = 0, totalFail = 0, totalDuration = 0;
   for (const card of allCards) {
     if (_stopRequested) break;
@@ -666,7 +654,7 @@ function jsq(s: string) {
   return JSON.stringify(s).replace(/"/g, '&quot;');
 }
 
-// ── File-change polling ───────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
 
 let _watchVersion = -1;
 let _isTestRunning = false;
@@ -678,23 +666,6 @@ function setStopBtnVisible(visible: boolean) {
   if (!btn) return;
   btn.style.display = visible ? 'flex' : 'none';
   btn.disabled = false;
-}
-
-async function pollUpdates() {
-  try {
-    const { version } = await fetch(API_BASE + '/api/version').then(r => r.json()) as { version: number };
-    if (_watchVersion < 0) {
-      _watchVersion = version;
-    } else if (version !== _watchVersion) {
-      _watchVersion = version;
-      await loadTestList();
-      log('test files updated', 'info');
-    }
-    if (!_isTestRunning) setTopbarStatus('connected', 'Connected');
-  } catch {
-    if (!_isTestRunning) setTopbarStatus('disconnected', 'Disconnected');
-  }
-  setTimeout(pollUpdates, 2000);
 }
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
@@ -879,7 +850,7 @@ window.runFiltered = async () => {
     byFile.set(card.dataset.filename, list);
   }
 
-  await notifyRunBegin(Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests })));
+  notifyRunBegin(Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests })));
 
   for (const [filename, testNames] of byFile) {
     if (_stopRequested) break;
@@ -1508,6 +1479,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     new ResizeObserver(() => { if (_activeBrowserView === 'snapshot') applySnapshotViewport(); })
       .observe(snapshotWrapper);
   }
+  wsConnect(
+    () => { if (!_isTestRunning) setTopbarStatus('connected', 'Connected'); },
+    () => { if (!_isTestRunning) setTopbarStatus('disconnected', 'Disconnected'); },
+  );
+  wsOnMessage('version', async (msg: { version: number }) => {
+    if (_watchVersion < 0) {
+      _watchVersion = msg.version;
+    } else if (msg.version !== _watchVersion) {
+      _watchVersion = msg.version;
+      await loadTestList();
+      log('test files updated', 'info');
+    }
+    if (!_isTestRunning) setTopbarStatus('connected', 'Connected');
+  });
   await loadTestList();
   if (window.__CONFIG__.grep) {
     const grepSource = window.__CONFIG__.grep;
@@ -1519,13 +1504,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       window.applyFilter(grepPattern);
     }
   }
-  pollUpdates();
   if (window.__CONFIG__.autorun) {
     const { passed, failed } = await window.runAll();
-    fetch(API_BASE + '/api/done', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passed, failed }),
-    }).catch(() => {});
+    wsSend('done', { passed, failed });
   }
 });

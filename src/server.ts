@@ -1,10 +1,11 @@
 /**
- * HTTP Server - Serves control panel HTML and test-runner API
+ * HTTP Server - Serves control panel HTML; WebSocket for all API communication
  */
 
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import { WebSocket, WebSocketServer } from 'ws';
 import { generateControlPanelHTML } from './controlPanel';
 import { parseTestFile, bundleTestFile, ParsedFile } from './testRunner';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from './reporter';
@@ -29,6 +30,8 @@ export class TestServer {
   private retries: number | undefined;
   private _doneResolve: ((r: { passed: number; failed: number }) => void) | null = null;
   private _donePromise: Promise<{ passed: number; failed: number }>;
+  private _wss: WebSocketServer | null = null;
+  private _wsClients = new Set<WebSocket>();
 
   constructor(port: number = 11339, testFiles?: string[], reporters?: Reporter[], testMode?: boolean, snapshot?: boolean, tasks?: Record<string, TaskHandler>, grep?: RegExp, actionTimeout?: number, expectTimeout?: number, testTimeout?: number, retries?: number) {
     this.port = port;
@@ -60,22 +63,15 @@ export class TestServer {
     this.bundledCodeMap.set(basename, bundledCode);
     this.parsedCache.set(basename, parsed);
     this._version++;
+    const msg = JSON.stringify({ type: 'version', version: this._version });
+    for (const client of this._wsClients) {
+      if (client.readyState === WebSocket.OPEN) client.send(msg);
+    }
   }
 
   start(proxyUrl: string, viewport?: { width: number; height: number }): Promise<void> {
     return new Promise((resolve) => {
       this.server = http.createServer((req, res) => {
-        // CORS headers so the control panel can call the API even when loaded via proxy
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-        if (req.method === 'OPTIONS') {
-          res.writeHead(204);
-          res.end();
-          return;
-        }
-
         if (req.url === '/' && req.method === 'GET') {
           const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode, this.snapshot, this.grep, this.actionTimeout, this.expectTimeout, this.testTimeout, this.retries);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -84,8 +80,6 @@ export class TestServer {
         }
 
         if (req.url === '/controller.js' && req.method === 'GET') {
-          // When bundled (node dist/index.js) __dirname = dist/, controller.js is alongside.
-          // When running via ts-node from root, look in dist/.
           const candidates = [
             path.join(__dirname, 'controller.js'),
             path.join(__dirname, 'dist', 'controller.js'),
@@ -101,244 +95,28 @@ export class TestServer {
           return;
         }
 
-        // POST /api/run-begin — browser signals the start of a run (once per run, not per file)
-        if (req.url === '/api/run-begin' && req.method === 'POST') {
-          let body = '';
-          req.on('data', (chunk: Buffer) => (body += chunk));
-          req.on('end', () => {
-            try {
-              const { specs } = JSON.parse(body) as {
-                specs: Array<{ file: string; tests: string[] | null }>;
-              };
-              const allTestCases = specs.flatMap(({ file, tests }) => {
-                const parsed = this.parsedCache.get(file);
-                if (!parsed) return [];
-                const cases = parsed.tests.map(t => ({
-                  title: t.name,
-                  fullTitle: t.suite ? `${t.suite} > ${t.name}` : t.name,
-                }));
-                return tests === null ? cases : cases.filter(c => tests.includes(c.fullTitle));
-              });
-              const suite: Suite = { title: '', tests: allTestCases, allTests() { return this.tests; } };
-              this.emitter.emitBegin({ testFiles: specs.map(s => s.file) }, suite);
-              res.writeHead(204);
-              res.end();
-            } catch (err: any) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: err.message }));
-            }
-          });
-          return;
-        }
-
-        // POST /api/run-end — browser signals the end of a run with cumulative totals
-        if (req.url === '/api/run-end' && req.method === 'POST') {
-          let body = '';
-          req.on('data', (chunk: Buffer) => (body += chunk));
-          req.on('end', () => {
-            try {
-              const { passed, failed, total, duration } = JSON.parse(body) as {
-                passed: number; failed: number; total: number; duration: number;
-              };
-              this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
-              res.writeHead(204);
-              res.end();
-            } catch (err: any) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: err.message }));
-            }
-          });
-          return;
-        }
-
-        // POST /api/report — receive browser-side test results; fires per-test reporter events
-        if (req.url === '/api/report' && req.method === 'POST') {
-          let body = '';
-          req.on('data', (chunk: Buffer) => (body += chunk));
-          req.on('end', () => {
-            try {
-              const { tests } = JSON.parse(body) as {
-                filename?: string;
-                tests: Array<{ name: string; passed: boolean; error?: string; duration: number; logs?: LogEntry[] }>;
-              };
-              for (const t of tests) {
-                const testCase = { title: t.name, fullTitle: t.name };
-                const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs };
-                this.emitter.emitTestBegin(testCase, result);
-                this.emitter.emitTestEnd(testCase, result);
-              }
-              res.writeHead(204);
-              res.end();
-            } catch (err: any) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: err.message }));
-            }
-          });
-          return;
-        }
-
-        // POST /api/task — execute a named Node.js task handler and return the result
-        if (req.url === '/api/task' && req.method === 'POST') {
-          let body = '';
-          req.on('data', (chunk: Buffer) => (body += chunk));
-          req.on('end', async () => {
-            try {
-              const { name, payload } = JSON.parse(body) as { name: string; payload?: unknown };
-              const handler = this.tasks[name];
-              if (!handler) {
-                res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: `Task not found: "${name}"` }));
-                return;
-              }
-              const result = await Promise.resolve(handler(payload));
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ result: result ?? null }));
-            } catch (err: any) {
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: err.message ?? String(err) }));
-            }
-          });
-          return;
-        }
-
-        // POST /api/done — browser signals that autorun completed
-        if (req.url === '/api/done' && req.method === 'POST') {
-          let body = '';
-          req.on('data', (chunk: Buffer) => (body += chunk));
-          req.on('end', () => {
-            try {
-              const { passed, failed } = JSON.parse(body) as { passed: number; failed: number };
-              this._doneResolve?.({ passed, failed });
-            } catch { this._doneResolve?.({ passed: 0, failed: 1 }); }
-            res.writeHead(204);
-            res.end();
-          });
-          return;
-        }
-
-        // GET /api/version — monotonic counter incremented on each file update
-        if (req.url === '/api/version' && req.method === 'GET') {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ version: this._version }));
-          return;
-        }
-
-        // GET /api/tests — list and parse test files
-        if (req.url === '/api/tests' && req.method === 'GET') {
-          try {
-            let parsedFiles: ParsedFile[];
-            if (this.testFileMap.size > 0) {
-              // Use cached parse result when available; fall back to on-demand parse
-              // so files that failed to bundle still appear in the test list.
-              parsedFiles = Array.from(this.testFileMap.values()).map(absPath => {
-                const base = path.basename(absPath);
-                return this.parsedCache.get(base) ?? parseTestFile(absPath);
-              });
-            } else if (this.parsedCache.size > 0) {
-              parsedFiles = Array.from(this.parsedCache.values());
-            } else {
-              const examplesDir = path.join(__dirname, 'examples');
-              parsedFiles = fs.readdirSync(examplesDir)
-                .filter(f => f.endsWith('.js'))
-                .sort()
-                .map(f => parseTestFile(path.join(examplesDir, f)));
-            }
-            if (this.grep) {
-              const grep = this.grep;
-              parsedFiles = parsedFiles
-                .map(f => ({ ...f, tests: f.tests.filter(t => {
-                  const fullName = t.suite ? `${t.suite} > ${t.name}` : t.name;
-                  return grep.test(fullName) || grep.test(t.name) || (t.tags ?? []).some(tag => grep.test(tag));
-                }) }))
-                .filter(f => f.tests.length > 0);
-            }
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(parsedFiles));
-          } catch (err: any) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: err.message }));
-          }
-          return;
-        }
-
-        // GET /api/test-source?file=filename.js — serve raw source for browser execution
-        if (req.url?.startsWith('/api/test-source') && req.method === 'GET') {
-          const qs = new URL(req.url, `http://localhost`).searchParams;
-          const file = qs.get('file') ?? '';
-          if (!file || file.includes('/') || file.includes('\\') || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
-            res.writeHead(400, { 'Content-Type': 'text/plain' });
-            res.end('Invalid filename');
-            return;
-          }
-          // In-memory bundled code takes priority (set by watcher)
-          const bundled = this.bundledCodeMap.get(file);
-          if (bundled) {
-            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end(bundled);
-            return;
-          }
-          // Bundle on demand — this path is hit when the watcher hasn't run yet
-          // (e.g. no testFiles in config) or when a bundle failed during watch.
-          const filePath = this.testFileMap.get(file) ?? path.join(__dirname, 'examples', file);
-          if (!fs.existsSync(filePath)) {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('Not found');
-            return;
-          }
-          bundleTestFile(filePath).then(code => {
-            this.bundledCodeMap.set(file, code);
-            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end(code);
-          }).catch((err: any) => {
-            res.writeHead(500, { 'Content-Type': 'text/plain' });
-            res.end(`Bundle error: ${err.message}`);
-          });
-          return;
-        }
-
         if (req.url === '/mock' && req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(generateMockHTML());
           return;
         }
 
-        // POST /api/artifact — receive screenshot (JSON+base64) or video (binary WebM) from browser
-        if (req.url?.startsWith('/api/artifact') && req.method === 'POST') {
-          const qs = new URL(req.url, 'http://localhost').searchParams;
-          const qName = qs.get('name') ?? 'artifact';
-          const qExt  = qs.get('ext')  ?? 'bin';
-          const ct = req.headers['content-type'] ?? '';
-          const chunks: Buffer[] = [];
-          req.on('data', (chunk: Buffer) => chunks.push(chunk));
-          req.on('end', () => {
-            try {
-              const dir = path.join(process.cwd(), 'test-artifacts');
-              fs.mkdirSync(dir, { recursive: true });
-              let filename: string;
-              let data: Buffer;
-              if (ct.includes('application/json')) {
-                const body = JSON.parse(Buffer.concat(chunks).toString()) as { name: string; data: string; ext: string };
-                filename = `${body.name}.${body.ext ?? 'png'}`;
-                data = Buffer.from(body.data, 'base64');
-              } else {
-                filename = `${qName}.${qExt}`;
-                data = Buffer.concat(chunks);
-              }
-              const filePath = path.join(dir, filename);
-              fs.writeFileSync(filePath, data);
-              console.log(`${filename.endsWith('.webm') ? '🎥 Video' : '📸 Screenshot'} saved: ${filePath}`);
-              res.writeHead(204);
-              res.end();
-            } catch (err: any) {
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: err.message }));
-            }
-          });
-          return;
-        }
-
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');
+      });
+
+      this._wss = new WebSocketServer({ server: this.server });
+      this._wss.on('connection', (ws: WebSocket) => {
+        this._wsClients.add(ws);
+        ws.send(JSON.stringify({ type: 'version', version: this._version }));
+
+        ws.on('close', () => this._wsClients.delete(ws));
+
+        ws.on('message', (rawData: Buffer) => {
+          let msg: any;
+          try { msg = JSON.parse(rawData.toString()); } catch { return; }
+          this._handleWsMessage(ws, msg);
+        });
       });
 
       this.server.listen(this.port, 'localhost', () => {
@@ -348,8 +126,148 @@ export class TestServer {
     });
   }
 
+  private _handleWsMessage(ws: WebSocket, msg: any): void {
+    switch (msg.type) {
+      case 'run-begin': {
+        try {
+          const specs = msg.specs as Array<{ file: string; tests: string[] | null }>;
+          const allTestCases = specs.flatMap(({ file, tests }) => {
+            const parsed = this.parsedCache.get(file);
+            if (!parsed) return [];
+            const cases = parsed.tests.map(t => ({
+              title: t.name,
+              fullTitle: t.suite ? `${t.suite} > ${t.name}` : t.name,
+            }));
+            return tests === null ? cases : cases.filter(c => tests.includes(c.fullTitle));
+          });
+          const suite: Suite = { title: '', tests: allTestCases, allTests() { return this.tests; } };
+          this.emitter.emitBegin({ testFiles: specs.map(s => s.file) }, suite);
+        } catch { /* ignore */ }
+        break;
+      }
+
+      case 'run-end': {
+        const { passed, failed, total, duration } = msg as { passed: number; failed: number; total: number; duration: number };
+        this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
+        break;
+      }
+
+      case 'report': {
+        try {
+          const tests = msg.tests as Array<{ name: string; passed: boolean; error?: string; duration: number; logs?: LogEntry[] }>;
+          for (const t of tests) {
+            const testCase = { title: t.name, fullTitle: t.name };
+            const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs };
+            this.emitter.emitTestBegin(testCase, result);
+            this.emitter.emitTestEnd(testCase, result);
+          }
+        } catch { /* ignore */ }
+        break;
+      }
+
+      case 'task': {
+        const { id, name, payload } = msg as { id: string; name: string; payload?: unknown };
+        const handler = this.tasks[name];
+        if (!handler) {
+          ws.send(JSON.stringify({ type: 'task-result', id, error: `Task not found: "${name}"` }));
+          break;
+        }
+        Promise.resolve(handler(payload)).then(result => {
+          ws.send(JSON.stringify({ type: 'task-result', id, result: result ?? null }));
+        }).catch((err: any) => {
+          ws.send(JSON.stringify({ type: 'task-result', id, error: err.message ?? String(err) }));
+        });
+        break;
+      }
+
+      case 'done': {
+        try {
+          const { passed, failed } = msg as { passed: number; failed: number };
+          this._doneResolve?.({ passed, failed });
+        } catch { this._doneResolve?.({ passed: 0, failed: 1 }); }
+        break;
+      }
+
+      case 'artifact': {
+        try {
+          const { name, ext, data } = msg as { name: string; ext: string; data: string };
+          const dir = path.join(process.cwd(), 'test-artifacts');
+          fs.mkdirSync(dir, { recursive: true });
+          const filename = `${name}.${ext ?? 'png'}`;
+          const filePath = path.join(dir, filename);
+          fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
+          console.log(`📸 Screenshot saved: ${filePath}`);
+        } catch { /* ignore */ }
+        break;
+      }
+
+      case 'get-tests': {
+        const { id } = msg as { id: string };
+        try {
+          let parsedFiles: ParsedFile[];
+          if (this.testFileMap.size > 0) {
+            parsedFiles = Array.from(this.testFileMap.values()).map(absPath => {
+              const base = path.basename(absPath);
+              return this.parsedCache.get(base) ?? parseTestFile(absPath);
+            });
+          } else if (this.parsedCache.size > 0) {
+            parsedFiles = Array.from(this.parsedCache.values());
+          } else {
+            const examplesDir = path.join(__dirname, 'examples');
+            parsedFiles = fs.readdirSync(examplesDir)
+              .filter(f => f.endsWith('.js'))
+              .sort()
+              .map(f => parseTestFile(path.join(examplesDir, f)));
+          }
+          if (this.grep) {
+            const grep = this.grep;
+            parsedFiles = parsedFiles
+              .map(f => ({ ...f, tests: f.tests.filter(t => {
+                const fullName = t.suite ? `${t.suite} > ${t.name}` : t.name;
+                return grep.test(fullName) || grep.test(t.name) || (t.tags ?? []).some(tag => grep.test(tag));
+              }) }))
+              .filter(f => f.tests.length > 0);
+          }
+          ws.send(JSON.stringify({ type: 'tests', id, data: parsedFiles }));
+        } catch (err: any) {
+          ws.send(JSON.stringify({ type: 'tests', id, error: err.message }));
+        }
+        break;
+      }
+
+      case 'get-test-source': {
+        const { id, file } = msg as { id: string; file: string };
+        if (!file || file.includes('/') || file.includes('\\') || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
+          ws.send(JSON.stringify({ type: 'test-source', id, error: 'Invalid filename' }));
+          break;
+        }
+        const bundled = this.bundledCodeMap.get(file);
+        if (bundled) {
+          ws.send(JSON.stringify({ type: 'test-source', id, data: bundled }));
+          break;
+        }
+        const filePath = this.testFileMap.get(file) ?? path.join(__dirname, 'examples', file);
+        if (!fs.existsSync(filePath)) {
+          ws.send(JSON.stringify({ type: 'test-source', id, error: 'Not found' }));
+          break;
+        }
+        bundleTestFile(filePath).then(code => {
+          this.bundledCodeMap.set(file, code);
+          ws.send(JSON.stringify({ type: 'test-source', id, data: code }));
+        }).catch((err: any) => {
+          ws.send(JSON.stringify({ type: 'test-source', id, error: `Bundle error: ${err.message}` }));
+        });
+        break;
+      }
+    }
+  }
+
   stop(): Promise<void> {
     return new Promise((resolve) => {
+      if (this._wss) {
+        this._wss.close();
+        this._wss = null;
+      }
       if (this.server) {
         this.server.close(() => resolve());
       } else {
