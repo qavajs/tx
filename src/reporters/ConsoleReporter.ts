@@ -1,29 +1,98 @@
-import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult } from '../runner/reporter';
+import type {
+  Reporter,
+  FullConfig,
+  Suite,
+  TestCase,
+  TestResult,
+  FullResult,
+} from '../runner/reporter';
+
+type LogEntry = {
+  state: 'pass' | 'fail' | 'info';
+  cmd: string;
+  message: string;
+  duration?: number;
+};
+
+const ansi = {
+  reset: '\x1b[0m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  gray: '\x1b[90m',
+  bold: '\x1b[1m',
+};
+
+const color = (text: string, c: keyof typeof ansi) =>
+  `${ansi[c]}${text}${ansi.reset}`;
 
 export class ConsoleReporter implements Reporter {
-  constructor(_config: Record<string, unknown> = {}) { }
+  constructor(private _config: Record<string, unknown> = {}) {}
 
   onBegin(_config: FullConfig, suite: Suite): void {
-    console.log(`Running ${suite.allTests().length} test(s)`);
+    const total = suite.allTests().length;
+    console.log(color(`Running ${total} test(s)\n`, 'bold'));
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
-    if (result.status === 'passed') {
-      console.log(`[Passed] ${test.title} (${result.duration}ms)`);
-    } else {
-      console.log(`[Failed] ${test.title} (${result.duration}ms)`);
-    }
-    if (result.logs?.length) {
-      for (const entry of result.logs) {
-        const icon = entry.state === 'pass' ? '✓' : entry.state === 'fail' ? '✗' : '›';
-        const dur = entry.duration != null ? ` (${entry.duration}ms)` : '';
-        console.log(`${icon} ${entry.cmd}  ${entry.message}${dur}`);
-      }
-    }
-    if (result.error) console.log(`${result.error}`);
+    console.log(this.formatStatus(test.title, result.status, result.duration));
+
+    this.printLogs(result.logs);
+    this.printError(result.error);
+
+    console.log('');
   }
 
   onEnd(result: FullResult): void {
-    console.log(`  ${result.passed} passed, ${result.failed} failed, ${result.total} total (${result.duration}ms)\n`);
+    const summary =
+      `Summary: ${result.passed} passed, ${result.failed} failed, ` +
+      `${result.total} total ` +
+      `(${result.duration}ms)\n`;
+
+    console.log(
+      result.failed > 0
+        ? color(summary, 'red')
+        : color(summary, 'green')
+    );
+  }
+
+  private formatStatus(title: string, status: TestResult['status'], duration: number) {
+    const base = `${title} (${duration}ms)`;
+
+    switch (status) {
+      case 'passed':
+        return color(`[PASS] ${base}`, 'green');
+      case 'failed':
+        return color(`[FAIL] ${base}`, 'red');
+      case 'skipped':
+        return color(`[SKIP] ${base}`, 'yellow');
+    }
+  }
+
+  private printLogs(logs?: LogEntry[]) {
+    if (!logs?.length) return;
+
+    for (const entry of logs) {
+      const icon =
+        entry.state === 'pass'
+          ? color('✓', 'green')
+          : entry.state === 'fail'
+            ? color('✗', 'red')
+            : color('›', 'gray');
+
+      const duration =
+        entry.duration != null ? color(` (${entry.duration}ms)`, 'gray') : '';
+
+      console.log(`  ${icon} ${entry.cmd} — ${entry.message}${duration}`);
+    }
+  }
+
+  private printError(error?: unknown) {
+    if (!error) return;
+
+    const msg =
+      error instanceof Error ? error.stack || error.message : String(error);
+
+    console.log(color(`  ERROR: ${msg}`, 'red'));
   }
 }
