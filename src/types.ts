@@ -17,13 +17,13 @@ export interface TxConfig {
   /** Proxy hostname (default: localhost) */
   proxyHost?: string;
 
-  /** Proxy port 1 (default: 1337) */
+  /** Proxy port 1 (default: 11337) */
   port1?: number;
 
-  /** Proxy port 2 (default: 1338) */
+  /** Proxy port 2 (default: 11338) */
   port2?: number;
 
-  /** Control panel port (default: 3000) */
+  /** Control panel port (default: 11339) */
   controlPanelPort?: number;
 
   /** Run in headless mode (default: false) */

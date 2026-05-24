@@ -248,9 +248,9 @@ async function main() {
   // Merge: defaults < config file < CLI args
   const mergedConfig: TxConfig = {
     proxyHost:        cliConfig.proxyHost ?? fileConfig.proxyHost ?? 'localhost',
-    port1:            cliConfig.port1 ?? fileConfig.port1 ?? 1337,
-    port2:            cliConfig.port2 ?? fileConfig.port2 ?? 1338,
-    controlPanelPort: cliConfig.controlPanelPort ?? fileConfig.controlPanelPort ?? 3000,
+    port1:            cliConfig.port1 ?? fileConfig.port1 ?? 11337,
+    port2:            cliConfig.port2 ?? fileConfig.port2 ?? 11338,
+    controlPanelPort: cliConfig.controlPanelPort ?? fileConfig.controlPanelPort ?? 11339,
     headless:         cliConfig.headless ?? fileConfig.headless ?? (process.env.HEADLESS === 'true'),
     browser:          cliConfig.browser ?? fileConfig.browser,
     viewport:         fileConfig.viewport,

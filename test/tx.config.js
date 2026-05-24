@@ -1,8 +1,5 @@
 module.exports = {
   proxyHost: 'localhost',
-  port1: 1337,
-  port2: 1338,
-  controlPanelPort: 3000,
   retries: 0,
   headless: false,
   testFiles: ['./specs/**/*.spec.ts'],

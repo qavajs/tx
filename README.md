@@ -36,11 +36,11 @@ Create a `tx.config.js` in your project root:
 ```js
 module.exports = {
   // Proxy ports (Hammerhead)
-  port1: 1337,
-  port2: 1338,
+  port1: 11337,
+  port2: 11338,
 
   // Control panel port
-  controlPanelPort: 3000,
+  controlPanelPort: 11339,
 
   // Test files — glob patterns relative to this config file
   testFiles: ['./specs/**/*.spec.ts'],
@@ -428,7 +428,7 @@ export default class MyReporter implements Reporter {
 
 ## Control Panel
 
-The control panel is a browser-based UI served at `http://localhost:3000` (or your configured `controlPanelPort`). It includes:
+The control panel is a browser-based UI served at `http://localhost:11339` (or your configured `controlPanelPort`). It includes:
 
 - **Spec list** — all discovered test files with pass/fail badges; run individual tests, suites, or all specs
 - **Live browser** — the target site rendered in an iframe via the Hammerhead proxy

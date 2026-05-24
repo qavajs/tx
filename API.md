@@ -40,9 +40,9 @@
 ```json
 {
   "proxyHost": "localhost",
-  "port1": 1337,
-  "port2": 1338,
-  "controlPanelPort": 3000,
+  "port1": 11337,
+  "port2": 11338,
+  "controlPanelPort": 11339,
   "headless": false,
   "testFiles": ["./specs/login.js"],
   "testMatch": "./specs/**/*.js",
@@ -53,9 +53,9 @@
 | Field              | Type                                    | Default       | Description                                      |
 |--------------------|-----------------------------------------|---------------|--------------------------------------------------|
 | `proxyHost`        | `string`                                | `"localhost"` | Hostname for the Hammerhead proxy                |
-| `port1`            | `number`                                | `1337`        | Proxy port 1                                     |
-| `port2`            | `number`                                | `1338`        | Proxy port 2                                     |
-| `controlPanelPort` | `number`                                | `3000`        | HTTP server port for the control panel           |
+| `port1`            | `number`                                | `11337`        | Proxy port 1                                     |
+| `port2`            | `number`                                | `11338`        | Proxy port 2                                     |
+| `controlPanelPort` | `number`                                | `11339`        | HTTP server port for the control panel           |
 | `headless`         | `boolean`                               | `false`       | Run the browser in headless mode                 |
 | `browser`          | `string`                                | —             | Browser to launch: `chrome`, `firefox`, `edge`, `safari`, `chromium`, or an absolute path to a binary. Falls back to the first browser found on the system when omitted. |
 | `testFiles`        | `string[]`                              | —             | Explicit list of test file paths (relative to config) |
@@ -1188,7 +1188,7 @@ Assert.less(actual, threshold, message?)    // actual < threshold
 
 ## Server REST API
 
-The control panel server (`http://localhost:3000` by default) exposes these endpoints:
+The control panel server (`http://localhost:13339` by default) exposes these endpoints:
 
 | Method | Path                           | Description                                                      |
 |--------|--------------------------------|------------------------------------------------------------------|
@@ -1206,7 +1206,7 @@ All endpoints respond with `Access-Control-Allow-Origin: *`.
 **POST /api/run-test example:**
 
 ```js
-const res = await fetch('http://localhost:3000/api/run-test', {
+const res = await fetch('http://localhost:11339/api/run-test', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ code: `test('x', () => {})` }),
@@ -1223,9 +1223,9 @@ import { TxWrapper } from './src/wrapper';
 
 const wrapper = new TxWrapper({
   proxyHost:        'localhost',
-  port1:            1337,
-  port2:            1338,
-  controlPanelPort: 3000,
+  port1:            11337,
+  port2:            11338,
+  controlPanelPort: 11339,
   headless:         false,
   testFiles:        ['./specs/login.js'],
   testPatterns:     ['./specs/**/*.js'],

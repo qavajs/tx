@@ -176,9 +176,9 @@ export class TxWrapper {
     } = {}
   ) {
     config.proxyHost = config.proxyHost || 'localhost';
-    config.port1 = config.port1 || 1337;
-    config.port2 = config.port2 || 1338;
-    config.controlPanelPort = config.controlPanelPort || 3000;
+    config.port1 = config.port1 || 11337;
+    config.port2 = config.port2 || 11338;
+    config.controlPanelPort = config.controlPanelPort || 11339;
   }
 
   /**
@@ -206,15 +206,15 @@ export class TxWrapper {
 
     this.proxy.start({
       hostname: this.config.proxyHost || 'localhost',
-      port1: this.config.port1 || 1337,
-      port2: this.config.port2 || 1338,
+      port1: this.config.port1 || 11337,
+      port2: this.config.port2 || 11338,
     });
 
     // @ts-ignore
     this.session = new ProxySession([], {});
     this.proxyUrl = this.proxy.openSession('about:blank', this.session);
 
-    // Create a second session for the control panel server (localhost:3000)
+    // Create a second session for the control panel server (localhost:11339)
     // This bypasses CSP and allows the control panel to access the iframe
     // @ts-ignore
     this.controlPanelSession = new ProxySession([], {});
@@ -244,7 +244,7 @@ export class TxWrapper {
       // Create test API
       this.testApi = new TestApi(this.injector);
 
-      // Start control panel server (on localhost:3000)
+      // Start control panel server (on localhost:11339)
       this.server = new TestServer(this.config.controlPanelPort, this.config.testFiles, this.config.reporters, this.config.testMode, this.config.snapshot, this.config.tasks, this.config.grep, this.config.actionTimeout, this.config.expectTimeout, this.config.testTimeout, this.config.retries);
       await this.server.start(this.proxyUrl, this.config.viewport);
 
