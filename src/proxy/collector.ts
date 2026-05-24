@@ -20,9 +20,7 @@ export class ProxyCollector {
 
   attach(): void {
     const rule = RequestFilterRule.ANY;
-    console.log('[ProxyCollector] attaching to', this._sessions.length, 'sessions, rule.id=', rule?.id);
     for (const session of this._sessions) {
-      console.log('[ProxyCollector]   session.id=', session.id);
       this._attachToSession(session, rule);
     }
   }

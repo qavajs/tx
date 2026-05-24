@@ -3,6 +3,8 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { execSync, spawn, ChildProcess } from 'node:child_process';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -153,6 +155,7 @@ export class TxWrapper {
   private injector: IframeInjector | null = null;
   private _browserChild: ChildProcess | null = null;
   private _isSafariBrowser = false;
+  private _tempUserDataDir: string | null = null;
 
   constructor(
     private config: {
@@ -287,6 +290,22 @@ export class TxWrapper {
         );
       }
 
+      console.table({
+        browser:       path.basename(exePath),
+        headless:      this.config.headless ?? false,
+        controlPanel:  `http://localhost:${this.config.controlPanelPort}`,
+        proxy:         this.proxyUrl,
+        testMode:      this.config.testMode ?? false,
+        snapshot:      this.config.snapshot ?? false,
+        testFiles:     this.config.testFiles?.length ?? 0,
+        grep:          this.config.grep ? String(this.config.grep) : '-',
+        viewport:      this.config.viewport ? `${this.config.viewport.width}×${this.config.viewport.height}` : '-',
+        retries:       this.config.retries ?? '-',
+        actionTimeout: this.config.actionTimeout ?? '-',
+        expectTimeout: this.config.expectTimeout ?? '-',
+        testTimeout:   this.config.testTimeout ?? '-',
+      });
+
       this._isSafariBrowser = exePath.toLowerCase().includes('safari') && process.platform === 'darwin';
       let spawnCmd: string;
       let args: string[];
@@ -298,14 +317,35 @@ export class TxWrapper {
         args = ['-a', 'Safari', this.controlPanelProxyUrl];
       } else {
         spawnCmd = exePath;
-        args = [
-          ...(this.config.headless ? headlessArgs(exePath) : []),
-          this.controlPanelProxyUrl,
-        ];
+        const isFirefox = exePath.toLowerCase().includes('firefox');
+        if (isFirefox) {
+          // --no-remote / --new-instance prevent Firefox from reusing an existing window
+          args = [
+            '--no-remote',
+            '--new-instance',
+            ...(this.config.headless ? ['--headless'] : []),
+            this.controlPanelProxyUrl,
+          ];
+        } else {
+          // Chromium-based: isolated user data dir so we always spawn a fresh instance
+          // (without this, Chrome reuses an existing window and the launcher exits immediately,
+          // making _browserChild.kill() a no-op on the already-gone launcher process)
+          this._tempUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tx-chrome-'));
+          args = [
+            `--user-data-dir=${this._tempUserDataDir}`,
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--enable-automation',
+            ...(this.config.headless ? headlessArgs(exePath) : []),
+            this.controlPanelProxyUrl,
+          ];
+        }
       }
 
       console.log(`\n🌐 ${this.config.headless ? 'Launching headless browser' : 'Opening browser'}: ${exePath}`);
-      this._browserChild = spawn(spawnCmd, args, { stdio: 'ignore', detached: false });
+      // detached: true creates a new process group so we can kill the whole group (renderers etc.)
+      this._browserChild = spawn(spawnCmd, args, { stdio: 'ignore', detached: process.platform !== 'win32' });
+      this._browserChild.unref();
       this._browserChild.on('error', (err: Error) => {
         console.error('Browser error:', err.message);
       });
@@ -338,8 +378,22 @@ export class TxWrapper {
     console.log('\n🛑 Stopping Tx Wrapper...');
 
     if (this._browserChild) {
-      try { this._browserChild.kill(); } catch { /* already exited */ }
+      const { pid } = this._browserChild;
+      try {
+        if (pid !== undefined) {
+          if (process.platform !== 'win32') {
+            process.kill(-pid, 'SIGTERM'); // kill the entire process group
+          } else {
+            this._browserChild.kill();
+          }
+        }
+      } catch { /* already exited */ }
       this._browserChild = null;
+    }
+
+    if (this._tempUserDataDir) {
+      try { fs.rmSync(this._tempUserDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      this._tempUserDataDir = null;
     }
 
     if (this._isSafariBrowser) {

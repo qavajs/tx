@@ -20,7 +20,7 @@ module.exports = {
   },
   profiles: {
     ci: {
-      //headless: true,
+      headless: true,
       browser: 'chrome',
       testMode: true,
     },
