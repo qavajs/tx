@@ -998,8 +998,15 @@ function _refreshNetworkRow(entry: NetworkEntry) {
 
 // ── Network detail panel ──────────────────────────────────────────────────────
 
-function _formatBody(body: string): string {
-  try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
+function _formatBody(body: string, contentType?: string): string {
+  const mime = (contentType ?? '').split(';')[0].trim().toLowerCase();
+  if (!mime || mime === 'application/json' || mime.endsWith('+json')) {
+    try { return JSON.stringify(JSON.parse(body), null, 2); } catch { if (mime === 'application/json' || mime.endsWith('+json')) return body; }
+  }
+  if (mime === 'application/x-www-form-urlencoded') {
+    try { return Array.from(new URLSearchParams(body)).map(([k, v]) => k + ': ' + v).join('\n'); } catch { return body; }
+  }
+  return body;
 }
 
 function _ndRow(key: string, value: string, wrap = false): string {
@@ -1034,7 +1041,7 @@ function _renderNetworkDetail(entry: NetworkEntry): string {
 
   if (entry.requestBody != null && entry.requestBody !== '') {
     html += '<div class="tx-nd-section"><div class="tx-nd-section-title">Request Body</div>' +
-      '<pre class="tx-nd-pre">' + escHtml(_formatBody(String(entry.requestBody))) + '</pre></div>';
+      '<pre class="tx-nd-pre">' + escHtml(_formatBody(String(entry.requestBody), String(entry.requestHeaders['content-type'] ?? ''))) + '</pre></div>';
   }
 
   const respHeaders = Object.entries(entry.responseHeaders);
@@ -1046,7 +1053,7 @@ function _renderNetworkDetail(entry: NetworkEntry): string {
 
   if (entry.responseBody != null) {
     html += '<div class="tx-nd-section"><div class="tx-nd-section-title">Response Body</div>' +
-      '<pre class="tx-nd-pre">' + escHtml(_formatBody(entry.responseBody)) + '</pre></div>';
+      '<pre class="tx-nd-pre">' + escHtml(_formatBody(entry.responseBody, String(entry.responseHeaders['content-type'] ?? ''))) + '</pre></div>';
   }
 
   return html;
@@ -1387,6 +1394,7 @@ function initNetworkListeners() {
     entry.status = msg.statusCode ?? null;
     entry.statusText = '';
     entry.responseHeaders = msg.headers ?? {};
+    entry.responseBody = msg.body ?? null;
     entry.duration = Date.now() - entry.startTime;
     entry.state = 'complete';
     _hhReqMap.delete(msg.requestId);

@@ -271,12 +271,17 @@ export class TestServer {
 
   stop(): Promise<void> {
     return new Promise((resolve) => {
+      for (const client of this._wsClients) {
+        client.terminate();
+      }
+      this._wsClients.clear();
       if (this._wss) {
         this._wss.close();
         this._wss = null;
       }
       if (this.server) {
         this.server.close(() => resolve());
+        this.server = null;
       } else {
         resolve();
       }
