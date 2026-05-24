@@ -11,8 +11,10 @@ module.exports = {
   testTimeout: 30000,     // 30s per test
   browser: 'chrome',
   reporters: [
-    ['./reporters/ConsoleReporter.ts', {}],
+    ['../src/reporters/ConsoleReporter.ts', {}],
+    ['../src/reporters/JunitReporter.ts', { outputPath: 'report/report.xml' }],
     ['./reporters/HtmlReporter.ts', { outputPath: 'report/report.html' }],
+
   ],
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),

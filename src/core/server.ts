@@ -170,7 +170,7 @@ export class TestServer {
         try {
           const tests = msg.tests as Array<{ name: string; passed: boolean; error?: string; duration: number; logs?: LogEntry[] }>;
           for (const t of tests) {
-            const testCase = { title: t.name, fullTitle: t.name };
+            const testCase = { title: t.name, fullTitle: t.name, file: msg.filename as string | undefined };
             const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs };
             this.emitter.emitTestBegin(testCase, result);
             this.emitter.emitTestEnd(testCase, result);

@@ -9,6 +9,7 @@ export interface FullConfig {
 export interface TestCase {
   title: string;
   fullTitle: string;
+  file?: string;
 }
 
 export interface Attachment {

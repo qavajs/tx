@@ -1,5 +1,5 @@
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult, LogEntry } from '../../src/runner/reporter';
 
 interface TestEntry {
@@ -42,6 +42,7 @@ export class HtmlReporter implements Reporter {
   }
 
   onEnd(result: FullResult): void {
+    mkdirSync(dirname(this.outputPath), { recursive: true });
     writeFileSync(this.outputPath, buildHtml(this.tests, result));
     console.log(`HTML report written to ${this.outputPath}`);
   }

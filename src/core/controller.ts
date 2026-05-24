@@ -245,7 +245,7 @@ window.toggleSuite = (filename: string, suiteName: string) => {
 
 async function executeTests(
   code: string,
-  opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string }
+  opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string; onTestEnd?: (result: TestResult) => void }
 ): Promise<TestResult[]> {
   const filename = opts?.filename;
   const queue = buildTestQueue(code, opts ?? {});
@@ -332,10 +332,14 @@ async function executeTests(
       attempt++;
     }
     if (passed) {
-      results.push({ name: t.name, passed: true, duration, logs: finalLogs });
+      const r: TestResult = { name: t.name, passed: true, duration, logs: finalLogs };
+      results.push(r);
+      opts?.onTestEnd?.(r);
       if (filename) setTestItemStatus(filename, t.name, 'pass', duration);
     } else {
-      results.push({ name: t.name, passed: false, error: lastError?.stack || lastError?.message, duration, logs: finalLogs });
+      const r: TestResult = { name: t.name, passed: false, error: lastError?.stack || lastError?.message, duration, logs: finalLogs };
+      results.push(r);
+      opts?.onTestEnd?.(r);
       if (filename) setTestItemStatus(filename, t.name, 'fail', duration);
     }
   }
@@ -344,9 +348,6 @@ async function executeTests(
 
 // ── Server communication ──────────────────────────────────────────────────────
 
-function reportToServer(results: TestResult[], filename?: string): void {
-  wsSend('report', { filename, tests: results } as Record<string, unknown>);
-}
 
 function notifyRunBegin(specs: Array<{ file: string; tests: string[] | null }>): void {
   wsSend('run-begin', { specs } as Record<string, unknown>);
@@ -417,9 +418,11 @@ async function fetchAndRun(
 ): Promise<TestResult[]> {
   const msg = await wsRequest<{ data?: string; error?: string }>('get-test-source', { file: filename });
   if (msg.error || !msg.data) throw new Error(msg.error ?? 'Failed to load test source');
-  const results = await executeTests(msg.data, opts);
+  const results = await executeTests(msg.data, {
+    ...opts,
+    onTestEnd: (r) => wsSend('report', { filename, tests: [r] } as Record<string, unknown>),
+  });
   renderTestResults(results, filename);
-  reportToServer(results, filename);
   return results;
 }
 
