@@ -56,14 +56,14 @@ export function buildTestQueue(
   const afterAll = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
 
   const defaultFixtureDefs: FixtureDefs = {
-    page:       async (_f, use) => { await use((window as any).page); },
-    browser:    async (_f, use) => { await use((window as any).browser); },
-    node:       async (_f, use) => { await use((window as any).node); },
-    expect:     async (_f, use) => { await use((window as any).expect); },
-    request:    async (_f, use) => { await use((window as any).request); },
-    log:        async (_f, use) => { await use((window as any).log); },
-    attach:     async (_f, use) => { await use((window as any).attach); },
-    logCommand: async (_f, use) => { await use((window as any).logCommand); },
+    page:       async (_f, use) => { await use((window as any).tx.page); },
+    browser:    async (_f, use) => { await use((window as any).tx.browser); },
+    node:       async (_f, use) => { await use((window as any).tx.node); },
+    expect:     async (_f, use) => { await use((window as any).tx.expect); },
+    request:    async (_f, use) => { await use((window as any).tx.request); },
+    log:        async (_f, use) => { await use((window as any).tx.log); },
+    attach:     async (_f, use) => { await use((window as any).tx.attach); },
+    logCommand: async (_f, use) => { await use((window as any).tx.logCommand); },
   };
 
   const makeTestFn = (fixtureDefs: FixtureDefs): any => {
@@ -111,12 +111,11 @@ export function buildTestQueue(
     }
   };
 
-  (window as any).describe = describe;
-  (window as any).test = baseTest;
-  (window as any).beforeEach = beforeEach;
-  (window as any).afterEach = afterEach;
-  (window as any).beforeAll = beforeAll;
-  (window as any).afterAll = afterAll;
+  const _txModule = { ...(window as any).tx, test: baseTest, describe, beforeEach, afterEach, beforeAll, afterAll };
+  (window as any).require = (id: string) => {
+    if (id === 'tx') return _txModule;
+    throw new Error(`Cannot require '${id}' in test context`);
+  };
 
   try {
     new Function(code)();

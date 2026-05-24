@@ -39,6 +39,11 @@ export function parseTestCode(code: string): ParsedTest[] {
   // Module stub returned by require(). __esModule must be falsy so esbuild's
   // __toESM helper sets a .default, otherwise `import foo from 'lib'` produces
   // import_lib.default === undefined and top-level destructuring throws.
+  // 'tx' exports expose the parser stubs so `import { test, describe } from 'tx'` is discovered.
+  const txStub: any = new Proxy(
+    Object.assign(() => deepNoop, { __esModule: false, default: deepNoop, test, describe, beforeEach: noop, afterEach: noop, beforeAll: noop, afterAll: noop }),
+    { get: (t, k) => (k in t ? (t as any)[k] : deepNoop) },
+  );
   const moduleStub: any = new Proxy(
     Object.assign(() => deepNoop, { __esModule: false, default: deepNoop }),
     { get: (t, k) => (k in t ? (t as any)[k] : deepNoop) },
@@ -46,12 +51,10 @@ export function parseTestCode(code: string): ParsedTest[] {
   const pageProxy: any = new Proxy({}, { get: () => noop });
   const exportsObj: any = {};
   const sandbox = vm.createContext({
-    describe, test,
-    beforeEach: noop, afterEach: noop, beforeAll: noop, afterAll: noop,
     expect: () => noop,
     tx: deepNoop,
     page: pageProxy,
-    require: () => moduleStub,
+    require: (id: string) => id === 'tx' ? txStub : moduleStub,
     exports: exportsObj,
     module: { exports: exportsObj },
     console: { log: noop, error: noop, warn: noop, info: noop, debug: noop },

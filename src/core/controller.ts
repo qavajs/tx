@@ -20,18 +20,7 @@ declare global {
 
 window.testApi = testApi;
 
-// ── Globals for test code — importable via `import { page, expect } from 'tx'`
-// or accessible directly as globals (page, expect, browser, tx) ───────────────
-
-(window as any).page = page;
-(window as any).expect = expect;
-(window as any).browser = browser;
-(window as any).node = node;
-(window as any).request = request;
-(window as any).log = log;
-(window as any).attach = attach;
-(window as any).logCommand = logCommand;
-(window as any).tx = { page, expect: expect, browser, node, request, log, attach, logCommand, ...testApi };
+(window as any).tx = { page, expect, browser, node, request, log, attach, logCommand, ...testApi };
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 

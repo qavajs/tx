@@ -1,5 +1,7 @@
+import { test, describe } from 'tx';
+
 describe('route', () => {
-    test('fulfill', async () => {
+    test('fulfill', async ({ page, expect }) => {
         await page.goto('https://practice.expandtesting.com/webpark');
         const calculateCost = page.locator('#calculateCost');
         await page.route(/\/webpark\/calculate-cost/, async route => {
@@ -21,7 +23,7 @@ describe('route', () => {
         await expect(page.locator('#result')).toContainText('42.00€');
     });
 
-    test('abort', async () => {
+    test('abort', async ({ page, expect }) => {
         await page.goto('https://practice.expandtesting.com/webpark');
         const calculateCost = page.locator('#calculateCost');
         await page.route(/\/webpark\/calculate-cost/, async route => {

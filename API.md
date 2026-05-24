@@ -132,11 +132,13 @@ The constructor receives the config object from the tuple as its sole argument.
 
 ## Writing Tests
 
-Test files use Playwright/Jest-style globals injected at runtime. No imports are needed.
+Import `test`, `describe`, and any hooks from `'tx'`. Fixtures are received via destructuring — not globals.
 
 ```js
+import { test, describe, beforeEach, afterEach } from 'tx';
+
 describe('Suite name', () => {
-  beforeEach(async () => {
+  beforeEach(async ({ page }) => {
     await page.goto('https://example.com');
   });
 
@@ -144,31 +146,40 @@ describe('Suite name', () => {
     // cleanup
   });
 
-  test('test name', async () => {
+  test('test name', async ({ page, expect }) => {
     await expect(page.locator('h1')).toBeVisible();
   });
 
   // Optional tags — displayed as chips in the control panel; matched by --grep
-  test('smoke check', { tag: ['@smoke', '@fast'] }, async () => {
+  test('smoke check', { tag: ['@smoke', '@fast'] }, async ({ page, expect }) => {
     expect(page.url()).toContain('example.com');
   });
 });
 ```
 
-### Globals available in test files
+### Imports from `'tx'`
 
-| Global      | Description                                              |
-|-------------|----------------------------------------------------------|
-| `describe`  | Define a test suite                                      |
-| `test`      | Define a test case (see signature below)                 |
-| `beforeEach`| Hook run before each test in the nearest `describe`      |
-| `afterEach` | Hook run after each test in the nearest `describe`       |
-| `page`      | Playwright-style page object (see [page](#page))         |
-| `browser`   | Multi-tab browser object (see [browser](#browser))       |
-| `node`      | Node.js context bridge (see [node](#node))               |
-| `request`   | HTTP request context (see [request](#request))           |
-| `expect`    | Assertion function (see [expect](#expect))               |
-| `log`       | `(message, type?) => void` — write to the panel console  |
+| Export       | Description                                              |
+|--------------|----------------------------------------------------------|
+| `test`       | Define a test case; also used as `test.extend()`         |
+| `describe`   | Define a test suite                                      |
+| `beforeEach` | Hook run before each test in the nearest `describe`      |
+| `afterEach`  | Hook run after each test in the nearest `describe`       |
+| `beforeAll`  | Hook run once before all tests in the nearest `describe` |
+| `afterAll`   | Hook run once after all tests in the nearest `describe`  |
+
+### Built-in fixtures (injected via destructuring)
+
+| Fixture      | Description                                              |
+|--------------|----------------------------------------------------------|
+| `page`       | Playwright-style page object (see [page](#page))         |
+| `browser`    | Multi-tab browser object (see [browser](#browser))       |
+| `node`       | Node.js context bridge (see [node](#node))               |
+| `request`    | HTTP request context (see [request](#request))           |
+| `expect`     | Assertion function (see [expect](#expect))               |
+| `log`        | `(message, type?) => void` — write to the panel console  |
+| `attach`     | `(label, body, contentType?) => void` — attach data to the test result |
+| `logCommand` | Open a pending command entry; returns a handle with `.success()` / `.fail()` |
 
 ### test() signature
 
@@ -187,9 +198,11 @@ Tags are freeform strings — conventionally prefixed with `@` (e.g. `'@smoke'`,
 
 ### Fixtures
 
-`test.extend()` creates a custom test function with additional fixtures injected into each test. Built-in fixtures (`page`, `browser`, `node`, `request`, `expect`) are always available without extending.
+`test.extend()` creates a custom test function with additional fixtures injected into each test. Built-in fixtures (`page`, `browser`, `node`, `request`, `expect`) are always available via destructuring.
 
 ```js
+import { test } from 'tx';
+
 const myTest = test.extend({
   // Static fixture — value computed once, passed to every test
   credentials: async ({}, use) => {
@@ -250,7 +263,7 @@ const myTest = test.extend({
 
 ## page
 
-Operates on the proxied iframe. Available as `window.page` in the browser and as the `page` global in test files.
+Operates on the proxied iframe. Available as the `page` fixture via destructuring in test and hook callbacks.
 
 ### Navigation
 
@@ -513,7 +526,7 @@ Remove a previously registered handler by the same locator reference.
 
 ```js
 describe('Shopping flow', () => {
-  beforeEach(async () => {
+  beforeEach(async ({ page }) => {
     // Dismiss the cookie banner whenever it appears, throughout the suite
     page.addLocatorHandler(
       page.locator('#cookie-banner'),
@@ -525,7 +538,7 @@ describe('Shopping flow', () => {
     await page.goto('https://shop.example.com');
   });
 
-  it('adds item to cart', async () => {
+  test('adds item to cart', async ({ page, expect }) => {
     // If the banner appears before or during this click, it is dismissed first
     await page.locator('.add-to-cart').click();
     await expect(page.locator('.cart-count')).toHaveText('1');
@@ -536,25 +549,30 @@ describe('Shopping flow', () => {
 **Example — dismiss a modal at most once:**
 
 ```js
-page.addLocatorHandler(
-  page.locator('.promo-modal'),
-  async (modal) => {
-    await modal.locator('[aria-label="Close"]').click();
-  },
-  { times: 1 }
-);
+test('promo flow', async ({ page }) => {
+  page.addLocatorHandler(
+    page.locator('.promo-modal'),
+    async (modal) => {
+      await modal.locator('[aria-label="Close"]').click();
+    },
+    { times: 1 }
+  );
+  // … rest of test
+});
 ```
 
 **Example — non-blocking tooltip removal:**
 
 ```js
-page.addLocatorHandler(
-  page.locator('.blocking-tooltip'),
-  async () => {
-    await page.keyboard.press('Escape');
-  },
-  { noWaitAfter: true }   // tooltip may linger; don't stall the test
-);
+test('tooltip flow', async ({ page }) => {
+  page.addLocatorHandler(
+    page.locator('.blocking-tooltip'),
+    async () => {
+      await page.keyboard.press('Escape');
+    },
+    { noWaitAfter: true }   // tooltip may linger; don't stall the test
+  );
+});
 ```
 
 ### Lifecycle
@@ -765,7 +783,7 @@ await page.mouse.up();
 
 ## browser
 
-Multi-tab manager available as the `browser` global in test files.
+Multi-tab manager available as the `browser` fixture via destructuring in test and hook callbacks.
 
 ### browser.newPage
 
@@ -784,7 +802,7 @@ Return an array of `Page`-like objects for every currently open tab, in creation
 **Example — multi-tab flow:**
 
 ```js
-it('opens a popup and reads its title', async () => {
+test('opens a popup and reads its title', async ({ page }) => {
   await page.goto('https://example.com');
 
   // intercept window.open / target="_blank"
@@ -797,7 +815,7 @@ it('opens a popup and reads its title', async () => {
   await page.locator('a[target="_blank"]').click();
 });
 
-it('manual multi-tab', async () => {
+test('manual multi-tab', async ({ page, browser }) => {
   const tab1 = await browser.newPage();
   await tab1.goto('https://example.com');
 
@@ -815,7 +833,7 @@ it('manual multi-tab', async () => {
 
 ## node
 
-Node.js context bridge available as the `node` global in test files and as a built-in fixture. Provides access to Node.js APIs (file system, environment variables, databases, etc.) from within browser-side test code.
+Node.js context bridge available as the `node` fixture via destructuring. Provides access to Node.js APIs (file system, environment variables, databases, etc.) from within browser-side test code.
 
 ### node.task
 
@@ -855,13 +873,13 @@ module.exports = {
 **Using `node.task` directly in tests:**
 
 ```js
-test('reads a fixture from disk', async () => {
+test('reads a fixture from disk', async ({ node, expect }) => {
   const json = await node.task('readFile', { path: './fixtures/user.json' });
   const user = JSON.parse(json);
   expect(user.name).toBe('Alice');
 });
 
-test('seeds the database before testing', async () => {
+test('seeds the database before testing', async ({ node, page, expect }) => {
   const inserted = await node.task('seedDatabase', [{ id: 1, role: 'admin' }]);
   expect(inserted).toBe(1);
   await page.goto('https://app.example.com/users');
@@ -884,13 +902,13 @@ myTest('shows seeded data', async ({ serverData }) => {
 });
 ```
 
-> **Note:** `browser.task(name, payload)` is a convenience alias that delegates to `node.task`. Prefer `node.task` in new code; use `node` as a fixture when you need Node.js access inside `test.extend` definitions.
+> **Note:** `browser.task(name, payload)` is a convenience alias that delegates to `node.task`. Prefer `node.task` in new code.
 
 ---
 
 ## request
 
-An `APIRequestContext` available as the `request` global in every test file and as a built-in fixture. Makes HTTP requests directly from the panel process (not through the proxied iframe), so there are no iframe-imposed CORS restrictions. All requests appear in the **Network** tab alongside iframe requests.
+An `APIRequestContext` available as the `request` fixture via destructuring. Makes HTTP requests directly from the panel process (not through the proxied iframe), so there are no iframe-imposed CORS restrictions. All requests appear in the **Network** tab alongside iframe requests.
 
 ### request.fetch
 
@@ -916,25 +934,27 @@ Fetch `url` using the native `fetch` API. `options` accepts the full standard [`
 **Examples:**
 
 ```js
-// GET
-const resp = await request.fetch('https://api.example.com/users');
-expect(resp.status()).toBe(200);
-const users = await resp.json();
+test('CRUD operations', async ({ request, expect }) => {
+  // GET
+  const resp = await request.fetch('https://api.example.com/users');
+  expect(resp.status()).toBe(200);
+  const users = await resp.json();
 
-// POST with JSON body
-const resp = await request.fetch('https://api.example.com/users', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ name: 'Alice' }),
-});
-expect(resp.ok()).toBe(true);
+  // POST with JSON body
+  const resp2 = await request.fetch('https://api.example.com/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Alice' }),
+  });
+  expect(resp2.ok()).toBe(true);
 
-// DELETE
-const resp = await request.fetch('https://api.example.com/users/42', {
-  method: 'DELETE',
-  headers: { Authorization: `Bearer ${token}` },
+  // DELETE
+  const resp3 = await request.fetch('https://api.example.com/users/42', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(resp3.status()).toBe(204);
 });
-expect(resp.status()).toBe(204);
 ```
 
 **Using `request` as a fixture:**

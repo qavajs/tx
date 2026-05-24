@@ -1,6 +1,8 @@
+import { test, describe } from 'tx';
+
 describe('testauto.app', () => {
 
-    test('create task', async () => {
+    test('create task', async ({ page, expect }) => {
         await page.goto('https://testauto.app/task-manager');
         const addTaskButton = page.locator('.btn-add-task');
         await addTaskButton.click();
@@ -23,7 +25,7 @@ describe('testauto.app', () => {
         await expect(page.locator('tr:has-text("Test Automation 42")')).toBeVisible();
     });
 
-    test('delete task', async () => {
+    test('delete task', async ({ page, expect }) => {
         const name = `Test Automation ${Date.now()}`;
         await page.goto('https://testauto.app/task-manager');
         const addTaskButton = page.locator('.btn-add-task');

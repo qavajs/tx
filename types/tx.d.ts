@@ -595,34 +595,10 @@ interface TestFactory<F extends Record<string, any> = TxBaseFixtures> {
   extend<NewF extends Record<string, any>>(defs: TxFixtureDefs<NewF>): TestFactory<F & NewF>;
 }
 
-// ── Globals injected by the test runner ───────────────────────────────────────
-
-declare const page: Page;
-declare const browser: Browser;
-declare const node: NodeContext;
-declare const request: APIRequestContext;
-
-declare function expect(actual: Page): PageAssertions;
-declare function expect(actual: Locator): LocatorAssertions;
-declare function expect(actual: any): ValueAssertions;
-
-declare const log: TxLogFn;
-declare const attach: TxAttachFn;
-declare const logCommand: TxLogCommandFn;
-
 interface TxDescribeOptions {
   /** Tags inherited by every test in this describe block, e.g. `['@smoke']` */
   tag?: string[];
 }
-declare function describe(name: string, fn: () => void): void;
-declare function describe(name: string, options: TxDescribeOptions, fn: () => void): void;
-declare const test: TestFactory<TxBaseFixtures>;
-declare function beforeAll(fn: () => void | Promise<void>): void;
-declare function afterAll(fn: () => void | Promise<void>): void;
-declare function beforeEach(fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
-declare function beforeEach(fn: () => void | Promise<void>): void;
-declare function afterEach(fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
-declare function afterEach(fn: () => void | Promise<void>): void;
 
 // ── 'tx' module — available via require('tx') or import from 'tx' ─────────────
 
@@ -651,4 +627,14 @@ declare module 'tx' {
   export function expect(actual: Page): PageAssertions;
   export function expect(actual: Locator): LocatorAssertions;
   export function expect(actual: any): ValueAssertions;
+
+  export function describe(name: string, fn: () => void): void;
+  export function describe(name: string, options: TxDescribeOptions, fn: () => void): void;
+
+  export function beforeAll(fn: () => void | Promise<void>): void;
+  export function afterAll(fn: () => void | Promise<void>): void;
+  export function beforeEach(fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
+  export function beforeEach(fn: () => void | Promise<void>): void;
+  export function afterEach(fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
+  export function afterEach(fn: () => void | Promise<void>): void;
 }

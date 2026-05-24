@@ -1,10 +1,12 @@
+import { test, describe, type Page } from 'tx';
+
 type Credentials = { username: string; password: string };
 type ServerData = { data: number };
 
 const myTest = test.extend<{
   credentials: Credentials;
   serverData: ServerData;
-  loggedInPage: typeof page;
+  loggedInPage: Page;
 }>({
   credentials: async ({}, use) => {
     await use({ username: 'standard_user', password: 'secret_sauce' });
@@ -27,29 +29,29 @@ const myTest = test.extend<{
 });
 
 describe('Fixtures', () => {
-  myTest('credentials fixture provides login data', async ({ credentials }) => {
+  myTest('credentials fixture provides login data', async ({ credentials, expect }) => {
     expect(credentials.username).toBe('standard_user');
     expect(credentials.password).toBe('secret_sauce');
   });
 
-  myTest('serverData fixture reads file via browser.task', async ({ serverData }) => {
+  myTest('serverData fixture reads file via browser.task', async ({ serverData, expect }) => {
     expect(serverData).toEqual({ data: 42 });
     expect(serverData.data).toBeGreaterThan(0);
   });
 
-  myTest('loggedInPage fixture lands on inventory', async ({ loggedInPage }) => {
+  myTest('loggedInPage fixture lands on inventory', async ({ loggedInPage, expect }) => {
     expect(loggedInPage.url()).toContain('inventory');
     await expect(loggedInPage.getByTestId('title')).toHaveText('Products');
   });
 
-  myTest('loggedInPage fixture shows correct item count', async ({ loggedInPage }) => {
+  myTest('loggedInPage fixture shows correct item count', async ({ loggedInPage, expect }) => {
     await expect(loggedInPage.locator('[data-test="inventory-item"]')).toHaveCount(6);
   });
 
 });
 
 describe('API', () => {
-  test('request fixture fetches JSON from an API', async ({ request }) => {
+  test('request fixture fetches JSON from an API', async ({ request, expect }) => {
     const resp = await request.fetch('https://httpbin.org/get');
     expect(resp.status()).toBe(200);
     expect(resp.ok()).toBe(true);
@@ -57,7 +59,7 @@ describe('API', () => {
     expect(body.url).toContain('httpbin.org');
   });
 
-  test('request fixture posts JSON body', async ({ request }) => {
+  test('request fixture posts JSON body', async ({ request, expect }) => {
     const resp = await request.fetch('https://httpbin.org/post', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

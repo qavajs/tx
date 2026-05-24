@@ -1,3 +1,5 @@
+import { test, describe, beforeEach } from 'tx';
+
 describe('apptesting forms', { tag: ['@smoke'] }, () => {
     beforeEach(async ({ page }) => {
         await page.goto('https://apptesting.pl/pages/forms.html');
@@ -154,19 +156,19 @@ describe('apptesting windows', () => {
         const popupElement = page.locator('h1');
         await expect(popupElement).toBeVisible();
         await expect(popupElement).toHaveText('Popup Window');
-        const popupButton = await page.locator('button');
+        const popupButton = page.locator('button');
         await popupButton.click();
         await browser.pages()[0].bringToFront();
         expect(page.locator('#new-tab-link')).toBeVisible();
     });
 
-    test('iframe', async ({ browser, page, expect }) => {
+    test('iframe', async ({ page }) => {
         const iframe = page.frameLocator('[title="Test Iframe"]');
         await iframe.locator('#iframe-btn').click();
         await iframe.locator('#iframe-input').fill('iframe input');
     });
 
-    test('nested iframe', async ({ browser, page, expect }) => {
+    test('nested iframe', async ({ page }) => {
         const outerIframe = page.frameLocator('[title="Nested Iframe"]');
         const iframe = outerIframe.frameLocator('#inner-iframe');
         await iframe.locator('#iframe-btn').click();

@@ -1,3 +1,4 @@
+import { test, describe, beforeAll } from 'tx';
 import { theAnswer } from './testData.js';
 
 describe('Utilities', () => {
@@ -5,28 +6,28 @@ describe('Utilities', () => {
     console.log('Before all tests');
   });
 
-  test('should return the correct answer to the Ultimate Question of Life, The Universe, and Everything', () => {
+  test('should return the correct answer to the Ultimate Question of Life, The Universe, and Everything', ({ expect }) => {
     expect(theAnswer).toBe(42);
   });
 
-  test('adds numbers correctly', () => {
+  test('adds numbers correctly', ({ expect }) => {
     expect(1 + 1).toBe(2);
     expect(10 - 3).toBe(7);
   });
 
-  test('handles string operations', () => {
+  test('handles string operations', ({ expect }) => {
     const greeting = 'Hello, World!';
     expect(greeting).toContain('World');
     expect(greeting.length).toBeGreaterThan(5);
   });
 
-  test('works with arrays', () => {
+  test('works with arrays', ({ expect }) => {
     const items = ['apple', 'banana', 'cherry'];
     expect(items).toContain('banana');
     expect(items.length).toBe(3);
   });
 
-  test('task', async () => {
+  test('task', async ({ browser, expect }) => {
     const file = await browser.task<string>('readFile', { path: './test/serverFile.json' });
     expect(JSON.parse(file)).toEqual({ data: 42 });
   });

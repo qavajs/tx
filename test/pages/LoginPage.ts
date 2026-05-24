@@ -1,3 +1,5 @@
+import { expect } from 'tx';
+
 export class LoginPage {
   readonly page: Page;
   readonly usernameInput: Locator;

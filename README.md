@@ -2,7 +2,7 @@
 
 A Playwright-style E2E test runner that proxies websites through [Hammerhead](https://github.com/DevExpress/testcafe-hammerhead) and runs tests directly in a browser iframe — no separate browser driver required.
 
-Tests use the same `page`, `expect`, `browser`, and fixture API shape as Playwright, so the authoring experience is familiar. The built-in control panel gives you a live view of the running browser, a network inspector, a console panel, and a CSS selector playground alongside your spec list.
+Tests use the same `page`, `expect`, `browser`, and fixture API shape as Playwright, so the authoring experience is familiar. Fixtures are injected via destructuring — no implicit globals. The built-in control panel gives you a live view of the running browser, a network inspector, a console panel, and a CSS selector playground alongside your spec list.
 
 ## Installation
 
@@ -111,11 +111,13 @@ All fields are optional. CLI flags override the config file.
 
 ## Writing Tests
 
-Tests look and feel like Playwright. Globals `page`, `browser`, `node`, `expect`, and `request` are injected automatically.
+Tests look and feel like Playwright. Import `test` and `describe` from `'tx'`. Fixtures (`page`, `browser`, `node`, `expect`, `request`, `log`, `attach`, `logCommand`) are injected via destructuring — not globals.
 
 ```ts
+import { test, describe } from 'tx';
+
 describe('Login', () => {
-  test('navigates to inventory after valid credentials', async () => {
+  test('navigates to inventory after valid credentials', async ({ page, expect }) => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
     await page.getByTestId('password').fill('secret_sauce');
@@ -125,7 +127,7 @@ describe('Login', () => {
   });
 
   // Tags are displayed as chips in the control panel and matched by --grep
-  test('smoke check', { tag: ['@smoke'] }, async () => {
+  test('smoke check', { tag: ['@smoke'] }, async ({ page, expect }) => {
     await page.goto('https://www.saucedemo.com');
     await expect(page.getByTestId('login-button')).toBeVisible();
   });
@@ -134,28 +136,39 @@ describe('Login', () => {
 
 ### Page object pattern
 
+Page objects receive `page` from the test and can import `expect` from `'tx'` for assertions:
+
 ```ts
 // pages/LoginPage.ts
+import { expect } from 'tx';
+
 export class LoginPage {
   constructor(private page: Page) {}
 
   goto()  { return this.page.goto('https://www.saucedemo.com'); }
   login(user: string, pass: string) { /* ... */ }
+  async expectLoaded() { await expect(this.page.getByTestId('title')).toBeVisible(); }
 }
 
 // specs/login.spec.ts
+import { test, describe } from 'tx';
 import { LoginPage } from '../pages/LoginPage';
 
-it('logs in', async () => {
-  const lp = new LoginPage(page);
-  await lp.goto();
-  await lp.login('standard_user', 'secret_sauce');
+describe('Login', () => {
+  test('logs in', async ({ page }) => {
+    const lp = new LoginPage(page);
+    await lp.goto();
+    await lp.login('standard_user', 'secret_sauce');
+    await lp.expectLoaded();
+  });
 });
 ```
 
 ### Fixtures
 
 ```ts
+import { test } from 'tx';
+
 const myTest = test.extend<{ apiToken: string }>({
   apiToken: async ({}, use) => {
     await use(process.env.TOKEN ?? 'dev-token');
@@ -170,13 +183,15 @@ myTest('uses fixture', async ({ page, apiToken }) => {
 ### Hooks
 
 ```ts
+import { test, describe, beforeAll, beforeEach, afterEach, afterAll } from 'tx';
+
 describe('suite', () => {
   beforeAll(async () => { /* runs once before all tests in this describe */ });
   afterAll(async  () => { /* runs once after  all tests in this describe */ });
-  beforeEach(async () => { /* runs before each test */ });
+  beforeEach(async ({ page }) => { await page.goto('https://example.com'); });
   afterEach(async  () => { /* runs after  each test */ });
 
-  it('test', async () => { /* ... */ });
+  test('test', async ({ page, expect }) => { /* ... */ });
 });
 ```
 
@@ -317,19 +332,21 @@ await page.screenshot({ path: 'my-screenshot' }); // saved as test-artifacts/my-
 
 ### `log` and `attach`
 
-`log` writes a message to the command panel during a test. `attach` adds named data (text, JSON, images, …) to the test result so reporters can display or store it.
+`log` writes a message to the command panel during a test. `attach` adds named data (text, JSON, images, …) to the test result so reporters can display or store it. Both are available as fixtures:
 
 ```ts
-log('starting checkout flow');
+test('checkout', async ({ page, log, attach }) => {
+  log('starting checkout flow');
 
-// Attach plain text
-attach('cart state', JSON.stringify(cart), 'application/json');
+  // Attach plain text
+  attach('cart state', JSON.stringify(cart), 'application/json');
 
-// Attach a screenshot inline
-attach('page state', await page.screenshot(), 'image/png');
+  // Attach a screenshot inline
+  attach('page state', await page.screenshot(), 'image/png');
+});
 ```
 
-Both are available as globals and as fixtures:
+Also usable inside `test.extend` fixture definitions:
 
 ```ts
 const myTest = test.extend<{ cartData: object }>({
@@ -466,7 +483,7 @@ tx-flow/
 1. **Startup** — `tx` starts a Hammerhead proxy (two ports) and a lightweight HTTP server.
 2. **Proxy session** — Hammerhead creates a session URL for the target site, rewriting all network requests and responses so they flow through the proxy from inside the iframe.
 3. **Control panel** — the HTTP server serves an HTML page that embeds the iframe and the spec runner UI.
-4. **Test execution** — when a test runs, the spec file is fetched from the server, transpiled on the fly, and `new Function(code)()` is called in the browser context. `page`, `browser`, `expect`, and fixture globals are injected at this point.
+4. **Test execution** — when a test runs, the spec file is fetched from the server, transpiled on the fly, and `new Function(code)()` is called in the browser context. A `require('tx')` shim is installed so that `import { test, describe, … } from 'tx'` works, and fixtures (`page`, `browser`, `expect`, etc.) are resolved and injected via the DI system before each test body runs.
 5. **Reporting** — results are posted back to the server, which forwards them to any configured reporter.
 
 ## License
