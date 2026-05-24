@@ -470,7 +470,12 @@ export function attach(label: string, body: string, contentType = 'text/plain'):
   createLogEntry(label, 'info', 'attach');
 }
 
-export function logCommand(message: string, cmd: string) {
+export interface TxCommandHandle {
+  success(duration?: number): void;
+  fail(error?: string): void;
+}
+
+export function logCommand(message: string, cmd: string): TxCommandHandle {
   const entry = createLogEntry(message, 'pending', cmd);
   const startedAt = Date.now();
   return {

@@ -1,4 +1,4 @@
-import { log, attach, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort, startCollectingLogs, stopCollectingLogs, wsConnect, wsSend, wsRequest, wsOnMessage, type LogEntry } from './browser';
+import { log, attach, logCommand, setLogContainer, API_BASE, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, fromProxiedUrl, iframeDoc, setTestAbort, startCollectingLogs, stopCollectingLogs, wsConnect, wsSend, wsRequest, wsOnMessage, type LogEntry } from './browser';
 
 declare global {
   interface Window {
@@ -27,7 +27,8 @@ window.testApi = testApi;
 (window as any).request = request;
 (window as any).log = log;
 (window as any).attach = attach;
-(window as any).tx = { page, expect: expect, browser, node, request, log, attach, ...testApi };
+(window as any).logCommand = logCommand;
+(window as any).tx = { page, expect: expect, browser, node, request, log, attach, logCommand, ...testApi };
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 
@@ -305,8 +306,9 @@ function buildTestQueue(
     node:    async (_f, use) => { await use((window as any).node); },
     expect:  async (_f, use) => { await use((window as any).expect); },
     request: async (_f, use) => { await use((window as any).request); },
-    log:     async (_f, use) => { await use((window as any).log); },
-    attach:  async (_f, use) => { await use((window as any).attach); },
+    log:        async (_f, use) => { await use((window as any).log); },
+    attach:     async (_f, use) => { await use((window as any).attach); },
+    logCommand: async (_f, use) => { await use((window as any).logCommand); },
   };
 
   const makeTestFn = (fixtureDefs: FixtureDefs): any => {

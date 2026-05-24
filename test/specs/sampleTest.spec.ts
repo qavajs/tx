@@ -38,4 +38,10 @@ describe('Utilities', () => {
   test('attach', async ({ attach }) => {
     attach('payload', '{ "answer": 42 }', 'application/json');
   });
+
+  test('log command', async ({ logCommand }) => {
+    const command = logCommand('this is async command', 'step');
+    await new Promise(r => setTimeout(() => r(0), 2000));
+    command.success();
+  });
 });

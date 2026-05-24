@@ -529,6 +529,17 @@ type TxLogFn = (message: string, type?: 'info' | 'success' | 'error', cmd?: stri
 /** Attaches named data to the test result for reporters to display. */
 type TxAttachFn = (label: string, body: string, contentType?: string) => void;
 
+/** Handle returned by {@link TxLogCommandFn}. Call `success` or `fail` to resolve the pending log entry. */
+interface TxCommandHandle {
+  /** Mark the command as passed. Supply `duration` in ms to override the elapsed time. */
+  success(duration?: number): void;
+  /** Mark the command as failed, appending `error` to the log entry message. */
+  fail(error?: string): void;
+}
+
+/** Opens a pending command log entry and returns a handle to resolve it as pass or fail. */
+type TxLogCommandFn = (message: string, cmd: string) => TxCommandHandle;
+
 interface TxBaseFixtures {
   page: Page;
   browser: Browser;
@@ -541,6 +552,7 @@ interface TxBaseFixtures {
   };
   log: TxLogFn;
   attach: TxAttachFn;
+  logCommand: TxLogCommandFn;
 }
 
 interface TxTestOptions {
@@ -567,6 +579,7 @@ declare function expect(actual: any): ValueAssertions;
 
 declare const log: TxLogFn;
 declare const attach: TxAttachFn;
+declare const logCommand: TxLogCommandFn;
 
 interface TxDescribeOptions {
   /** Tags inherited by every test in this describe block, e.g. `['@smoke']` */
@@ -590,7 +603,7 @@ declare module 'tx' {
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { NodeContext };
-  export { TxLogFn, TxAttachFn };
+  export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions };
   export { Keyboard };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
@@ -604,6 +617,7 @@ declare module 'tx' {
   export const test: TestFactory<TxBaseFixtures>;
   export const log: TxLogFn;
   export const attach: TxAttachFn;
+  export const logCommand: TxLogCommandFn;
 
   export function expect(actual: Page): PageAssertions;
   export function expect(actual: Locator): LocatorAssertions;
