@@ -352,7 +352,7 @@ export function createTab(url?: string) {
   // Resolve src BEFORE switching active tab so toProxiedUrl can use the origin tab's URL as base
   iframeEl.src = url ? toProxiedUrl(url) : API_BASE + '/mock';
   setActiveTab(tabId);
-  log('new tab', 'info');
+  log('new tab');
   _onTabsChanged?.();
   return _makePopupPage(tabId);
 }
@@ -460,10 +460,11 @@ const _snapshotCommands = new Set([
   'keyboard.press', 'keyboard.type', 'keyboard.insertText',
 ]);
 
-export function log(message: string, type: 'info' | 'success' | 'error' = 'info', cmd?: string, duration?: number) {
+function _log(message: string, opts?: { type?: 'info' | 'success' | 'error'; cmd?: string; duration?: number }) {
+  const type = opts?.type ?? 'info';
   const state = type === 'success' ? 'pass' : type === 'error' ? 'fail' : 'info';
-  createLogEntry(message, state, cmd, duration);
-  if (_collectedLogs) _collectedLogs.push({ cmd: cmd ?? state, message, state, duration });
+  createLogEntry(message, state, opts?.cmd, opts?.duration);
+  if (_collectedLogs) _collectedLogs.push({ cmd: opts?.cmd ?? state, message, state, duration: opts?.duration });
 }
 
 export function attach(label: string, body: string, contentType = 'text/plain'): void {
@@ -490,7 +491,7 @@ export interface TxCommandHandle {
  * @param message Human-readable description shown in the log panel.
  * @param cmd     Short label displayed as the command type (e.g. `'click'`, `'request'`).
  */
-export function logCommand(message: string, cmd: string): TxCommandHandle {
+function logCommand(message: string, cmd: string): TxCommandHandle {
   const entry = createLogEntry(message, 'pending', cmd);
   const startedAt = Date.now();
   return {
@@ -531,6 +532,8 @@ export function logCommand(message: string, cmd: string): TxCommandHandle {
     },
   };
 }
+
+export const log = Object.assign(_log, { open: logCommand });
 
 // ── Command helper ────────────────────────────────────────────────────────────
 
@@ -2179,7 +2182,7 @@ export const page = {
       times: options?.times ?? 0,
       invocations: 0,
     });
-    log('handler registered', 'info', 'addLocatorHandler');
+    log('handler registered', { cmd: 'addLocatorHandler' });
   },
 
   removeLocatorHandler(locator: Locator): void {
@@ -2229,7 +2232,7 @@ export const page = {
     handler: (route: Route, request: any) => void | Promise<void>
   ): Promise<void> {
     _routeHandlers.push({ pattern, handler });
-    log(typeof pattern === 'string' ? pattern : String(pattern), 'info', 'route');
+    log(typeof pattern === 'string' ? pattern : String(pattern), { cmd: 'route' });
   },
 
   async unroute(
@@ -2246,7 +2249,7 @@ export const page = {
   async close(): Promise<void> {
     _emitPage('close');
     closeTab(_activeTabId ?? '');
-    log('page closed', 'info');
+    log('page closed');
   },
 
   async screenshot(opts?: { path?: string }): Promise<string> {
@@ -2493,21 +2496,21 @@ export function expect(target: any) {
 export const testApi = {
   visit(url: string) {
     const tab = _activeTab();
-    if (!tab) { log('iframe not ready', 'error'); return; }
+    if (!tab) { log('iframe not ready', { type: 'error' }); return; }
     tab.iframe.src = toProxiedUrl(url);
     const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
     if (navInput) navInput.value = url;
-    log(url, 'info', 'visit');
+    log(url, { cmd: 'visit' });
   },
   reload() {
     const win = iframeWin();
-    if (!win) { log('iframe not ready', 'error'); return; }
-    log('', 'info', 'reload');
+    if (!win) { log('iframe not ready', { type: 'error' }); return; }
+    log('', { cmd: 'reload' });
     win.location.reload();
   },
   get(selector: string): Element[] {
     try { return iframeDoc() ? Array.from(iframeDoc()!.querySelectorAll(selector)) : []; }
-    catch { log('cross-origin blocked', 'error'); return []; }
+    catch { log('cross-origin blocked', { type: 'error' }); return []; }
   },
   find(selector: string): Element | null {
     try { return iframeDoc()?.querySelector(selector) ?? null; } catch { return null; }
@@ -2517,13 +2520,13 @@ export const testApi = {
   },
   click(selector: string) {
     const el = testApi.find(selector) as HTMLElement | null;
-    if (!el) { log(selector, 'error', 'click'); return; }
+    if (!el) { log(selector, { type: 'error', cmd: 'click' }); return; }
     el.click();
-    log(selector, 'success', 'click');
+    log(selector, { type: 'success', cmd: 'click' });
   },
   type(selector: string, value: string) {
     const el = testApi.find(selector) as HTMLInputElement | null;
-    if (!el) { log(selector, 'error', 'type'); return; }
+    if (!el) { log(selector, { type: 'error', cmd: 'type' }); return; }
     const win = iframeWin() as any;
     const proto = el.tagName === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
     const setter = (Object.getOwnPropertyDescriptor(proto, 'value') ?? {}).set;
@@ -2531,7 +2534,7 @@ export const testApi = {
     if (setter) setter.call(el, value); else el.value = value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    log(`${selector}  "${value}"`, 'success', 'type');
+    log(`${selector}  "${value}"`, { type: 'success', cmd: 'type' });
   },
   isVisible(selector: string): boolean {
     const el = testApi.find(selector);

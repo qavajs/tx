@@ -63,7 +63,6 @@ export function buildTestQueue(
     request:    async (_f, use) => { await use((window as any).tx.request); },
     log:        async (_f, use) => { await use((window as any).tx.log); },
     attach:     async (_f, use) => { await use((window as any).tx.attach); },
-    logCommand: async (_f, use) => { await use((window as any).tx.logCommand); },
   };
 
   const makeTestFn = (fixtureDefs: FixtureDefs): any => {

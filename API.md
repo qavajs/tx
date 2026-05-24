@@ -237,9 +237,9 @@ describe('Suite name', () => {
 | `node`       | Node.js context bridge (see [node](#node))               |
 | `request`    | HTTP request context (see [request](#request))           |
 | `expect`     | Assertion function (see [expect](#expect))               |
-| `log`        | `(message, type?) => void` — write to the panel console  |
+| `log`        | `(message, opts?) => void` — write to the panel console; `opts`: `{ type?: 'info'\|'success'\|'error', cmd?: string, duration?: number }` |
+| `log.open`   | `(message, cmd) => TxCommandHandle` — open a pending entry; resolve with `.success()` / `.fail()` |
 | `attach`     | `(label, body, contentType?) => void` — attach data to the test result |
-| `logCommand` | Open a pending command entry; returns a handle with `.success()` / `.fail()` |
 
 ### test() signature
 

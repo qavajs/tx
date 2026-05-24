@@ -1,4 +1,4 @@
-import { log, attach, logCommand, setLogContainer, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, setTestAbort, startCollectingLogs, stopCollectingLogs, wsConnect, wsSend, wsRequest, wsOnMessage } from '../browser/browser';
+import { log, attach, setLogContainer, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, setTestAbort, startCollectingLogs, stopCollectingLogs, wsConnect, wsSend, wsRequest, wsOnMessage } from '../browser/browser';
 import { escHtml, escAttr, jsq } from '../utils/htmlUtils';
 import { type TestResult, runWithFixtures, buildTestQueue } from '../runner/executor';
 import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
@@ -20,7 +20,7 @@ declare global {
 
 window.testApi = testApi;
 
-(window as any).tx = { page, expect, browser, node, request, log, attach, logCommand, ...testApi };
+(window as any).tx = { page, expect, browser, node, request, log, attach, ...testApi };
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 
@@ -393,7 +393,7 @@ async function _singleRun(
     const { passed, failed, duration } = countResults(await runFn());
     notifyRunEnd(passed, failed, passed + failed, duration);
   } catch (e: any) {
-    log('Error: ' + (e as Error).message, 'error');
+    log('Error: ' + (e as Error).message, { type: 'error' });
     onError(e);
     notifyRunEnd(0, 1, 1, 0);
   }
@@ -426,7 +426,7 @@ async function fetchAndRun(
 
 window.runTestByFilename = async (filename: string) => {
   await _singleRun(
-    () => { openAndResetCard(filename); log(`run  ${filename}`, 'info'); },
+    () => { openAndResetCard(filename); log(`run  ${filename}`); },
     () => [{ file: filename, tests: null }],
     () => fetchAndRun(filename, { filename }),
     () => updateCardStatus(filename, 0, 1),
@@ -494,12 +494,12 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
     if (_stopRequested) break;
     const filename = card.dataset.filename!;
     openAndResetCard(filename);
-    log(`run  ${filename}`, 'info');
+    log(`run  ${filename}`);
     try {
       const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filename }));
       totalPass += passed; totalFail += failed; totalDuration += duration;
     } catch (e: any) {
-      log('Error: ' + e.message, 'error');
+      log('Error: ' + e.message, { type: 'error' });
       updateCardStatus(filename, 0, 1);
       totalFail++;
     }
@@ -717,12 +717,12 @@ window.runFiltered = async () => {
   for (const [filename, testNames] of byFile) {
     if (_stopRequested) break;
     openAndResetCard(filename);
-    log(`run filtered  ${filename}`, 'info');
+    log(`run filtered  ${filename}`);
     try {
       const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filename, filterTests: testNames }));
       totalPass += passed; totalFail += failed; totalDuration += duration;
     } catch (e: any) {
-      log('Error: ' + e.message, 'error');
+      log('Error: ' + e.message, { type: 'error' });
       updateCardStatus(filename, 0, 1);
       totalFail++;
     }
@@ -812,7 +812,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (msg.version !== _watchVersion) {
       _watchVersion = msg.version;
       await loadTestList();
-      log('test files updated', 'info');
+      log('test files updated');
     }
     if (!_isTestRunning) setTopbarStatus('connected', 'Connected');
   });
