@@ -8,6 +8,7 @@ import { TxWrapper } from './wrapper';
 import { TxConfig, ReporterEntry } from './types';
 import type { Reporter } from './reporter';
 import { register as registerTsLoader } from './tsLoader';
+import { matchGlob } from './glob';
 
 registerTsLoader();
 
@@ -72,51 +73,32 @@ function parseArgs(argv: string[]): { cliConfig: TxConfig; configFile?: string; 
   return { cliConfig, configFile, profile };
 }
 
+type FieldSetter = (config: TxConfig, value: string) => void;
+
+const CONFIG_FIELDS: Record<string, FieldSetter> = {
+  proxyHost:         (c, v) => { c.proxyHost = v; },
+  port1:             (c, v) => { c.port1 = parseInt(v, 10); },
+  port2:             (c, v) => { c.port2 = parseInt(v, 10); },
+  controlPanelPort:  (c, v) => { c.controlPanelPort = parseInt(v, 10); },
+  port:              (c, v) => { c.controlPanelPort = parseInt(v, 10); },
+  headless:          (c, v) => { c.headless = v === 'true' || v === '1'; },
+  test:              (c, v) => { c.testMode = v === 'true' || v === '1'; },
+  grep:              (c, v) => { c.grep = v; },
+  retries:           (c, v) => { c.retries = parseInt(v, 10); },
+  browser:           (c, v) => { c.browser = v; },
+  shard:             (c, v) => {
+    const m = v.match(/^(\d+)\/(\d+)$/);
+    if (!m) { console.warn(`Invalid --shard value: "${v}". Expected format: <current>/<total> (e.g. 1/3)`); return; }
+    const current = parseInt(m[1], 10);
+    const total = parseInt(m[2], 10);
+    if (total < 1 || current < 1 || current > total) { console.warn(`Invalid --shard value: "${v}". current must be ≥1 and ≤ total.`); return; }
+    c.shard = { current, total };
+  },
+};
+
 function setConfigField(config: TxConfig, key: string, value: string): void {
-  switch (key) {
-    case 'proxyHost':
-      config.proxyHost = value;
-      break;
-    case 'port1':
-      config.port1 = parseInt(value, 10);
-      break;
-    case 'port2':
-      config.port2 = parseInt(value, 10);
-      break;
-    case 'controlPanelPort':
-    case 'port':
-      config.controlPanelPort = parseInt(value, 10);
-      break;
-    case 'headless':
-      config.headless = value === 'true' || value === '1';
-      break;
-    case 'test':
-      config.testMode = value === 'true' || value === '1';
-      break;
-    case 'grep':
-      config.grep = value;
-      break;
-    case 'retries':
-      config.retries = parseInt(value, 10);
-      break;
-    case 'browser':
-      config.browser = value;
-      break;
-    case 'shard': {
-      const m = value.match(/^(\d+)\/(\d+)$/);
-      if (!m) { console.warn(`Invalid --shard value: "${value}". Expected format: <current>/<total> (e.g. 1/3)`); break; }
-      const current = parseInt(m[1], 10);
-      const total = parseInt(m[2], 10);
-      if (total < 1 || current < 1 || current > total) {
-        console.warn(`Invalid --shard value: "${value}". current must be ≥1 and ≤ total.`);
-        break;
-      }
-      config.shard = { current, total };
-      break;
-    }
-    default:
-      console.warn(`Unknown CLI option: --${key}`);
-  }
+  const setter = CONFIG_FIELDS[key];
+  if (setter) { setter(config, value); } else { console.warn(`Unknown CLI option: --${key}`); }
 }
 
 // ── Config file loading ────────────────────────────────────────────────────────
@@ -152,19 +134,6 @@ function parseRegexpString(s: string): RegExp | null {
 // ── Test file glob resolution ──────────────────────────────────────────────────
 
 const SCAN_SKIP = new Set(['node_modules', 'dist', '.git', '.cache', 'coverage']);
-
-function matchGlob(pattern: string, str: string): boolean {
-  const re = new RegExp(
-    '^' + pattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex special chars
-      .replace(/\?/g, '[^/]') // ? before ** expansion to avoid clobbering quantifiers
-      .replace(/\*\*\//g, '(?:.+/)?')
-      .replace(/\*\*/g, '.*')
-      .replace(/\*/g, '[^/]*')
-        + '$'
-  );
-  return re.test(str);
-}
 
 function scanDir(dir: string): string[] {
   const results: string[] = [];

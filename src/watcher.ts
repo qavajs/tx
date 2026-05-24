@@ -6,19 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { TestServer } from './server';
 import { bundleTestFile, parseTestFile } from './testRunner';
-
-function matchGlob(pattern: string, str: string): boolean {
-  const re = new RegExp(
-    '^' + pattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\?/g, '[^/]')
-      .replace(/\*\*\//g, '(?:.+/)?')
-      .replace(/\*\*/g, '.*')
-      .replace(/\*/g, '[^/]*')
-    + '$'
-  );
-  return re.test(str);
-}
+import { matchGlob } from './glob';
 
 async function processFile(filePath: string, server: TestServer, baseDir?: string): Promise<void> {
   const basename = path.basename(filePath);

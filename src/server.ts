@@ -6,7 +6,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { generateControlPanelHTML } from './controlPanel';
+import { generateControlPanelHTML, type ControlPanelConfig } from './controlPanel';
 import { parseTestFile, bundleTestFile, ParsedFile } from './testRunner';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from './reporter';
 import type { TaskHandler } from './types';
@@ -87,7 +87,7 @@ export class TestServer {
     return new Promise((resolve) => {
       this.server = http.createServer((req, res) => {
         if (req.url === '/' && req.method === 'GET') {
-          const html = generateControlPanelHTML(proxyUrl, this.port, viewport, this.testMode, this.snapshot, this.grep, this.actionTimeout, this.expectTimeout, this.testTimeout, this.retries);
+          const html = generateControlPanelHTML({ proxyUrl, controlPanelPort: this.port, viewport, testMode: this.testMode, snapshot: this.snapshot, grep: this.grep, actionTimeout: this.actionTimeout, expectTimeout: this.expectTimeout, testTimeout: this.testTimeout, retries: this.retries } satisfies ControlPanelConfig);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(html);
           return;

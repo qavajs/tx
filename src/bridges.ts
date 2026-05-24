@@ -1,0 +1,399 @@
+// ── Per-protocol bridge installers ────────────────────────────────────────────
+
+import { _emitPage, fromProxiedUrl, iframeWin, iframeDoc, createTab } from './browser';
+import { Route, routeHandlers, dispatchRoute, matchesRoutePattern } from './route';
+
+let _frameObserver: MutationObserver | null = null;
+
+function _normalizeHeaders(h: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!h) return out;
+  try {
+    if (typeof h.forEach === 'function') {
+      h.forEach((val: string, key: string) => { out[key.toLowerCase()] = val; });
+    } else if (Array.isArray(h)) {
+      for (const [k, v] of h as [string, string][]) out[(k as string).toLowerCase()] = String(v);
+    } else if (typeof h === 'object') {
+      for (const [k, v] of Object.entries(h)) out[k.toLowerCase()] = String(v);
+    }
+  } catch { /* ignore */ }
+  return out;
+}
+
+function _isTextContent(contentType: string): boolean {
+  const ct = contentType.toLowerCase();
+  return ct.includes('text') || ct.includes('json') || ct.includes('xml') || ct.includes('javascript') || ct.includes('form');
+}
+
+function _bridgeConsole(win: any): void {
+  const consoleMethods = ['log', 'debug', 'info', 'warn', 'error', 'trace'] as const;
+  for (const m of consoleMethods) {
+    const orig = (win.console[m] as (...a: any[]) => void).bind(win.console);
+    win.console[m] = (...args: any[]) => {
+      orig(...args);
+      const text = args.map((a: any) => {
+        try { return typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a); }
+        catch { return String(a); }
+      }).join(' ');
+      _emitPage('console', {
+        type:     () => (m === 'warn' ? 'warning' : m),
+        text:     () => text,
+        args:     () => args,
+        location: () => ({ url: win.location?.href ?? '', lineNumber: 0, columnNumber: 0 }),
+      });
+    };
+  }
+}
+
+function _bridgeErrors(win: any): void {
+  win.addEventListener('error', (e: ErrorEvent) => {
+    _emitPage('pageerror', e.error instanceof Error ? e.error : new Error(e.message || String(e)));
+  });
+  win.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+    const err = e.reason instanceof Error ? e.reason : new Error(String(e.reason ?? 'Unhandled promise rejection'));
+    _emitPage('pageerror', err);
+  });
+}
+
+function _bridgeDialogs(win: any): void {
+  const makeDialog = (type: string, message: string, defaultValue = '') => {
+    let accepted = type === 'alert';
+    let promptText = defaultValue;
+    return {
+      type:         () => type,
+      message:      () => message,
+      defaultValue: () => defaultValue,
+      accept:  (text?: string) => { accepted = true; if (text !== undefined) promptText = text; },
+      dismiss: () => { accepted = false; },
+      _result: () => {
+        if (type === 'confirm') return accepted;
+        if (type === 'prompt') return accepted ? promptText : null;
+        return undefined;
+      },
+    };
+  };
+  win.alert = (message = '') => { _emitPage('dialog', makeDialog('alert', String(message))); };
+  win.confirm = (message = '') => { const d = makeDialog('confirm', String(message)); _emitPage('dialog', d); return Boolean(d._result()); };
+  win.prompt = (message = '', def = '') => { const d = makeDialog('prompt', String(message), String(def)); _emitPage('dialog', d); return d._result() as string | null; };
+}
+
+function _bridgePopup(win: any): void {
+  win.open = (url?: string, _target?: string, _features?: string) => {
+    const popupPage = createTab(url);
+    _emitPage('popup', popupPage);
+    // createTab calls setActiveTab(newTabId), so iframeWin() returns the new tab's window
+    return iframeWin() ?? null;
+  };
+}
+
+function _bridgeFetch(win: any): void {
+  if (typeof win.fetch !== 'function') return;
+  const origFetch = (win.fetch as typeof fetch).bind(win);
+  win.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    let url = typeof input === 'string' ? input
+      : (input && typeof (input as any).href === 'string') ? (input as any).href
+        : (input && typeof (input as any).url === 'string') ? (input as any).url
+          : '';
+    if (url && !/^https?:\/\//.test(url)) {
+      try {
+        const base = fromProxiedUrl(win.location?.href ?? '');
+        if (base) url = new URL(url, base).href;
+      } catch { /* keep original */ }
+    }
+    const isReqObj = input != null && typeof input === 'object' && typeof (input as any).href !== 'string';
+    const method = ((init?.method) ?? (isReqObj ? (input as any).method : undefined) ?? 'GET').toUpperCase();
+    const reqHeaders = _normalizeHeaders(init?.headers ?? (isReqObj ? (input as any).headers : undefined));
+    const req = { url: () => url, method: () => method, headers: () => reqHeaders, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
+
+    const decision = await dispatchRoute(url, req);
+    _emitPage('request', req);
+
+    if (decision?.action === 'abort') {
+      const err = new TypeError(decision.errorCode ?? 'Failed to fetch');
+      _emitPage('requestfailed', { ...req, failure: () => ({ errorText: String(err) }) });
+      throw err;
+    }
+
+    if (decision?.action === 'fulfill' && decision.response) {
+      const resp = decision.response;
+      const respHeaders = _normalizeHeaders(resp.headers);
+      let respBody: string | null = null;
+      if (_isTextContent(resp.headers.get('content-type') ?? '')) {
+        try { const text = await resp.clone().text(); respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text; } catch { /* ignore */ }
+      }
+      _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, headers: () => respHeaders, body: () => respBody, request: () => req });
+      _emitPage('requestfinished', req);
+      return resp;
+    }
+
+    let fetchInput: RequestInfo | URL = input;
+    let fetchInit: RequestInit | undefined = init;
+    if (decision?.action === 'continue' && decision.continueOpts) {
+      const o = decision.continueOpts;
+      if (o.url) fetchInput = o.url;
+      fetchInit = { ...init, ...(o.method ? { method: o.method } : {}), ...(o.headers ? { headers: o.headers } : {}), ...(o.postData !== undefined ? { body: o.postData } : {}) };
+    }
+
+    try {
+      const resp = await origFetch(fetchInput, fetchInit);
+      const respHeaders = _normalizeHeaders(resp.headers);
+      let respBody: string | null = null;
+      if (_isTextContent(resp.headers.get('content-type') ?? '')) {
+        try {
+          const text = await resp.clone().text();
+          respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text;
+        } catch { /* ignore */ }
+      }
+      _emitPage('response', { url: () => url, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, headers: () => respHeaders, body: () => respBody, request: () => req });
+      _emitPage('requestfinished', req);
+      return resp;
+    } catch (err) {
+      _emitPage('requestfailed', { ...req, failure: () => ({ errorText: String(err) }) });
+      throw err;
+    }
+  };
+}
+
+function _bridgeXHR(win: any): void {
+  if (!win.XMLHttpRequest) return;
+  const proto = win.XMLHttpRequest.prototype as any;
+  const origOpen = proto.open as Function;
+  const origSend = proto.send as Function;
+  proto.open = function (method: string, url: string | URL, ...rest: any[]) {
+    (this as any)._xMethod = method;
+    let xUrl = String(url);
+    if (xUrl && !/^https?:\/\//.test(xUrl)) {
+      try {
+        const base = fromProxiedUrl(win.location?.href ?? '');
+        if (base) xUrl = new URL(xUrl, base).href;
+      } catch { /* keep original */ }
+    }
+    (this as any)._xUrl = xUrl;
+    return origOpen.call(this, method, url, ...rest);
+  };
+  proto.send = function (body?: XMLHttpRequestBodyInit | Document | null) {
+    const self = this as any;
+    const xUrl = self._xUrl ?? '';
+    const xMethod = (self._xMethod ?? 'GET').toUpperCase();
+    const req = { url: () => xUrl, method: () => xMethod, headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
+
+    const routeEntry = routeHandlers.slice().reverse().find(h => matchesRoutePattern(h.pattern, xUrl));
+    if (routeEntry) {
+      (async () => {
+        const route = new Route(req);
+        try { await Promise.resolve(routeEntry.handler(route, req)); } catch { /* ignore */ }
+        if (!route._isDecided()) await route.continue();
+        const decision = await route._getDecision();
+
+        _emitPage('request', req);
+
+        if (decision.action === 'abort') {
+          _emitPage('requestfailed', { ...req, failure: () => ({ errorText: decision.errorCode ?? 'aborted' }) });
+          try { const ev = new Event('abort'); self.dispatchEvent(ev); if (self.onabort) self.onabort(ev); } catch { /* ignore */ }
+          return;
+        }
+
+        if (decision.action === 'fulfill' && decision.response) {
+          const resp = decision.response;
+          const hdrs: Record<string, string> = {};
+          resp.headers.forEach((v: string, k: string) => { hdrs[k] = v; });
+          let responseText = '';
+          try { responseText = await resp.clone().text(); } catch { /* ignore */ }
+
+          Object.defineProperty(self, 'status', { value: resp.status, configurable: true, writable: true });
+          Object.defineProperty(self, 'statusText', { value: resp.statusText, configurable: true, writable: true });
+          Object.defineProperty(self, 'responseText', { value: responseText, configurable: true, writable: true });
+          Object.defineProperty(self, 'response', { value: responseText, configurable: true, writable: true });
+          Object.defineProperty(self, 'readyState', { value: 4, configurable: true, writable: true });
+          self.getAllResponseHeaders = () => Object.entries(hdrs).map(([k, v]) => `${k}: ${v}`).join('\r\n');
+          self.getResponseHeader = (name: string) => hdrs[name.toLowerCase()] ?? null;
+
+          _emitPage('response', { url: () => xUrl, status: () => resp.status, statusText: () => resp.statusText, ok: () => resp.ok, headers: () => hdrs, body: () => responseText, request: () => req });
+          _emitPage('requestfinished', req);
+          try {
+            const rsc = new Event('readystatechange'); self.dispatchEvent(rsc); if (self.onreadystatechange) self.onreadystatechange(rsc);
+            const load = new ProgressEvent('load'); self.dispatchEvent(load); if (self.onload) self.onload(load);
+            const loadend = new ProgressEvent('loadend'); self.dispatchEvent(loadend); if (self.onloadend) self.onloadend(loadend);
+          } catch { /* ignore */ }
+          return;
+        }
+
+        // 'continue' — call origSend
+        self.addEventListener('load', () => {
+          const respHeaders: Record<string, string> = {};
+          try {
+            const raw = (self.getAllResponseHeaders() as string) ?? '';
+            for (const line of raw.trim().split('\r\n')) {
+              const idx = line.indexOf(':');
+              if (idx > 0) respHeaders[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+            }
+          } catch { /* ignore */ }
+          let respBody: string | null = null;
+          if (_isTextContent(self.getResponseHeader?.('content-type') ?? '')) {
+            try { const text = String(self.responseText ?? ''); respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text; } catch { /* ignore */ }
+          }
+          _emitPage('response', { url: () => xUrl, status: () => self.status, statusText: () => self.statusText, ok: () => self.status >= 200 && self.status < 300, headers: () => respHeaders, body: () => respBody, request: () => req });
+          _emitPage('requestfinished', req);
+        });
+        self.addEventListener('error', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Network error' }) }));
+        self.addEventListener('abort', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Request aborted' }) }));
+        origSend.call(self, body);
+      })();
+      return;
+    }
+
+    // No route match — original behavior
+    _emitPage('request', req);
+    this.addEventListener('load', () => {
+      const respHeaders: Record<string, string> = {};
+      try {
+        const raw = (self.getAllResponseHeaders() as string) ?? '';
+        for (const line of raw.trim().split('\r\n')) {
+          const idx = line.indexOf(':');
+          if (idx > 0) respHeaders[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+        }
+      } catch { /* ignore */ }
+      let respBody: string | null = null;
+      if (_isTextContent(self.getResponseHeader?.('content-type') ?? '')) {
+        try {
+          const text = String(self.responseText ?? '');
+          respBody = text.length > 65536 ? text.slice(0, 65536) + '\n[truncated]' : text;
+        } catch { /* ignore */ }
+      }
+      _emitPage('response', { url: () => self._xUrl, status: () => self.status, statusText: () => self.statusText, ok: () => self.status >= 200 && self.status < 300, headers: () => respHeaders, body: () => respBody, request: () => req });
+      _emitPage('requestfinished', req);
+    });
+    this.addEventListener('error', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Network error' }) }));
+    this.addEventListener('abort', () => _emitPage('requestfailed', { ...req, failure: () => ({ errorText: 'Request aborted' }) }));
+    return origSend.call(this, body);
+  };
+}
+
+function _bridgeWebSocket(win: any): void {
+  if (!win.WebSocket) return;
+  const OrigWS: typeof WebSocket = win.WebSocket;
+  win.WebSocket = class extends OrigWS {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url as string, protocols);
+      _emitPage('websocket', this);
+    }
+  };
+  win.WebSocket.CONNECTING = OrigWS.CONNECTING;
+  win.WebSocket.OPEN = OrigWS.OPEN;
+  win.WebSocket.CLOSING = OrigWS.CLOSING;
+  win.WebSocket.CLOSED = OrigWS.CLOSED;
+}
+
+function _bridgeWorker(win: any): void {
+  if (!win.Worker) return;
+  const OrigWorker: typeof Worker = win.Worker;
+  win.Worker = class extends OrigWorker {
+    constructor(scriptURL: string | URL, options?: WorkerOptions) {
+      super(scriptURL, options);
+      _emitPage('worker', this);
+    }
+  };
+}
+
+function _bridgeDocumentEvents(doc: Document): void {
+  // target="_blank" links → new tab
+  doc.addEventListener('click', (e: MouseEvent) => {
+    const a = (e.target as Element)?.closest?.('a') as HTMLAnchorElement | null;
+    if (!a || a.target !== '_blank' || a.hasAttribute('download')) return;
+    e.preventDefault();
+    if (a.href) { const popupPage = createTab(a.href); _emitPage('popup', popupPage); }
+  }, true);
+
+  // downloads
+  doc.addEventListener('click', (e: MouseEvent) => {
+    const a = (e.target as Element)?.closest?.('a') as HTMLAnchorElement | null;
+    if (!a) return;
+    const href = a.href || '';
+    if (a.hasAttribute('download') || /\.(pdf|zip|tar\.gz|gz|docx?|xlsx?|pptx?|csv|txt|png|jpe?g|gif|mp[34]|exe|dmg|pkg|deb|rpm)(\?|#|$)/i.test(href)) {
+      _emitPage('download', {
+        url:               () => href,
+        suggestedFilename: () => a.download || href.split('/').pop()?.split('?')[0] || 'download',
+      });
+    }
+  }, true);
+
+  // file chooser
+  doc.addEventListener('click', (e: MouseEvent) => {
+    const el = e.target as HTMLElement;
+    const input = (el.tagName === 'INPUT' && (el as HTMLInputElement).type === 'file')
+      ? el as HTMLInputElement
+      : (el.closest?.('input[type="file"]') as HTMLInputElement | null);
+    if (!input) return;
+    _emitPage('filechooser', {
+      element:    () => input,
+      isMultiple: () => input.multiple,
+      accept:     () => input.accept,
+      setFiles:   (files: File[]) => {
+        try {
+          const dt = new DataTransfer();
+          for (const f of files) dt.items.add(f);
+          Object.defineProperty(input, 'files', { value: dt.files, configurable: true, writable: false });
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch { /* ignore */ }
+      },
+    });
+  }, true);
+
+  // sub-frame lifecycle (frameattached / framedetached / framenavigated)
+  _frameObserver?.disconnect();
+  _frameObserver = new MutationObserver((mutations: MutationRecord[]) => {
+    for (const m of mutations) {
+      for (const node of Array.from(m.addedNodes)) {
+        const el = node as HTMLElement;
+        if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+          const frame = { url: () => (el as HTMLIFrameElement).src, name: () => (el as any).name ?? '', isMainFrame: () => false };
+          _emitPage('frameattached', frame);
+          el.addEventListener('load', () => {
+            try {
+              const url = (el as HTMLIFrameElement).contentWindow?.location.href ?? (el as HTMLIFrameElement).src;
+              _emitPage('framenavigated', { url: () => url, name: () => (el as any).name ?? '', isMainFrame: () => false });
+            } catch { /* cross-origin sub-frame */ }
+          });
+        }
+      }
+      for (const node of Array.from(m.removedNodes)) {
+        const el = node as HTMLElement;
+        if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+          _emitPage('framedetached', { url: () => (el as HTMLIFrameElement).src, name: () => (el as any).name ?? '', isMainFrame: () => false });
+        }
+      }
+    }
+  });
+  const docRoot = doc.documentElement ?? doc.body;
+  if (docRoot) _frameObserver.observe(docRoot, { subtree: true, childList: true });
+}
+
+// ── Event bridge orchestrators ────────────────────────────────────────────────
+
+export function installWindowBridges(win: any): void {
+  if (!win.__cyEventBridges) {
+    win.__cyEventBridges = true;
+    _bridgeConsole(win);
+    _bridgeErrors(win);
+    _bridgeDialogs(win);
+    _bridgePopup(win);
+    _bridgeFetch(win);
+    _bridgeXHR(win);
+    _bridgeWebSocket(win);
+    _bridgeWorker(win);
+  }
+}
+
+export function installEventBridges(): void {
+  const win = iframeWin() as any;
+  const doc = iframeDoc();
+  if (!win || !doc) return;
+
+  installWindowBridges(win);
+
+  // Document-level bridges: guarded per document to prevent duplicate listeners
+  if (!(doc as any).__cyDocBridges) {
+    (doc as any).__cyDocBridges = true;
+    _bridgeDocumentEvents(doc);
+  }
+}
