@@ -2462,6 +2462,76 @@ export const page = {
     return _withCommand(`${ms}ms`, 'wait', () => _awaitOrAbort(ms));
   },
 
+  waitForRequest(
+    urlOrPredicate: string | RegExp | ((req: any) => boolean | Promise<boolean>),
+    options?: { timeout?: number }
+  ): Promise<any> {
+    const timeout = options?.timeout ?? window.__CONFIG__?.actionTimeout ?? 30000;
+    const predicate: (req: any) => boolean | Promise<boolean> = typeof urlOrPredicate === 'function'
+      ? urlOrPredicate
+      : (req: any) => _matchesRoutePattern(urlOrPredicate, req.url());
+    const desc = typeof urlOrPredicate === 'string' ? urlOrPredicate : String(urlOrPredicate);
+    return _withCommand(desc.slice(0, 50), 'waitForRequest', () => new Promise<any>((resolve, reject) => {
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        settled = true;
+        clearTimeout(timeoutId);
+        _removePageListener('request', handler);
+        const idx = _abortListeners.indexOf(abortFn);
+        if (idx >= 0) _abortListeners.splice(idx, 1);
+      };
+      const handler = async (req: any) => {
+        if (settled) return;
+        try { if (!await Promise.resolve(predicate(req))) return; } catch { return; }
+        cleanup();
+        resolve(req);
+      };
+      const abortFn = (err: Error) => { if (!settled) { cleanup(); reject(err); } };
+      if (_testAbortError) { reject(_testAbortError); return; }
+      _abortListeners.push(abortFn);
+      _addPageListener('request', handler);
+      timeoutId = setTimeout(() => {
+        if (!settled) { cleanup(); reject(new Error(`waitForRequest(${desc}) timed out after ${timeout}ms`)); }
+      }, timeout);
+    }));
+  },
+
+  waitForResponse(
+    urlOrPredicate: string | RegExp | ((resp: any) => boolean | Promise<boolean>),
+    options?: { timeout?: number }
+  ): Promise<any> {
+    const timeout = options?.timeout ?? window.__CONFIG__?.actionTimeout ?? 30000;
+    const predicate: (resp: any) => boolean | Promise<boolean> = typeof urlOrPredicate === 'function'
+      ? urlOrPredicate
+      : (resp: any) => _matchesRoutePattern(urlOrPredicate, resp.url());
+    const desc = typeof urlOrPredicate === 'string' ? urlOrPredicate : String(urlOrPredicate);
+    return _withCommand(desc.slice(0, 50), 'waitForResponse', () => new Promise<any>((resolve, reject) => {
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        settled = true;
+        clearTimeout(timeoutId);
+        _removePageListener('response', handler);
+        const idx = _abortListeners.indexOf(abortFn);
+        if (idx >= 0) _abortListeners.splice(idx, 1);
+      };
+      const handler = async (resp: any) => {
+        if (settled) return;
+        try { if (!await Promise.resolve(predicate(resp))) return; } catch { return; }
+        cleanup();
+        resolve(resp);
+      };
+      const abortFn = (err: Error) => { if (!settled) { cleanup(); reject(err); } };
+      if (_testAbortError) { reject(_testAbortError); return; }
+      _abortListeners.push(abortFn);
+      _addPageListener('response', handler);
+      timeoutId = setTimeout(() => {
+        if (!settled) { cleanup(); reject(new Error(`waitForResponse(${desc}) timed out after ${timeout}ms`)); }
+      }, timeout);
+    }));
+  },
+
   // ── Keyboard ───────────────────────────────────────────────────────────────
 
   keyboard: new Keyboard(),
@@ -3012,6 +3082,8 @@ function _makePopupPage(tabId: string) {
     waitForURL: (url: string | RegExp, opts?: any) => { _activate(); return page.waitForURL(url, opts); },
     waitForSelector: (sel: string, opts?: any) => { _activate(); return page.waitForSelector(sel, opts); },
     waitForTimeout: (ms: number) => page.waitForTimeout(ms),
+    waitForRequest: (urlOrPredicate: any, opts?: any) => { _activate(); return page.waitForRequest(urlOrPredicate, opts); },
+    waitForResponse: (urlOrPredicate: any, opts?: any) => { _activate(); return page.waitForResponse(urlOrPredicate, opts); },
     async bringToFront() { _activate(); },
     on:   (event: string, fn: any) => { _addPageListener(event, fn); return popupPage; },
     off:  (event: string, fn: any) => { _removePageListener(event, fn); return popupPage; },

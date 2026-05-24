@@ -289,6 +289,50 @@ await page.waitForTimeout(ms: number): Promise<void>
 ```
 Wait unconditionally for `ms` milliseconds.
 
+```js
+await page.waitForRequest(
+  urlOrPredicate: string | RegExp | ((req: Request) => boolean | Promise<boolean>),
+  options?: { timeout?: number }
+): Promise<Request>
+```
+Wait for a network request that matches `urlOrPredicate` and return it. The returned object exposes `.url()`, `.method()`, `.headers()`, `.postData()`, `.resourceType()`, and `.isNavigationRequest()`. Default timeout: 30 000 ms.
+
+- **string** — treated as a glob pattern (same matching as `page.route()`; `*` matches within a path segment, `**` matches across segments).
+- **RegExp** — tested against the full request URL.
+- **function** — called with the request object; must return `true` (or a promise resolving to `true`) to match.
+
+```js
+// Wait for any POST to /api/submit
+const req = await page.waitForRequest('**/api/submit');
+console.log(req.method()); // 'POST'
+
+// Wait using a predicate
+const req = await page.waitForRequest(
+  r => r.url().includes('/search') && r.method() === 'GET'
+);
+```
+
+```js
+await page.waitForResponse(
+  urlOrPredicate: string | RegExp | ((resp: Response) => boolean | Promise<boolean>),
+  options?: { timeout?: number }
+): Promise<Response>
+```
+Wait for a network response that matches `urlOrPredicate` and return it. The returned object exposes `.url()`, `.status()`, `.statusText()`, `.ok()`, `.headers()`, `.body()`, and `.request()`. Accepts the same `urlOrPredicate` forms as `waitForRequest`. Default timeout: 30 000 ms.
+
+```js
+// Trigger an action and wait for the resulting API response
+const [, resp] = await Promise.all([
+  page.locator('button[type="submit"]').click(),
+  page.waitForResponse('**/api/login'),
+]);
+console.log(resp.status()); // 200
+
+// Wait for a successful response
+const resp = await page.waitForResponse(r => r.url().includes('/data') && r.status() === 200);
+const body = resp.body(); // raw text captured by the bridge
+```
+
 ### Locator factories
 
 ```js
