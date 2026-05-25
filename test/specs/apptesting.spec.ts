@@ -1,4 +1,5 @@
 import { test, describe, beforeEach } from 'tx';
+import { fail } from './testData';
 
 describe('apptesting forms', { tag: ['@smoke'] }, () => {
     beforeEach(async ({ page }) => {
@@ -8,7 +9,9 @@ describe('apptesting forms', { tag: ['@smoke'] }, () => {
     test('simple input', { tag: ['@tag1'] }, async ({ page, expect }) => {
         const input = page.locator('#text-input');
         await input.fill('test input');
-        await expect(input).toHaveValue('test input');
+        fail()
+        expect(1).toEqual(2)
+        await expect(input).toHaveValue('test input1');
     });
 
     test('slider input', { tag: ['@tag2'] }, async ({ page, expect }) => {

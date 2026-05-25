@@ -117,7 +117,8 @@ export function buildTestQueue(
   };
 
   try {
-    new Function(code)();
+    // @ts-ignore
+    new window['%hammerhead%'].nativeMethods.Function(code)();
   } catch (e: any) {
     return { parseError: e.stack || e.message };
   }
