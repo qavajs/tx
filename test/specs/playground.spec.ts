@@ -1,8 +1,8 @@
-import { test, describe, beforeEach } from 'tx';
+import { test } from '@qavajs/tx';
 
-describe('Playground', () => {
+test.describe('Playground', () => {
 
-    beforeEach(async ({ page, browser }) => {
+    test.beforeEach(async ({ page, browser }) => {
         const dirname = await browser.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
     });
@@ -178,8 +178,8 @@ describe('Playground', () => {
     });
 });
 
-describe('nth/first/last verify', () => {
-    beforeEach(async ({ page, browser }) => {
+test.describe('nth/first/last verify', () => {
+    test.beforeEach(async ({ page, browser }) => {
         const dirname = await browser.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
     });

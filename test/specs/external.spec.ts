@@ -1,7 +1,7 @@
 import * as chai from 'chai';
-import { test, describe } from 'tx';
+import { test } from '@qavajs/tx';
 
-describe('External package import', () => {
+test.describe('External package import', () => {
   test('package import', () => {
     chai.expect(1).equal(1);
   });

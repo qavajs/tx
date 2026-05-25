@@ -1,4 +1,4 @@
-import { expect } from 'tx';
+import { expect } from '@qavajs/tx';
 
 export class LoginPage {
   readonly page: Page;

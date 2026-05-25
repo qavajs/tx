@@ -1,4 +1,4 @@
-import { test, describe, type Page } from 'tx';
+import { test, type Page } from '@qavajs/tx';
 
 type Credentials = { username: string; password: string };
 type ServerData = { data: number };
@@ -28,7 +28,7 @@ const myTest = test.extend<{
   },
 });
 
-describe('Fixtures', () => {
+myTest.describe('Fixtures', () => {
   myTest('credentials fixture provides login data', async ({ credentials, expect }) => {
     expect(credentials.username).toBe('standard_user');
     expect(credentials.password).toBe('secret_sauce');
@@ -50,7 +50,7 @@ describe('Fixtures', () => {
 
 });
 
-describe('API', () => {
+test.describe('API', () => {
   test('request fixture fetches JSON from an API', async ({ request, expect }) => {
     const resp = await request.fetch('https://httpbin.org/get');
     expect(resp.status()).toBe(200);

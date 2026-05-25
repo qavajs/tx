@@ -1,6 +1,6 @@
-import { test, describe } from 'tx';
+import { test } from '@qavajs/tx';
 
-describe('route', () => {
+test.describe('route', () => {
     test('fulfill', async ({ page, expect }) => {
         await page.goto('https://practice.expandtesting.com/webpark');
         const calculateCost = page.locator('#calculateCost');

@@ -1,6 +1,6 @@
-import { test, describe } from 'tx';
+import { test } from '@qavajs/tx';
 
-describe('testauto.app', () => {
+test.describe('testauto.app', () => {
 
     test('create task', async ({ page, expect }) => {
         await page.goto('https://testauto.app/task-manager');

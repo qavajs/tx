@@ -1,6 +1,6 @@
-import { test, describe } from 'tx';
+import { test } from '@qavajs/tx';
 
-describe('testauto.app', () => {
+test.describe('testauto.app', () => {
 
     test('new window', async ({ page, expect }) => {
         await page.goto('https://qa-practice.razvanvancea.ro/window.html');

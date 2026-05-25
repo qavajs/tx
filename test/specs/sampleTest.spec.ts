@@ -1,8 +1,8 @@
-import { test, describe, beforeAll } from 'tx';
+import { test } from '@qavajs/tx';
 import { theAnswer } from './testData.js';
 
-describe('Utilities', () => {
-  beforeAll(() => {
+test.describe('Utilities', () => {
+  test.beforeAll(() => {
     console.log('Before all tests');
   });
 

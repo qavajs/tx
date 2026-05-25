@@ -313,8 +313,7 @@ async function executeTests(
         await page.resetSession();
         for (const hook of t.setupBeforeAlls) await Promise.resolve(hook());
         for (const hook of t.beforeEachs) {
-          if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
-          else await Promise.resolve(hook.fn());
+          await runWithFixtures(hook.fixtureDefs, hook.fn);
         }
         const runTestFn = t.expectsFixtures
           ? () => runWithFixtures(t.fixtureDefs, t.fn)
@@ -335,8 +334,7 @@ async function executeTests(
           _stopPromise,
         ]);
         for (const hook of t.afterEachs) {
-          if (hook.expectsFixtures) await runWithFixtures(t.fixtureDefs, hook.fn);
-          else await Promise.resolve(hook.fn());
+          await runWithFixtures(hook.fixtureDefs, hook.fn);
         }
         for (const hook of t.teardownAfterAlls) await Promise.resolve(hook());
         duration = Date.now() - t0;

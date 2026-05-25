@@ -1,8 +1,8 @@
-import { test, describe, beforeEach } from 'tx';
+import { test } from '@qavajs/tx';
 import { fail } from './testData';
 
-describe('apptesting forms', { tag: ['@smoke'] }, () => {
-    beforeEach(async ({ page }) => {
+test.describe('apptesting forms', { tag: ['@smoke'] }, () => {
+    test.beforeEach(async ({ page }) => {
         await page.goto('https://apptesting.pl/pages/forms.html');
     });
 
@@ -30,8 +30,8 @@ describe('apptesting forms', { tag: ['@smoke'] }, () => {
     });
 });
 
-describe('apptesting interactions', () => {
-    beforeEach(async ({ page }) => {
+test.describe('apptesting interactions', () => {
+    test.beforeEach(async ({ page }) => {
         await page.goto('https://apptesting.pl/pages/interactions.html');
     });
 
@@ -78,8 +78,8 @@ describe('apptesting interactions', () => {
     });
 });
 
-describe('apptesting widgets', () => {
-    beforeEach(async ({ page }) => {
+test.describe('apptesting widgets', () => {
+    test.beforeEach(async ({ page }) => {
         await page.goto('https://apptesting.pl/pages/widgets.html');
     });
 
@@ -138,8 +138,8 @@ describe('apptesting widgets', () => {
     });
 });
 
-describe('apptesting windows', () => {
-    beforeEach(async ({ page }) => {
+test.describe('apptesting windows', () => {
+    test.beforeEach(async ({ page }) => {
         await page.goto('https://apptesting.pl/pages/windows.html');
     });
 
@@ -177,8 +177,8 @@ describe('apptesting windows', () => {
     });
 });
 
-describe('apptesting alerts', { tag: ['@alerts'] }, () => {
-    beforeEach(async ({ page }) => {
+test.describe('apptesting alerts', { tag: ['@alerts'] }, () => {
+    test.beforeEach(async ({ page }) => {
         await page.goto('https://apptesting.pl/pages/alerts.html');
     });
 

@@ -9,7 +9,7 @@ export interface TestResult {
 }
 
 type HookFn = (...args: any[]) => any;
-type HookEntry = { fn: HookFn; expectsFixtures: boolean };
+type HookEntry = { fn: HookFn; fixtureDefs: FixtureDefs };
 type HookScope = { beforeEachs: HookEntry[]; afterEachs: HookEntry[]; beforeAlls: HookFn[]; afterAlls: HookFn[] };
 
 export type QueueItem = {
@@ -50,11 +50,6 @@ export function buildTestQueue(
   const tagStack: string[][] = [];
   const hookStack: HookScope[] = [];
 
-  const beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push({ fn, expectsFixtures: fn.length > 0 }); };
-  const afterEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push({ fn, expectsFixtures: fn.length > 0 }); };
-  const beforeAll = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
-  const afterAll = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
-
   const defaultFixtureDefs: FixtureDefs = {
     page:       async (_f, use) => { await use((window as any).tx.page); },
     browser:    async (_f, use) => { await use((window as any).tx.browser); },
@@ -64,31 +59,6 @@ export function buildTestQueue(
     log:        async (_f, use) => { await use((window as any).tx.log); },
     attach:     async (_f, use) => { await use((window as any).tx.attach); },
   };
-
-  const makeTestFn = (fixtureDefs: FixtureDefs): any => {
-    const testFn = (name: string, optsOrFn: HookFn | { tag?: string[] }, maybeFn?: HookFn) => {
-      const opts = typeof optsOrFn === 'object' ? optsOrFn : undefined;
-      const fn = (typeof optsOrFn === 'function' ? optsOrFn : maybeFn) as HookFn;
-      const inheritedTags = ([] as string[]).concat(...tagStack);
-      const tags = [...inheritedTags, ...(opts?.tag ?? [])];
-      const suite = stack.join(' > ');
-      const fullName = stack.length ? suite + ' > ' + name : name;
-      if (filterSuite && suite !== filterSuite) return;
-      if (filterTest && fullName !== filterTest) return;
-      if (filterTests && !filterTests.includes(fullName)) return;
-      queue.push({
-        name: fullName, fn, tags,
-        fixtureDefs, expectsFixtures: fn.length > 0,
-        beforeEachs: hookStack.flatMap(s => s.beforeEachs),
-        afterEachs:  hookStack.flatMap(s => s.afterEachs).reverse(),
-        setupBeforeAlls: [], teardownAfterAlls: [],
-      });
-    };
-    testFn.extend = (newDefs: FixtureDefs) => makeTestFn({ ...fixtureDefs, ...newDefs });
-    return testFn;
-  };
-
-  const baseTest = makeTestFn(defaultFixtureDefs);
 
   const describe = (name: string, optsOrFn: (() => void) | { tag?: string[] }, maybeFn?: () => void) => {
     const fn = typeof optsOrFn === 'function' ? optsOrFn : maybeFn!;
@@ -110,9 +80,39 @@ export function buildTestQueue(
     }
   };
 
-  const _txModule = { ...(window as any).tx, test: baseTest, describe, beforeEach, afterEach, beforeAll, afterAll };
+  const makeTestFn = (fixtureDefs: FixtureDefs): any => {
+    const testFn: any = (name: string, optsOrFn: HookFn | { tag?: string[] }, maybeFn?: HookFn) => {
+      const opts = typeof optsOrFn === 'object' ? optsOrFn : undefined;
+      const fn = (typeof optsOrFn === 'function' ? optsOrFn : maybeFn) as HookFn;
+      const inheritedTags = ([] as string[]).concat(...tagStack);
+      const tags = [...inheritedTags, ...(opts?.tag ?? [])];
+      const suite = stack.join(' > ');
+      const fullName = stack.length ? suite + ' > ' + name : name;
+      if (filterSuite && suite !== filterSuite) return;
+      if (filterTest && fullName !== filterTest) return;
+      if (filterTests && !filterTests.includes(fullName)) return;
+      queue.push({
+        name: fullName, fn, tags,
+        fixtureDefs, expectsFixtures: fn.length > 0,
+        beforeEachs: hookStack.flatMap(s => s.beforeEachs),
+        afterEachs:  hookStack.flatMap(s => s.afterEachs).reverse(),
+        setupBeforeAlls: [], teardownAfterAlls: [],
+      });
+    };
+    testFn.extend    = (newDefs: FixtureDefs) => makeTestFn({ ...fixtureDefs, ...newDefs });
+    testFn.describe  = describe;
+    testFn.beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push({ fn, fixtureDefs }); };
+    testFn.afterEach  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push({ fn, fixtureDefs }); };
+    testFn.beforeAll  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
+    testFn.afterAll   = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
+    return testFn;
+  };
+
+  const baseTest = makeTestFn(defaultFixtureDefs);
+
+  const _txModule = { ...(window as any).tx, test: baseTest, describe: baseTest.describe, beforeEach: baseTest.beforeEach, afterEach: baseTest.afterEach, beforeAll: baseTest.beforeAll, afterAll: baseTest.afterAll };
   (window as any).require = (id: string) => {
-    if (id === 'tx') return _txModule;
+    if (id === '@qavajs/tx') return _txModule;
     throw new Error(`Cannot require '${id}' in test context`);
   };
 

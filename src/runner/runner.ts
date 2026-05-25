@@ -22,17 +22,8 @@ export function parseTestCode(code: string): ParsedTest[] {
     const mergedTags = tags ? [...inheritedTags, ...tags] : (inheritedTags.length ? inheritedTags : undefined);
     tests.push({ suite: stack.join(' > '), name: String(name), tags: mergedTags });
   };
-  const makeParserTestFn = (push: (name: string, tags?: string[]) => void): any => {
-    const fn: any = (name: string, optsOrFn?: any, _maybeFn?: any) => {
-      const tags = (optsOrFn && typeof optsOrFn === 'object' && Array.isArray(optsOrFn.tag))
-        ? optsOrFn.tag as string[]
-        : undefined;
-      push(name, tags);
-    };
-    fn.extend = (_defs: any) => makeParserTestFn(push);
-    return fn;
-  };
-  const test = makeParserTestFn(pushTest);
+  const noop: any = () => noop;
+  const deepNoop: any = new Proxy(noop, { get: (_t, _k) => deepNoop });
   const describe = (name: string, optsOrFn: any, maybeFn?: () => void) => {
     const fn = typeof optsOrFn === 'function' ? optsOrFn : maybeFn!;
     const tags = (optsOrFn && typeof optsOrFn === 'object' && Array.isArray(optsOrFn.tag)) ? optsOrFn.tag as string[] : [];
@@ -42,12 +33,26 @@ export function parseTestCode(code: string): ParsedTest[] {
     tagStack.pop();
     stack.pop();
   };
-  const noop: any = () => noop;
-  const deepNoop: any = new Proxy(noop, { get: (_t, _k) => deepNoop });
+  const makeParserTestFn = (push: (name: string, tags?: string[]) => void): any => {
+    const fn: any = (name: string, optsOrFn?: any, _maybeFn?: any) => {
+      const tags = (optsOrFn && typeof optsOrFn === 'object' && Array.isArray(optsOrFn.tag))
+        ? optsOrFn.tag as string[]
+        : undefined;
+      push(name, tags);
+    };
+    fn.extend     = (_defs: any) => makeParserTestFn(push);
+    fn.describe   = describe;
+    fn.beforeEach = noop;
+    fn.afterEach  = noop;
+    fn.beforeAll  = noop;
+    fn.afterAll   = noop;
+    return fn;
+  };
+  const test = makeParserTestFn(pushTest);
   // Module stub returned by require(). __esModule must be falsy so esbuild's
   // __toESM helper sets a .default, otherwise `import foo from 'lib'` produces
   // import_lib.default === undefined and top-level destructuring throws.
-  // 'tx' exports expose the parser stubs so `import { test, describe } from 'tx'` is discovered.
+  // '@qavajs/tx' exports expose the parser stubs so `import { test, describe } from '@qavajs/tx'` is discovered.
   const txStub: any = new Proxy(
     Object.assign(() => deepNoop, { __esModule: false, default: deepNoop, test, describe, beforeEach: noop, afterEach: noop, beforeAll: noop, afterAll: noop }),
     { get: (t, k) => (k in t ? (t as any)[k] : deepNoop) },
@@ -62,7 +67,7 @@ export function parseTestCode(code: string): ParsedTest[] {
     expect: () => noop,
     tx: deepNoop,
     page: pageProxy,
-    require: (id: string) => id === 'tx' ? txStub : moduleStub,
+    require: (id: string) => id === '@qavajs/tx' ? txStub : moduleStub,
     exports: exportsObj,
     module: { exports: exportsObj },
     console: { log: noop, error: noop, warn: noop, info: noop, debug: noop },
@@ -85,7 +90,7 @@ export async function bundleTestFile(filePath: string): Promise<string> {
     format: 'iife',
     write: false,
     logLevel: 'silent',
-    external: ['tx'],
+    external: ['@qavajs/tx'],
     sourcemap: 'inline',
   });
   return result.outputFiles[0].text;

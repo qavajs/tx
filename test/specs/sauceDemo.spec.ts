@@ -1,7 +1,7 @@
-import { test, describe } from 'tx';
+import { test } from '@qavajs/tx';
 import { LoginPage } from '../pages/LoginPage';
 
-describe('Successful login', () => {
+test.describe('Successful login', () => {
   test('navigates to inventory after valid credentials', async ({ page }) => {
     const loginPage = new LoginPage(page);
     await loginPage.goto();
@@ -11,7 +11,7 @@ describe('Successful login', () => {
   });
 });
 
-describe('Failed login', () => {
+test.describe('Failed login', () => {
   test('shows error message for locked out user', async ({ page }) => {
     const loginPage = new LoginPage(page);
     await loginPage.goto();
@@ -29,7 +29,7 @@ describe('Failed login', () => {
   });
 });
 
-describe('Cookie-based login', () => {
+test.describe('Cookie-based login', () => {
   test('uses existing session cookie', async ({ page }) => {
     const loginPage = new LoginPage(page);
     await loginPage.loginWithCookie();
@@ -38,7 +38,7 @@ describe('Cookie-based login', () => {
   });
 });
 
-describe('Inventory page layout', () => {
+test.describe('Inventory page layout', () => {
   test('shows the Products heading', async ({ page, expect }) => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
@@ -53,7 +53,7 @@ describe('Inventory page layout', () => {
   });
 });
 
-describe('Adding items to cart', () => {
+test.describe('Adding items to cart', () => {
   test('add items to cart', async ({ page, expect }) => {
     await page.goto('https://www.saucedemo.com/');
     await page.evaluate(() => localStorage.clear());

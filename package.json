@@ -1,7 +1,7 @@
 {
-  "name": "tx-flow",
+  "name": "@qavajs/tx",
   "version": "0.0.1",
-  "description": "tx-flow — testing framework via Hammerhead proxy",
+  "description": "@qavajs/tx — testing framework via Hammerhead proxy",
   "license": "MIT",
   "author": "",
   "type": "commonjs",

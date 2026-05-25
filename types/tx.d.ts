@@ -5,7 +5,7 @@
  *   page, browser, expect, describe, it, test, beforeAll, afterAll, beforeEach, afterEach
  *
  * Module available via require / import:
- *   const { page, expect, Locator } = require('tx')
+ *   const { page, expect, Locator } = require('@qavajs/tx')
  */
 
 // ── Shared option types ───────────────────────────────────────────────────────
@@ -527,7 +527,7 @@ interface NodeContext {
 
 type TxUseCallback<T> = (value: T) => Promise<void>;
 type TxFixtureFn<T, F extends Record<string, any>> = (fixtures: F, use: TxUseCallback<T>) => Promise<void>;
-type TxFixtureDefs<F extends Record<string, any>> = { [K in keyof F]: TxFixtureFn<F[K], any> };
+type TxFixtureDefs<NewF extends Record<string, any>, AllF extends Record<string, any> = NewF> = { [K in keyof NewF]: TxFixtureFn<NewF[K], AllF> };
 
 /** Writes a message to the command log panel during a test. */
 interface TxLogFn {
@@ -601,7 +601,15 @@ interface TxTestOptions {
 interface TestFactory<F extends Record<string, any> = TxBaseFixtures> {
   (name: string, fn: (fixtures: F) => void | Promise<void>): void;
   (name: string, options: TxTestOptions, fn: (fixtures: F) => void | Promise<void>): void;
-  extend<NewF extends Record<string, any>>(defs: TxFixtureDefs<NewF>): TestFactory<F & NewF>;
+  extend<NewF extends Record<string, any>>(defs: TxFixtureDefs<NewF, F & NewF>): TestFactory<F & NewF>;
+  describe(name: string, fn: () => void): void;
+  describe(name: string, options: TxDescribeOptions, fn: () => void): void;
+  beforeEach(fn: (fixtures: F) => void | Promise<void>): void;
+  beforeEach(fn: () => void | Promise<void>): void;
+  afterEach(fn: (fixtures: F) => void | Promise<void>): void;
+  afterEach(fn: () => void | Promise<void>): void;
+  beforeAll(fn: () => void | Promise<void>): void;
+  afterAll(fn: () => void | Promise<void>): void;
 }
 
 interface TxDescribeOptions {
@@ -609,16 +617,16 @@ interface TxDescribeOptions {
   tag?: string[];
 }
 
-// ── 'tx' module — available via require('tx') or import from 'tx' ─────────────
+// ── '@qavajs/tx' module — available via require('@qavajs/tx') or import from '@qavajs/tx' ─────────────
 
-declare module 'tx' {
+declare module '@qavajs/tx' {
   export { Locator, FrameLocator, Page, PopupPage, Browser };
   export { LocatorAssertions, PageAssertions, ValueAssertions };
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { NodeContext };
   export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle };
-  export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions };
+  export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions, TxDescribeOptions };
   export { Keyboard };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
   export { APIResponse, APIRequestContext };
