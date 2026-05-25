@@ -18,6 +18,7 @@ module.exports = {
   ],
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
+    deleteFile: ({ path }) => require('fs').unlinkSync(path),
     dirname: () => __dirname,
   },
   profiles: {

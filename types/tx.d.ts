@@ -166,6 +166,10 @@ interface TxDialog {
 interface TxDownload {
   url(): string;
   suggestedFilename(): string;
+  /** Returns a Web ReadableStream of the downloaded file's bytes. */
+  createReadStream(): Promise<ReadableStream<Uint8Array>>;
+  /** Saves the downloaded file to `path` on the server's filesystem. */
+  saveAs(path: string): Promise<void>;
 }
 
 interface TxFileChooser {
@@ -396,7 +400,6 @@ interface Page {
   // ── Events ────────────────────────────────────────────────────────────────────
   on(event: 'close',            fn: () => any): Page;
   on(event: 'console',          fn: (msg: TxConsoleMessage) => any): Page;
-  on(event: 'crash',            fn: () => any): Page;
   on(event: 'dialog',           fn: (dialog: TxDialog) => any): Page;
   on(event: 'domcontentloaded', fn: () => any): Page;
   on(event: 'download',         fn: (dl: TxDownload) => any): Page;
@@ -411,8 +414,6 @@ interface Page {
   on(event: 'requestfailed',    fn: (req: TxFailedRequest) => any): Page;
   on(event: 'requestfinished',  fn: (req: TxRequest) => any): Page;
   on(event: 'response',         fn: (res: TxResponse) => any): Page;
-  on(event: 'websocket',        fn: (ws: WebSocket) => any): Page;
-  on(event: 'worker',           fn: (w: Worker) => any): Page;
   on(event: string,             fn: (...args: any[]) => any): Page;
 
   off(event: string, fn: (...args: any[]) => any): Page;
@@ -431,10 +432,15 @@ interface Page {
   waitForEvent(event: 'framedetached', options?: { predicate?: (f: TxFrame)           => boolean | Promise<boolean>; timeout?: number } | ((f: TxFrame)           => boolean | Promise<boolean>)): Promise<TxFrame>;
   waitForEvent(event: 'framenavigated', options?: { predicate?: (f: TxFrame)          => boolean | Promise<boolean>; timeout?: number } | ((f: TxFrame)           => boolean | Promise<boolean>)): Promise<TxFrame>;
   waitForEvent(event: 'pageerror',     options?: { predicate?: (e: Error)             => boolean | Promise<boolean>; timeout?: number } | ((e: Error)             => boolean | Promise<boolean>)): Promise<Error>;
-  waitForEvent(event: 'websocket',     options?: { predicate?: (ws: WebSocket)        => boolean | Promise<boolean>; timeout?: number } | ((ws: WebSocket)        => boolean | Promise<boolean>)): Promise<WebSocket>;
-  waitForEvent(event: 'worker',        options?: { predicate?: (w: Worker)            => boolean | Promise<boolean>; timeout?: number } | ((w: Worker)            => boolean | Promise<boolean>)): Promise<Worker>;
-  waitForEvent(event: 'load' | 'domcontentloaded' | 'close' | 'crash', options?: { timeout?: number }): Promise<void>;
+  waitForEvent(event: 'load' | 'domcontentloaded' | 'close', options?: { timeout?: number }): Promise<void>;
   waitForEvent<T = any>(event: string, options?: { predicate?: (arg: T) => boolean | Promise<boolean>; timeout?: number } | ((arg: T) => boolean | Promise<boolean>)): Promise<T>;
+
+  /**
+   * Clear route handlers, locator handlers, and page listeners; then navigate
+   * to a blank page. Also clears localStorage, sessionStorage, and cookies
+   * for the current origin (best-effort — cross-origin values are skipped).
+   */
+  resetSession(): Promise<void>;
 
   bringToFront(): Promise<void>;
   close(): Promise<void>;

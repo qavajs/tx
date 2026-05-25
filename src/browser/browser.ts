@@ -2605,7 +2605,7 @@ function _makePopupPage(tabId: string) {
     off:  (event: string, fn: any) => { _removePageListener(event, fn); return popupPage; },
     once: (event: string, fn: any) => { page.once(event, fn); return popupPage; },
     waitForEvent: (event: string, optionsOrPredicate?: any) => page.waitForEvent(event, optionsOrPredicate),
-    async close() { closeTab(tabId); },
+    async close() { _emitPage('close'); closeTab(tabId); },
   };
   return popupPage;
 }
