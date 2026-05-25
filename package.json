@@ -45,6 +45,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
