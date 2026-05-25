@@ -1,8 +1,19 @@
 # @qavajs/tx
 
-A test runner that proxies websites through [Hammerhead](https://github.com/DevExpress/testcafe-hammerhead) and runs tests directly in a browser iframe — no separate browser driver required.
+`@qavajs/tx` is a browser test runner that routes websites through the [Hammerhead](https://github.com/DevExpress/testcafe-hammerhead) proxy and executes tests directly inside the browser — no WebDriver, no browser-specific binary, no separate driver process. Open any browser, point it at the control panel, and your tests run there.
 
-Tests use the same `page`, `expect`, `browser`, and fixture API shape as Playwright, so the authoring experience is familiar. Fixtures are injected via destructuring — no implicit globals. The built-in control panel gives you a live view of the running browser, a network inspector, a console panel, and a CSS selector playground alongside your spec list.
+The API is modelled after Playwright (`page`, `expect`, `browser`, `request`, fixtures via destructuring), so the authoring experience is familiar and existing page objects work without changes.
+
+## Features
+
+- **No browser driver** — runs in any browser (including Safari) via a proxy iframe; no WebDriver or CDP required
+- **Playwright-compatible API** — `page`, `locator`, `expect`, `browser`, `request`, hooks, `test.extend()` fixtures
+- **Interactive control panel** — live browser view, network inspector, console panel, and CSS selector playground in one UI
+- **Node.js bridge** — call file-system, database, or any Node.js task from browser-side test code via `node.task()`
+- **TypeScript first** — spec files written in TypeScript, compiled on the fly with esbuild
+- **Snapshot mode** — captures computed-style DOM snapshots after each command for visual debugging
+- **Pluggable reporters** — console and HTML reporters included; custom reporters are a single class
+- **CI-ready** — headless mode, `--test` exit-on-finish flag, and `--shard` for parallel workers
 
 ## Installation
 
@@ -28,6 +39,41 @@ npx tx --config tx.config.js
 # Run all tests and exit (CI mode)
 npx tx --config tx.config.js --test
 ```
+
+Write a spec file:
+
+```ts
+// specs/login.spec.ts
+import { test, describe } from '@qavajs/tx';
+
+describe('Login', () => {
+  test('redirects to inventory on valid credentials', async ({ page, expect }) => {
+    await page.goto('https://www.saucedemo.com');
+    await page.getByTestId('username').fill('standard_user');
+    await page.getByTestId('password').fill('secret_sauce');
+    await page.getByTestId('login-button').click();
+    await page.waitForURL(/inventory/);
+    await expect(page.getByTestId('title')).toHaveText('Products');
+  });
+});
+```
+
+Point `tx.config.js` at it:
+
+```js
+module.exports = {
+  testFiles: ['./specs/**/*.spec.ts'],
+  browser: 'chrome',
+};
+```
+
+Then run:
+
+```bash
+npx tx --config tx.config.js
+```
+
+The control panel opens at `http://localhost:11339`. Click the spec to run it, or pass `--test` for CI mode.
 
 ## Configuration
 
