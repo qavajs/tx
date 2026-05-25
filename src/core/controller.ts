@@ -245,17 +245,21 @@ window.toggleSuite = (filename: string, suiteName: string) => {
 // ── Source-map remapping ──────────────────────────────────────────────────────
 
 function _makeRemapper(code: string): ((s: string) => string) | null {
-  const m = code.match(/\/\/# sourceMappingURL=data:application\/json;base64,([A-Za-z0-9+/=]+)/);
+  const m = code.match(/\/\/# sourceMappingURL=data:application\/json[^,]*,([^\s]+)/);
   if (!m) return null;
   try {
-    const consumer = new SourceMapConsumer(JSON.parse(atob(m[1])));
+    const consumer = new SourceMapConsumer(atob(m[1]));
     return (stack: string) => {
       const kept: string[] = [];
       for (const line of stack.split('\n')) {
         if (!/^\s+at\s/.test(line)) { kept.push(line); continue; }
         const anon = /<anonymous>:(\d+):(\d+)/.exec(line);
         if (!anon) continue;
-        const pos = consumer.originalPositionFor({ line: +anon[1], column: +anon[2] - 1 });
+        const ln = +anon[1];
+        const col = +anon[2];
+        // try 1-based col first (standard V8), fall back to 0-based
+        let pos = consumer.originalPositionFor({ line: ln, column: col - 1 });
+        if (pos.source == null) pos = consumer.originalPositionFor({ line: ln, column: col });
         if (pos.source == null || pos.line == null) continue;
         const loc = `${pos.source}:${pos.line}:${(pos.column ?? 0) + 1}`;
         const fn = /at\s+([\w$.<>[\] ]+?)\s+\(/.exec(line)?.[1];
@@ -263,7 +267,8 @@ function _makeRemapper(code: string): ((s: string) => string) | null {
       }
       return kept.join('\n');
     };
-  } catch {
+  } catch (err) {
+    console.error('[tx] source map init failed:', err);
     return null;
   }
 }
