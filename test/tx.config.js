@@ -14,7 +14,6 @@ module.exports = {
     ['../src/reporters/ConsoleReporter.ts', {}],
     ['../src/reporters/JunitReporter.ts', { outputPath: 'report/report.xml' }],
     ['../src/reporters/HtmlReporter.ts', { outputPath: 'report/report.html' }],
-
   ],
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
@@ -26,6 +25,7 @@ module.exports = {
       headless: true,
       browser: 'chrome',
       testMode: true,
+      retries: 1,
     },
     debug: {
       headless: false,
