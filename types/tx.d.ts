@@ -146,6 +146,8 @@ interface TxResponse {
   status(): number;
   statusText(): string;
   ok(): boolean;
+  headers(): Record<string, string>;
+  body(): string | null;
   request(): TxRequest;
 }
 
@@ -214,6 +216,8 @@ interface PopupPage {
   waitForURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   waitForSelector(selector: string, opts?: { state?: 'visible' | 'attached'; timeout?: number }): Promise<Locator>;
   waitForTimeout(ms: number): Promise<void>;
+  waitForRequest(urlOrPredicate: string | RegExp | ((req: TxRequest) => boolean | Promise<boolean>), opts?: TxTimeoutOptions): Promise<TxRequest>;
+  waitForResponse(urlOrPredicate: string | RegExp | ((resp: TxResponse) => boolean | Promise<boolean>), opts?: TxTimeoutOptions): Promise<TxResponse>;
 
   on(event: string, fn: (...args: any[]) => any): PopupPage;
   off(event: string, fn: (...args: any[]) => any): PopupPage;
@@ -299,6 +303,8 @@ interface Page {
   waitForURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   waitForSelector(selector: string, opts?: { state?: 'visible' | 'attached'; timeout?: number }): Promise<Locator>;
   waitForTimeout(ms: number): Promise<void>;
+  waitForRequest(urlOrPredicate: string | RegExp | ((req: TxRequest) => boolean | Promise<boolean>), opts?: TxTimeoutOptions): Promise<TxRequest>;
+  waitForResponse(urlOrPredicate: string | RegExp | ((resp: TxResponse) => boolean | Promise<boolean>), opts?: TxTimeoutOptions): Promise<TxResponse>;
 
   // ── Keyboard ──────────────────────────────────────────────────────────────────
   keyboard: Keyboard;
@@ -524,7 +530,11 @@ type TxFixtureFn<T, F extends Record<string, any>> = (fixtures: F, use: TxUseCal
 type TxFixtureDefs<F extends Record<string, any>> = { [K in keyof F]: TxFixtureFn<F[K], any> };
 
 /** Writes a message to the command log panel during a test. */
-type TxLogFn = (message: string, type?: 'info' | 'success' | 'error', cmd?: string) => void;
+interface TxLogFn {
+  (message: string, opts?: { type?: 'info' | 'success' | 'error'; cmd?: string }): void;
+  /** Open a pending command entry in the test log and return a handle to resolve it. */
+  open: TxLogCommandFn;
+}
 
 /** Attaches named data to the test result for reporters to display. */
 type TxAttachFn = (label: string, body: string, contentType?: string) => void;
@@ -581,7 +591,6 @@ interface TxBaseFixtures {
   };
   log: TxLogFn;
   attach: TxAttachFn;
-  logCommand: TxLogCommandFn;
 }
 
 interface TxTestOptions {
@@ -622,7 +631,6 @@ declare module 'tx' {
   export const test: TestFactory<TxBaseFixtures>;
   export const log: TxLogFn;
   export const attach: TxAttachFn;
-  export const logCommand: TxLogCommandFn;
 
   export function expect(actual: Page): PageAssertions;
   export function expect(actual: Locator): LocatorAssertions;
