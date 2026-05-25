@@ -255,11 +255,10 @@ function _makeRemapper(code: string): ((s: string) => string) | null {
         if (!/^\s+at\s/.test(line)) { kept.push(line); continue; }
         const anon = /<anonymous>:(\d+):(\d+)/.exec(line);
         if (!anon) continue;
-        const ln = +anon[1];
+        const ln = +anon[1] - 2; // Function() wrapper prepends 2 lines before the body
         const col = +anon[2];
-        // try 1-based col first (standard V8), fall back to 0-based
+        // source-map-js expects 1-based line, 0-based column
         let pos = consumer.originalPositionFor({ line: ln, column: col - 1 });
-        if (pos.source == null) pos = consumer.originalPositionFor({ line: ln, column: col });
         if (pos.source == null || pos.line == null) continue;
         const loc = `${pos.source}:${pos.line}:${(pos.column ?? 0) + 1}`;
         const fn = /at\s+([\w$.<>[\] ]+?)\s+\(/.exec(line)?.[1];

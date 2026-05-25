@@ -9,8 +9,6 @@ describe('apptesting forms', { tag: ['@smoke'] }, () => {
     test('simple input', { tag: ['@tag1'] }, async ({ page, expect }) => {
         const input = page.locator('#text-input');
         await input.fill('test input');
-        fail()
-        expect(1).toEqual(2)
         await expect(input).toHaveValue('test input1');
     });
 
