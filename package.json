@@ -1,6 +1,6 @@
 {
   "name": "@qavajs/tx",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "@qavajs/tx — testing framework via Hammerhead proxy",
   "license": "MIT",
   "author": "",
@@ -40,7 +40,8 @@
     "modern-screenshot": "^4.7.0",
     "source-map-js": "^1.2.1",
     "testcafe-hammerhead": "^31.7.8",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "esbuild": "^0.28.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
@@ -48,7 +49,6 @@
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
     "chai": "^6.2.2",
-    "esbuild": "^0.28.0",
     "eslint": "^10.4.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
