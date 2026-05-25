@@ -1,6 +1,7 @@
 import * as vm from 'vm';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as esbuild from 'esbuild';
 import type { Preprocessor } from '../types';
 
 let _preprocessor: Preprocessor | null = null;
@@ -75,8 +76,6 @@ export function parseTestCode(code: string): ParsedTest[] {
 }
 
 export async function bundleTestFile(filePath: string): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const esbuild = require('esbuild') as typeof import('esbuild');
   const raw = fs.readFileSync(filePath, 'utf-8');
   const contents = _preprocessor ? _preprocessor(raw, filePath) : raw;
   const result = await esbuild.build({
@@ -96,8 +95,6 @@ export function parseTestFile(filePath: string): ParsedFile {
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const source = _preprocessor ? _preprocessor(raw, filePath) : raw;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const esbuild = require('esbuild') as typeof import('esbuild');
     const { code } = esbuild.transformSync(source, {
       loader: 'ts',
       target: 'node18',
