@@ -13,7 +13,7 @@ module.exports = {
   reporters: [
     ['../src/reporters/ConsoleReporter.ts', {}],
     ['../src/reporters/JunitReporter.ts', { outputPath: 'report/report.xml' }],
-    ['./reporters/HtmlReporter.ts', { outputPath: 'report/report.html' }],
+    ['../src/reporters/HtmlReporter.ts', { outputPath: 'report/report.html' }],
 
   ],
   tasks: {

@@ -1,6 +1,6 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult, LogEntry } from '../../src/runner/reporter';
+import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult, LogEntry } from '../runner/reporter';
 
 interface StepEntry {
   cmd: string;
