@@ -2,6 +2,7 @@ import { log, attach, setLogContainer, testApi, page, expect, request, initIfram
 import { escHtml, escAttr, jsq } from '../utils/htmlUtils';
 import { type TestResult, runWithFixtures, buildTestQueue } from '../runner/executor';
 import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
+import { SourceMapConsumer } from 'source-map-js';
 
 declare global {
   interface Window {
@@ -241,6 +242,36 @@ window.toggleSuite = (filename: string, suiteName: string) => {
   });
 };
 
+// ── Source-map remapping ──────────────────────────────────────────────────────
+
+function _makeRemapper(code: string): ((s: string) => string) | null {
+  const m = code.match(/\/\/# sourceMappingURL=data:application\/json[^,]*,([^\s]+)/);
+  if (!m) return null;
+  try {
+    const consumer = new SourceMapConsumer(JSON.parse(atob(m[1])));
+    return (stack: string) => {
+      const kept: string[] = [];
+      for (const line of stack.split('\n')) {
+        if (!/^\s+at\s/.test(line)) { kept.push(line); continue; }
+        const anon = /<anonymous>:(\d+):(\d+)/.exec(line);
+        if (!anon) continue;
+        const ln = +anon[1] - 2; // Function() wrapper prepends 2 lines before the body
+        const col = +anon[2];
+        // source-map-js expects 1-based line, 0-based column
+        let pos = consumer.originalPositionFor({ line: ln, column: col - 1 });
+        if (pos.source == null || pos.line == null) continue;
+        const loc = `${pos.source}:${pos.line}:${(pos.column ?? 0) + 1}`;
+        const fn = /at\s+([\w$.<>[\] ]+?)\s+\(/.exec(line)?.[1];
+        kept.push(fn && fn !== 'eval' && !/^eval /.test(fn) ? `    at ${fn} (${loc})` : `    at ${loc}`);
+      }
+      return kept.join('\n');
+    };
+  } catch (err) {
+    console.error('[tx] source map init failed:', err);
+    return null;
+  }
+}
+
 // ── Test execution ────────────────────────────────────────────────────────────
 
 async function executeTests(
@@ -248,10 +279,12 @@ async function executeTests(
   opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string; onTestEnd?: (result: TestResult) => void }
 ): Promise<TestResult[]> {
   const filename = opts?.filename;
+  const remap = _makeRemapper(code);
   const queue = buildTestQueue(code, opts ?? {});
 
   if ('parseError' in queue) {
-    return [{ name: '(parse/compile error)', passed: false, error: queue.parseError, duration: 0, logs: [] }];
+    const err = remap ? remap(queue.parseError) : queue.parseError;
+    return [{ name: '(parse/compile error)', passed: false, error: err, duration: 0, logs: [] }];
   }
 
   const results: TestResult[] = [];
@@ -313,10 +346,12 @@ async function executeTests(
         duration = Date.now() - t0;
         finalLogs = stopCollectingLogs();
         lastError = e;
+        const errStr = e.stack || e.message || String(e);
+        const remapped = remap ? remap(errStr) : errStr;
         if (attempt < maxRetries && !_stopRequested) {
-          appendErrorToLog(`Attempt ${attempt + 1} failed — retrying…\n` + (e.stack || e.message));
+          appendErrorToLog(`Attempt ${attempt + 1} failed — retrying…\n` + remapped);
         } else {
-          appendErrorToLog(e.stack || e.message);
+          appendErrorToLog(remapped);
         }
       } finally {
         clearTimeout(_timeoutId);
@@ -337,7 +372,8 @@ async function executeTests(
       opts?.onTestEnd?.(r);
       if (filename) setTestItemStatus(filename, t.name, 'pass', duration);
     } else {
-      const r: TestResult = { name: t.name, passed: false, error: lastError?.stack || lastError?.message, duration, logs: finalLogs };
+      const rawErr = lastError?.stack || lastError?.message || String(lastError);
+      const r: TestResult = { name: t.name, passed: false, error: remap ? remap(rawErr) : rawErr, duration, logs: finalLogs };
       results.push(r);
       opts?.onTestEnd?.(r);
       if (filename) setTestItemStatus(filename, t.name, 'fail', duration);

@@ -1,4 +1,5 @@
 import { test, describe, beforeEach } from 'tx';
+import { fail } from './testData';
 
 describe('apptesting forms', { tag: ['@smoke'] }, () => {
     beforeEach(async ({ page }) => {

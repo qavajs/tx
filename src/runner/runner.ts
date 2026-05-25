@@ -86,6 +86,7 @@ export async function bundleTestFile(filePath: string): Promise<string> {
     write: false,
     logLevel: 'silent',
     external: ['tx'],
+    sourcemap: 'inline',
   });
   return result.outputFiles[0].text;
 }
@@ -97,7 +98,7 @@ export function parseTestFile(filePath: string): ParsedFile {
     const source = _preprocessor ? _preprocessor(raw, filePath) : raw;
     const { code } = esbuild.transformSync(source, {
       loader: 'ts',
-      target: 'node18',
+      target: 'node22',
       format: 'cjs',
       sourcefile: filePath,
     });
