@@ -22,9 +22,7 @@
     "testing",
     "browser",
     "test-runner",
-    "cypress",
     "hammerhead",
-    "proxy",
     "e2e",
     "automation"
   ],
