@@ -248,7 +248,7 @@ function _makeRemapper(code: string): ((s: string) => string) | null {
   const m = code.match(/\/\/# sourceMappingURL=data:application\/json[^,]*,([^\s]+)/);
   if (!m) return null;
   try {
-    const consumer = new SourceMapConsumer(atob(m[1]));
+    const consumer = new SourceMapConsumer(JSON.parse(atob(m[1])));
     return (stack: string) => {
       const kept: string[] = [];
       for (const line of stack.split('\n')) {
