@@ -3,7 +3,7 @@
   "version": "0.0.5",
   "description": "@qavajs/tx — testing framework via Hammerhead proxy",
   "license": "MIT",
-  "author": "",
+  "author": "Oleksandr Halichenko",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "types/tx.d.ts",
@@ -16,7 +16,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "keywords": [
     "testing",
@@ -26,6 +26,13 @@
     "e2e",
     "automation"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qavajs/tx.git"
+  },
+  "bugs": {
+    "url": "https://github.com/qavajs/tx/issues"
+  },
   "scripts": {
     "build": "node build.mjs",
     "build:watch": "node build.mjs --watch",
