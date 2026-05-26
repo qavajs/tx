@@ -949,18 +949,18 @@ export class Locator {
   // ── Queries ───────────────────────────────────────────────────────────────
 
   async textContent(): Promise<string | null> {
-    return this._el()?.textContent ?? null;
+    return _withCommand(this._desc, 'textContent', async () => this._el()?.textContent ?? null);
   }
   async innerText(): Promise<string> {
-    return (this._el() as HTMLElement | null)?.innerText ?? '';
+    return _withCommand(this._desc, 'innerText', async () => (this._el() as HTMLElement | null)?.innerText ?? '');
   }
   async inputValue(): Promise<string> {
-    return (this._el() as HTMLInputElement | null)?.value ?? '';
+    return _withCommand(this._desc, 'inputValue', async () => (this._el() as HTMLInputElement | null)?.value ?? '');
   }
   async getAttribute(name: string): Promise<string | null> {
-    return this._el()?.getAttribute(name) ?? null;
+    return _withCommand(this._desc ? `${this._desc}  "${name}"` : `"${name}"`, 'getAttribute', async () => this._el()?.getAttribute(name) ?? null);
   }
-  async isVisible(): Promise<boolean> {
+  _checkVisibility(): boolean {
     const el = this._el() as HTMLElement | null;
     if (!el) return false;
     if (typeof (el as any).checkVisibility === 'function') {
@@ -973,20 +973,41 @@ export class Locator {
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   }
-  async isHidden(): Promise<boolean> { return !(await this.isVisible()); }
-  async isEnabled(): Promise<boolean> {
+  async isVisible(): Promise<boolean> {
+    return _withCommand(this._desc, 'isVisible', async () => this._checkVisibility());
+  }
+  async isHidden(): Promise<boolean> {
+    return _withCommand(this._desc, 'isHidden', async () => !this._checkVisibility());
+  }
+  _checkEnabled(): boolean {
     const el = this._el() as HTMLInputElement | HTMLButtonElement | null;
     return el ? !el.disabled : false;
   }
-  async isDisabled(): Promise<boolean> { return !(await this.isEnabled()); }
-  async isChecked(): Promise<boolean> {
+  async isEnabled(): Promise<boolean> {
+    return _withCommand(this._desc, 'isEnabled', async () => this._checkEnabled());
+  }
+  async isDisabled(): Promise<boolean> {
+    return _withCommand(this._desc, 'isDisabled', async () => !this._checkEnabled());
+  }
+  _checkChecked(): boolean {
     return (this._el() as HTMLInputElement | null)?.checked ?? false;
   }
-  async isEditable(): Promise<boolean> {
+  async isChecked(): Promise<boolean> {
+    return _withCommand(this._desc, 'isChecked', async () => this._checkChecked());
+  }
+  _checkEditable(): boolean {
     const el = this._el() as HTMLInputElement | null;
     return el ? !el.readOnly && !el.disabled : false;
   }
-  async count(): Promise<number> { return this._els().length; }
+  async isEditable(): Promise<boolean> {
+    return _withCommand(this._desc, 'isEditable', async () => this._checkEditable());
+  }
+  _textContent(): string | null { return this._el()?.textContent ?? null; }
+  _inputValue(): string { return (this._el() as HTMLInputElement | null)?.value ?? ''; }
+  _getAttribute(name: string): string | null { return this._el()?.getAttribute(name) ?? null; }
+  async count(): Promise<number> {
+    return _withCommand(this._desc, 'count', async () => this._els().length);
+  }
 
   async evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T> {
     return _withCommand(this._desc, 'evaluate', async () => {
@@ -1010,8 +1031,8 @@ export class Locator {
         const el = this._el();
         if (state === 'attached' && el) return;
         if (state === 'detached' && !el) return;
-        if (state === 'visible' && await this.isVisible()) return;
-        if (state === 'hidden' && !(await this.isVisible())) return;
+        if (state === 'visible' && this._checkVisibility()) return;
+        if (state === 'hidden' && !this._checkVisibility()) return;
         await _awaitOrAbort(50);
       }
       throw new Error(`waitFor(state="${state}") timed out after ${timeout}ms`);
@@ -1945,7 +1966,9 @@ export const page = {
 
   // ── Page state ─────────────────────────────────────────────────────────────
 
-  async title(): Promise<string> { return iframeDoc()?.title ?? ''; },
+  async title(): Promise<string> {
+    return _withCommand('', 'title', async () => iframeDoc()?.title ?? '');
+  },
   url(): string {
     try {
       const href = iframeWin()?.location.href ?? '';
@@ -2184,40 +2207,43 @@ export const page = {
   removeLocatorHandler(locator: Locator): void {
     const i = _locatorHandlers.findIndex(h => h.locator === locator);
     if (i >= 0) _locatorHandlers.splice(i, 1);
+    log(locator._desc, { cmd: 'removeLocatorHandler' });
   },
 
   async resetSession(): Promise<void> {
-    _locatorHandlers.length = 0;
-    _routeHandlers.length = 0;
-    _pageListeners.clear();
+    return _withCommand('', 'resetSession', async () => {
+      _locatorHandlers.length = 0;
+      _routeHandlers.length = 0;
+      _pageListeners.clear();
 
-    try {
-      const win = iframeWin() as any;
-      const doc = iframeDoc() as any;
-      if (win) {
-        try { win.localStorage.clear(); } catch { /* cross-origin */ }
-        try { win.sessionStorage.clear(); } catch { /* cross-origin */ }
-      }
-      if (doc) {
-        try {
-          const hostname = win?.location?.hostname ?? '';
-          for (const cookie of doc.cookie.split(';')) {
-            const name = cookie.split('=')[0].trim();
-            if (!name) continue;
-            const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
-            doc.cookie = base;
-            if (hostname) doc.cookie = `${base}; domain=${hostname}`;
-          }
-        } catch { /* cross-origin or HttpOnly */ }
-      }
-    } catch { /* ignore */ }
+      try {
+        const win = iframeWin() as any;
+        const doc = iframeDoc() as any;
+        if (win) {
+          try { win.localStorage.clear(); } catch { /* cross-origin */ }
+          try { win.sessionStorage.clear(); } catch { /* cross-origin */ }
+        }
+        if (doc) {
+          try {
+            const hostname = win?.location?.hostname ?? '';
+            for (const cookie of doc.cookie.split(';')) {
+              const name = cookie.split('=')[0].trim();
+              if (!name) continue;
+              const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+              doc.cookie = base;
+              if (hostname) doc.cookie = `${base}; domain=${hostname}`;
+            }
+          } catch { /* cross-origin or HttpOnly */ }
+        }
+      } catch { /* ignore */ }
 
-    const tab = _activeTab();
-    if (!tab) return;
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('resetSession: blank page load timed out')), 10_000);
-      tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-      tab.iframe.src = API_BASE + '/about-blank';
+      const tab = _activeTab();
+      if (!tab) return;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('resetSession: blank page load timed out')), 10_000);
+        tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+        tab.iframe.src = API_BASE + '/about-blank';
+      });
     });
   },
 
@@ -2240,6 +2266,7 @@ export const page = {
         _routeHandlers.splice(i, 1);
       }
     }
+    log(typeof pattern === 'string' ? pattern : String(pattern), { cmd: 'unroute' });
   },
 
   async close(): Promise<void> {
@@ -2295,72 +2322,72 @@ export function expect(target: any) {
   const matchers = {
     async toBeVisible(opts?: { timeout?: number }) {
       await locAssert('toBeVisible', async l => {
-        if (!await l.isVisible()) throw new Error('Expected element to be visible');
+        if (!l._checkVisibility()) throw new Error('Expected element to be visible');
       }, opts?.timeout);
     },
     async toBeHidden(opts?: { timeout?: number }) {
       await locAssert('toBeHidden', async l => {
-        if (await l.isVisible()) throw new Error('Expected element to be hidden');
+        if (l._checkVisibility()) throw new Error('Expected element to be hidden');
       }, opts?.timeout);
     },
     async toBeEnabled(opts?: { timeout?: number }) {
       await locAssert('toBeEnabled', async l => {
-        if (!await l.isEnabled()) throw new Error('Expected element to be enabled');
+        if (!l._checkEnabled()) throw new Error('Expected element to be enabled');
       }, opts?.timeout);
     },
     async toBeDisabled(opts?: { timeout?: number }) {
       await locAssert('toBeDisabled', async l => {
-        if (await l.isEnabled()) throw new Error('Expected element to be disabled');
+        if (l._checkEnabled()) throw new Error('Expected element to be disabled');
       }, opts?.timeout);
     },
     async toBeChecked(opts?: { timeout?: number }) {
       await locAssert('toBeChecked', async l => {
-        if (!await l.isChecked()) throw new Error('Expected element to be checked');
+        if (!l._checkChecked()) throw new Error('Expected element to be checked');
       }, opts?.timeout);
     },
     async toBeEditable(opts?: { timeout?: number }) {
       await locAssert('toBeEditable', async l => {
-        if (!await l.isEditable()) throw new Error('Expected element to be editable');
+        if (!l._checkEditable()) throw new Error('Expected element to be editable');
       }, opts?.timeout);
     },
     async toBeEmpty(opts?: { timeout?: number }) {
       await locAssert('toBeEmpty', async l => {
-        const got = await l.inputValue();
+        const got = l._inputValue();
         if (got !== '') throw new Error(`Expected empty input, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
       await locAssert('toHaveText', async l => {
-        const got = ((await l.textContent()) ?? '').trim();
+        const got = (l._textContent() ?? '').trim();
         if (!(text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string)))
           throw new Error(`Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toContainText', async l => {
-        const got = (await l.textContent()) ?? '';
+        const got = l._textContent() ?? '';
         if (!(text instanceof RegExp ? text.test(got) : got.includes(text as string)))
           throw new Error(`Expected text to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveValue(value: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveValue', async l => {
-        const got = await l.inputValue();
+        const got = l._inputValue();
         if (!(value instanceof RegExp ? value.test(got) : got === value))
           throw new Error(`Expected value ${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveAttribute(name: string, value: string | RegExp = '', opts?: { timeout?: number }) {
       await locAssert('toHaveAttr', async l => {
-        const got = await l.getAttribute(name);
+        const got = l._getAttribute(name);
         if (!(value instanceof RegExp ? value.test(got ?? '') : got === value))
           throw new Error(`Expected [${name}]=${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
       await locAssert('toHaveCount', async l => {
-        const got = await l.count();
+        const got = l._els().length;
         if (got !== count) throw new Error(`Expected ${count} elements, got ${got}`);
       }, opts?.timeout);
     },
@@ -2385,7 +2412,7 @@ export function expect(target: any) {
     async toHaveTitle(title: string | RegExp, opts?: { timeout?: number }) {
       await la('toHaveTitle', String(title), async () => {
         await _retry(async () => {
-          const got = await page.title();
+          const got = iframeDoc()?.title ?? '';
           if (!(title instanceof RegExp ? title.test(got) : got === title))
             throw new Error(`Expected title ${JSON.stringify(title)}, got "${got}"`);
         }, t(opts?.timeout));
@@ -2418,48 +2445,48 @@ export function expect(target: any) {
   const not = {
     async toBeVisible(opts?: { timeout?: number }) {
       await locAssert('not.toBeVisible', async l => {
-        if (await l.isVisible()) throw new Error('Expected element NOT to be visible');
+        if (l._checkVisibility()) throw new Error('Expected element NOT to be visible');
       }, opts?.timeout);
     },
     async toBeHidden(opts?: { timeout?: number }) {
       await locAssert('not.toBeHidden', async l => {
-        if (!await l.isVisible()) throw new Error('Expected element NOT to be hidden');
+        if (!l._checkVisibility()) throw new Error('Expected element NOT to be hidden');
       }, opts?.timeout);
     },
     async toBeEnabled(opts?: { timeout?: number }) {
       await locAssert('not.toBeEnabled', async l => {
-        if (await l.isEnabled()) throw new Error('Expected element NOT to be enabled');
+        if (l._checkEnabled()) throw new Error('Expected element NOT to be enabled');
       }, opts?.timeout);
     },
     async toBeChecked(opts?: { timeout?: number }) {
       await locAssert('not.toBeChecked', async l => {
-        if (await l.isChecked()) throw new Error('Expected element NOT to be checked');
+        if (l._checkChecked()) throw new Error('Expected element NOT to be checked');
       }, opts?.timeout);
     },
     async toBeEmpty(opts?: { timeout?: number }) {
       await locAssert('not.toBeEmpty', async l => {
-        const got = await l.inputValue();
+        const got = l._inputValue();
         if (got === '') throw new Error('Expected input NOT to be empty');
       }, opts?.timeout);
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
       await locAssert('not.toHaveText', async l => {
-        const got = ((await l.textContent()) ?? '').trim();
+        const got = (l._textContent() ?? '').trim();
         if (text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string))
           throw new Error(`Expected text NOT to match ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('not.toContain', async l => {
-        const got = (await l.textContent()) ?? '';
+        const got = l._textContent() ?? '';
         if (text instanceof RegExp ? text.test(got) : got.includes(text as string))
           throw new Error(`Expected NOT to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
       await locAssert('not.toHaveCount', async l => {
-        const got = await l.count();
+        const got = l._els().length;
         if (got === count) throw new Error(`Expected count NOT to be ${count}, got ${got}`);
       }, opts?.timeout);
     },
@@ -2719,6 +2746,7 @@ export const browser = {
   /** Open a new tab, make it active, and return the global page object */
   async newPage(): Promise<void> {
     createTab();
+    log('new tab', { cmd: 'newPage' });
   },
 
   /** Return a snapshot of all open tabs. */
@@ -2729,6 +2757,9 @@ export const browser = {
   /** Switch the active tab by matching against tab snapshot fields (id, title, url, active) */
   switchTab(predicate: (tab: ReturnType<typeof getTabsSnapshot>[number]) => boolean): void {
     const tab = getTabsSnapshot().find(predicate);
-    if (tab) setActiveTab(tab.id);
+    if (tab) {
+      setActiveTab(tab.id);
+      log(tab.title ?? tab.url ?? tab.id, { cmd: 'switchTab' });
+    }
   }
 };
