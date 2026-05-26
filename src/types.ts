@@ -19,7 +19,7 @@ export interface TxConfig {
   /** Reporter entries — each is a [modulePath, configObject] tuple. */
   reporters?: ReporterEntry[];
 
-  /** Named task handlers executed in Node.js context, callable via browser.task() */
+  /** Named task handlers executed in Node.js context, callable via node.task() */
   tasks?: Record<string, TaskHandler>;
 
   /**

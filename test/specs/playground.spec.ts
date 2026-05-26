@@ -2,8 +2,8 @@ import { test } from '@qavajs/tx';
 
 test.describe('Playground', () => {
 
-    test.beforeEach(async ({ page, browser }) => {
-        const dirname = await browser.task('dirname');
+    test.beforeEach(async ({ page, node }) => {
+        const dirname = await node.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
     });
 
@@ -179,8 +179,8 @@ test.describe('Playground', () => {
 });
 
 test.describe('nth/first/last verify', () => {
-    test.beforeEach(async ({ page, browser }) => {
-        const dirname = await browser.task('dirname');
+    test.beforeEach(async ({ page, node }) => {
+        const dirname = await node.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
     });
 

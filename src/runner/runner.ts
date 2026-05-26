@@ -40,12 +40,12 @@ export function parseTestCode(code: string): ParsedTest[] {
         : undefined;
       push(name, tags);
     };
-    fn.extend     = (_defs: any) => makeParserTestFn(push);
-    fn.describe   = describe;
+    fn.extend = (_defs: any) => makeParserTestFn(push);
+    fn.describe = describe;
     fn.beforeEach = noop;
-    fn.afterEach  = noop;
-    fn.beforeAll  = noop;
-    fn.afterAll   = noop;
+    fn.afterEach = noop;
+    fn.beforeAll = noop;
+    fn.afterAll = noop;
     return fn;
   };
   const test = makeParserTestFn(pushTest);

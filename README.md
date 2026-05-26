@@ -949,38 +949,34 @@ expect(value).not.toBe(expected);
 Multi-tab manager available as the `browser` fixture.
 
 ```ts
-const newTab = await browser.newPage(): Promise<Page>
+await browser.newPage(): Promise<void>
 ```
-Open a new blank tab and return a `Page`-like object. The new tab becomes the active tab immediately.
+Open a new blank tab and make it the active tab. After the call, interact with it via the global `page` fixture.
 
 ```ts
-const pages = browser.pages(): Page[]
+browser.tabs(): TxTabInfo[]
 ```
-Return an array of `Page`-like objects for every currently open tab, in creation order.
+Return a snapshot array of all open tabs. Each entry has `id`, `title`, `url`, and `active` fields.
 
 ```ts
-await browser.closeTab(tabId: string): Promise<void>
+browser.switchTab(predicate: (tab: TxTabInfo) => boolean): void
 ```
-Close a specific tab by ID.
-
-```ts
-browser.closeExtraTabs(): void
-```
-Close all tabs except the first.
+Switch the active tab to the first tab where `predicate` returns `true`. Use `page` to interact with it afterwards.
 
 ```ts
 // Multi-tab flow
-test('manual multi-tab', async ({ page, browser }) => {
-  const tab1 = await browser.newPage();
-  await tab1.goto('https://example.com');
+test('multi-tab', async ({ page, browser, expect }) => {
+  await page.goto('https://example.com');
 
-  const tab2 = await browser.newPage();
-  await tab2.goto('https://example.org');
+  await browser.newPage();
+  await page.goto('https://example.org');   // page now refers to the new tab
 
-  console.log(browser.pages().length); // 3  (initial tab + tab1 + tab2)
+  console.log(browser.tabs().length);       // 2
 
-  await tab1.bringToFront();  // switch UI to tab1
-  await tab2.close();
+  browser.switchTab(t => t.url.includes('example.com'));
+  await expect(page).toHaveURL(/example\.com/);
+
+  await page.close();  // close the active tab
 });
 
 // Handle window.open / target="_blank"
@@ -1043,8 +1039,6 @@ const myTest = test.extend({
   },
 });
 ```
-
-> `browser.task(name, payload)` is a convenience alias for `node.task`. Prefer `node.task` in new code.
 
 ---
 

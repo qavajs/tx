@@ -27,8 +27,8 @@ test.describe('Utilities', () => {
     expect(items.length).toBe(3);
   });
 
-  test('task', async ({ browser, expect }) => {
-    const file = await browser.task<string>('readFile', { path: './test/serverFile.json' });
+  test('task', async ({ node, expect }) => {
+    const file = await node.task<string>('readFile', { path: './test/serverFile.json' });
     expect(JSON.parse(file)).toEqual({ data: 42 });
   });
 

@@ -4,7 +4,22 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.4]
+
+### Added
+- `browser.tabs()` — returns a `TxTabInfo[]` snapshot of all open tabs (`id`, `title`, `url`, `active`)
+- `browser.switchTab(predicate)` — switch the active tab by matching against tab info fields
+- `TxTabInfo` interface exported in type declarations
+
+### Changed
+- `browser.newPage()` now returns `Promise<void>` instead of `Promise<PopupPage>`; interact with the new tab via the global `page` fixture after calling it
+- `page.on('popup')` and `page.waitForEvent('popup')` handlers now receive a `Page` object instead of the removed `PopupPage` type
+
+### Removed
+- `PopupPage` interface and internal `_makePopupPage` factory — popup handlers now receive the global `page` object directly
+- `browser.pages()` — use `browser.tabs()` to inspect open tabs
+- `browser.task()` — use `node.task()` instead
+- `page.bringToFront()` — use `browser.switchTab()` to switch the active tab
 
 ## [0.0.3] - 2026-05-26
 

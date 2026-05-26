@@ -99,12 +99,12 @@ export function buildTestQueue(
         setupBeforeAlls: [], teardownAfterAlls: [],
       });
     };
-    testFn.extend    = (newDefs: FixtureDefs) => makeTestFn({ ...fixtureDefs, ...newDefs });
-    testFn.describe  = describe;
+    testFn.extend = (newDefs: FixtureDefs) => makeTestFn({ ...fixtureDefs, ...newDefs });
+    testFn.describe = describe;
     testFn.beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push({ fn, fixtureDefs }); };
-    testFn.afterEach  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push({ fn, fixtureDefs }); };
-    testFn.beforeAll  = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
-    testFn.afterAll   = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
+    testFn.afterEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push({ fn, fixtureDefs }); };
+    testFn.beforeAll = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeAlls.push(fn); };
+    testFn.afterAll = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterAlls.push(fn); };
     return testFn;
   };
 
