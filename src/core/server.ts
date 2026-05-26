@@ -83,6 +83,17 @@ export class TestServer {
     }
   }
 
+  removeFile(basename: string): void {
+    this.bundledCodeMap.delete(basename);
+    this.parsedCache.delete(basename);
+    this.testFileMap.delete(basename);
+    this._version++;
+    const msg = JSON.stringify({ type: 'version', version: this._version });
+    for (const client of this._wsClients) {
+      if (client.readyState === WebSocket.OPEN) client.send(msg);
+    }
+  }
+
   start(proxyUrl: string, viewport?: { width: number; height: number }): Promise<void> {
     return new Promise((resolve) => {
       this.server = http.createServer((req, res) => {

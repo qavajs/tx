@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- `TestServer.removeFile(basename)` — evicts a deleted test file from the bundle/parse/test-list caches and broadcasts a new version to all connected WebSocket clients
+- File watcher now handles deletions: when a watched file no longer exists after the debounce window, `server.removeFile()` is called so the UI drops it from the test list automatically
+
 ### Changed
+- Test filter input is now reapplied after the test list reloads on a file-change notification, so active filters persist across hot-reload cycles
 - All `Locator` query methods (`textContent`, `innerText`, `inputValue`, `getAttribute`, `isVisible`, `isHidden`, `isEnabled`, `isDisabled`, `isChecked`, `isEditable`, `count`) now emit `_withCommand` log entries, consistent with action methods
 - `page.resetSession()` now emits a `_withCommand` log entry (pending → pass/fail with timing)
 - `page.unroute()` now emits a log entry, consistent with `page.route()`

@@ -852,6 +852,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (msg.version !== _watchVersion) {
       _watchVersion = msg.version;
       await loadTestList();
+      const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
+      if (filterInput?.value) window.applyFilter(filterInput.value);
       log('test files updated');
     }
     if (!_isTestRunning) setTopbarStatus('connected', 'Connected');
