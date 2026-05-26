@@ -4,6 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { TxWrapper } from './core/wrapper';
 import { TxConfig, ReporterEntry } from './types';
 import type { Reporter } from './runner/reporter';
@@ -109,7 +110,7 @@ async function loadConfigFile(filePath: string): Promise<Partial<TxConfig>> {
     return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Partial<TxConfig>;
   }
   if (ext === '.js' || ext === '.mjs') {
-    const mod = await import(path.resolve(filePath)) as { default?: Partial<TxConfig> } & Partial<TxConfig>;
+    const mod = await import(pathToFileURL(path.resolve(filePath)).href) as { default?: Partial<TxConfig> } & Partial<TxConfig>;
     return (mod.default ?? mod) as Partial<TxConfig>;
   }
   throw new Error(`Unsupported config file extension: ${ext} (use .json, .js, or .mjs)`);
