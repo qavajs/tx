@@ -44,9 +44,9 @@ Write a spec file:
 
 ```ts
 // specs/login.spec.ts
-import { test, describe } from '@qavajs/tx';
+import { test } from '@qavajs/tx';
 
-describe('Login', () => {
+test.describe('Login', () => {
   test('redirects to inventory on valid credentials', async ({ page, expect }) => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
@@ -229,18 +229,18 @@ preprocessor(source, filePath) {
 ```js
 preprocessor(source, filePath) {
   const rel = path.relative(__dirname, filePath);
-  return `import { describe } from '@qavajs/tx';\ndescribe(${JSON.stringify(rel)}, () => {\n${source}\n});\n`;
+  return `import { test } from '@qavajs/tx';\ntest.describe(${JSON.stringify(rel)}, () => {\n${source}\n});\n`;
 },
 ```
 
 ## Writing Tests
 
-Tests look and feel like Playwright. Import `test` and `describe` from `'@qavajs/tx'`. Fixtures (`page`, `browser`, `node`, `expect`, `request`, `log`, `attach`) are injected via destructuring — not globals.
+Tests look and feel like Playwright. Import `test` from `'@qavajs/tx'`. Fixtures (`page`, `browser`, `node`, `expect`, `request`, `log`, `attach`) are injected via destructuring — not globals.
 
 ```ts
-import { test, describe } from '@qavajs/tx';
+import { test } from '@qavajs/tx';
 
-describe('Login', () => {
+test.describe('Login', () => {
   test('navigates to inventory after valid credentials', async ({ page, expect }) => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
@@ -260,14 +260,15 @@ describe('Login', () => {
 
 ### Imports from `'@qavajs/tx'`
 
-| Export       | Description |
-|--------------|-------------|
-| `test`       | Define a test case; also used as `test.extend()` |
-| `describe`   | Define a test suite |
-| `beforeEach` | Hook run before each test in the nearest `describe` |
-| `afterEach`  | Hook run after each test in the nearest `describe` |
-| `beforeAll`  | Hook run once before all tests in the nearest `describe` |
-| `afterAll`   | Hook run once after all tests in the nearest `describe` |
+| Export            | Description |
+|-------------------|-------------|
+| `test`            | Define a test case |
+| `test.describe`   | Define a test suite |
+| `test.beforeEach` | Hook run before each test in the nearest `test.describe` |
+| `test.afterEach`  | Hook run after each test in the nearest `test.describe` |
+| `test.beforeAll`  | Hook run once before all tests in the nearest `test.describe` |
+| `test.afterAll`   | Hook run once after all tests in the nearest `test.describe` |
+| `test.extend`     | Create a custom test function with additional fixtures |
 
 ### Built-in fixtures
 
@@ -309,10 +310,10 @@ export class LoginPage {
 }
 
 // specs/login.spec.ts
-import { test, describe } from '@qavajs/tx';
+import { test } from '@qavajs/tx';
 import { LoginPage } from '../pages/LoginPage';
 
-describe('Login', () => {
+test.describe('Login', () => {
   test('logs in', async ({ page }) => {
     const lp = new LoginPage(page);
     await lp.goto();
@@ -384,13 +385,13 @@ const myTest = test.extend({
 ### Hooks
 
 ```ts
-import { test, describe, beforeAll, beforeEach, afterEach, afterAll } from '@qavajs/tx';
+import { test } from '@qavajs/tx';
 
-describe('suite', () => {
-  beforeAll(async () => { /* runs once before all tests in this describe */ });
-  afterAll(async  () => { /* runs once after  all tests in this describe */ });
-  beforeEach(async ({ page }) => { await page.goto('https://example.com'); });
-  afterEach(async  () => { /* runs after  each test */ });
+test.describe('suite', () => {
+  test.beforeAll(async () => { /* runs once before all tests in this describe */ });
+  test.afterAll(async  () => { /* runs once after  all tests in this describe */ });
+  test.beforeEach(async ({ page }) => { await page.goto('https://example.com'); });
+  test.afterEach(async  () => { /* runs after  each test */ });
 
   test('test', async ({ page, expect }) => { /* ... */ });
 });
@@ -1640,7 +1641,7 @@ Assert.less(actual, threshold, message?)
 1. **Startup** — `@qavajs/tx` starts a Hammerhead proxy (two ports) and a lightweight HTTP server.
 2. **Proxy session** — Hammerhead creates a session URL for the target site, rewriting all network requests and responses so they flow through the proxy from inside the iframe.
 3. **Control panel** — the HTTP server serves an HTML page that embeds the iframe and the spec runner UI.
-4. **Test execution** — when a test runs, the spec file is fetched from the server, transpiled on the fly, and `new Function(code)()` is called in the browser context. A `require('@qavajs/tx')` shim is installed so that `import { test, describe, … } from '@qavajs/tx'` works, and fixtures (`page`, `browser`, `expect`, etc.) are resolved and injected via the DI system before each test body runs.
+4. **Test execution** — when a test runs, the spec file is fetched from the server, transpiled on the fly, and `new Function(code)()` is called in the browser context. A `require('@qavajs/tx')` shim is installed so that `import { test } from '@qavajs/tx'` works, and fixtures (`page`, `browser`, `expect`, etc.) are resolved and injected via the DI system before each test body runs.
 5. **Reporting** — results are posted back to the server, which forwards them to any configured reporter.
 
 ---
