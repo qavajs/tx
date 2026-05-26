@@ -199,39 +199,6 @@ interface FrameLocator {
   frameLocator(selector: string): FrameLocator;
 }
 
-// ── PopupPage ─────────────────────────────────────────────────────────────────
-
-interface PopupPage {
-  goto(url: string): Promise<void>;
-  reload(): Promise<void>;
-  url(): string;
-  title(): Promise<string>;
-
-  locator(selector: string): Locator;
-  getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator;
-  getByRole(role: string, opts?: TxNameOptions): Locator;
-  getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator;
-  getByPlaceholder(text: string | RegExp): Locator;
-  getByTestId(id: string): Locator;
-  getByAltText(text: string | RegExp): Locator;
-  getByTitle(text: string | RegExp): Locator;
-  frameLocator(selector: string): FrameLocator;
-
-  waitForURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
-  waitForSelector(selector: string, opts?: { state?: 'visible' | 'attached'; timeout?: number }): Promise<Locator>;
-  waitForTimeout(ms: number): Promise<void>;
-  waitForRequest(urlOrPredicate: string | RegExp | ((req: TxRequest) => boolean | Promise<boolean>), opts?: TxTimeoutOptions): Promise<TxRequest>;
-  waitForResponse(urlOrPredicate: string | RegExp | ((resp: TxResponse) => boolean | Promise<boolean>), opts?: TxTimeoutOptions): Promise<TxResponse>;
-
-  on(event: string, fn: (...args: any[]) => any): PopupPage;
-  off(event: string, fn: (...args: any[]) => any): PopupPage;
-  once(event: string, fn: (...args: any[]) => any): PopupPage;
-  waitForEvent<T = any>(event: string, options?: { predicate?: (arg: T) => boolean | Promise<boolean>; timeout?: number } | ((arg: T) => boolean | Promise<boolean>)): Promise<T>;
-
-  bringToFront(): Promise<void>;
-  close(): Promise<void>;
-}
-
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 
 interface Keyboard {
@@ -409,7 +376,7 @@ interface Page {
   on(event: 'framenavigated',   fn: (frame: TxFrame) => any): Page;
   on(event: 'load',             fn: () => any): Page;
   on(event: 'pageerror',        fn: (err: Error) => any): Page;
-  on(event: 'popup',            fn: (popup: PopupPage) => any): Page;
+  on(event: 'popup',            fn: (popup: Page) => any): Page;
   on(event: 'request',          fn: (req: TxRequest) => any): Page;
   on(event: 'requestfailed',    fn: (req: TxFailedRequest) => any): Page;
   on(event: 'requestfinished',  fn: (req: TxRequest) => any): Page;
@@ -420,7 +387,7 @@ interface Page {
   once(event: string, fn: (...args: any[]) => any): Page;
 
   waitForEvent(event: 'dialog',        options?: { predicate?: (d: TxDialog)          => boolean | Promise<boolean>; timeout?: number } | ((d: TxDialog)          => boolean | Promise<boolean>)): Promise<TxDialog>;
-  waitForEvent(event: 'popup',         options?: { predicate?: (p: PopupPage)         => boolean | Promise<boolean>; timeout?: number } | ((p: PopupPage)         => boolean | Promise<boolean>)): Promise<PopupPage>;
+  waitForEvent(event: 'popup',         options?: { predicate?: (p: Page)              => boolean | Promise<boolean>; timeout?: number } | ((p: Page)              => boolean | Promise<boolean>)): Promise<Page>;
   waitForEvent(event: 'console',       options?: { predicate?: (m: TxConsoleMessage)  => boolean | Promise<boolean>; timeout?: number } | ((m: TxConsoleMessage)  => boolean | Promise<boolean>)): Promise<TxConsoleMessage>;
   waitForEvent(event: 'request',       options?: { predicate?: (r: TxRequest)         => boolean | Promise<boolean>; timeout?: number } | ((r: TxRequest)         => boolean | Promise<boolean>)): Promise<TxRequest>;
   waitForEvent(event: 'requestfailed', options?: { predicate?: (r: TxFailedRequest)   => boolean | Promise<boolean>; timeout?: number } | ((r: TxFailedRequest)   => boolean | Promise<boolean>)): Promise<TxFailedRequest>;
@@ -442,7 +409,6 @@ interface Page {
    */
   resetSession(): Promise<void>;
 
-  bringToFront(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -489,37 +455,36 @@ interface APIRequestContext {
   fetch(url: string, options?: RequestInit): Promise<APIResponse>;
 }
 
+// ── Tab snapshot ──────────────────────────────────────────────────────────────
+
+/** Describes an open tab as returned by {@link Browser.tabs} and {@link Browser.switchTab}'s predicate argument. */
+interface TxTabInfo {
+  id: string;
+  title: string;
+  url: string;
+  active: boolean;
+}
+
 // ── Browser ───────────────────────────────────────────────────────────────────
 
 interface Browser {
-  /** Open a new tab and return a page object for it. */
-  newPage(): Promise<PopupPage>;
+  /**
+   * Open a new tab, make it active, and return the global `page` object.
+   * Interact with the new tab immediately via `page` — no need to use the return value.
+   */
+  newPage(): Promise<void>;
 
-  /** Return page objects for all currently open tabs. */
-  pages(): PopupPage[];
+  /** Return a snapshot of all open tabs. */
+  tabs(): TxTabInfo[];
 
   /**
-   * Execute a named task in the Node.js context and return its result.
-   *
-   * Tasks are defined in `tx.config.js` under the `tasks` key.
-   * The handler receives `payload` as its sole argument and may be async.
-   * The return value must be JSON-serializable.
-   *
-   * Throws if the task name is not registered or if the handler throws.
-   *
-   * @param name    - The task name as registered in `tx.config.js`
-   * @param payload - Optional JSON-serializable argument passed to the handler
+   * Switch the active tab by matching against tab info fields.
    *
    * @example
-   * // tx.config.js
-   * tasks: {
-   *   readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
-   * }
-   *
-   * // test file
-   * const content = await browser.task('readFile', { path: '/tmp/data.json' });
+   * browser.switchTab(t => t.url.includes('/dashboard'));
+   * browser.switchTab(t => t.title === 'My App');
    */
-  task<T = unknown>(name: string, payload?: unknown): Promise<T>;
+  switchTab(predicate: (tab: TxTabInfo) => boolean): void;
 }
 
 // ── NodeContext ───────────────────────────────────────────────────────────────
@@ -626,10 +591,11 @@ interface TxDescribeOptions {
 // ── '@qavajs/tx' module — available via require('@qavajs/tx') or import from '@qavajs/tx' ─────────────
 
 declare module '@qavajs/tx' {
-  export { Locator, FrameLocator, Page, PopupPage, Browser };
+  export { Locator, FrameLocator, Page, Browser };
   export { LocatorAssertions, PageAssertions, ValueAssertions };
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
+  export { TxTabInfo };
   export { NodeContext };
   export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions, TxDescribeOptions };

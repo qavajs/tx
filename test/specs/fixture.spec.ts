@@ -34,7 +34,7 @@ myTest.describe('Fixtures', () => {
     expect(credentials.password).toBe('secret_sauce');
   });
 
-  myTest('serverData fixture reads file via browser.task', async ({ serverData, expect }) => {
+  myTest('serverData fixture reads file via node.task', async ({ serverData, expect }) => {
     expect(serverData).toEqual({ data: 42 });
     expect(serverData.data).toBeGreaterThan(0);
   });

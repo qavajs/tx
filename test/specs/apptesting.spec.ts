@@ -147,7 +147,7 @@ test.describe('apptesting windows', () => {
         const newTab = page.locator('#new-tab-link');
         await newTab.click();
         await expect(page.locator('textarea[aria-label]')).toBeVisible();
-        await browser.pages()[0].bringToFront();
+        browser.switchTab(t => t.url.includes('windows.html'));
         expect(page.locator('#new-tab-link')).toBeVisible();
     });
 
@@ -159,7 +159,7 @@ test.describe('apptesting windows', () => {
         await expect(popupElement).toHaveText('Popup Window');
         const popupButton = page.locator('button');
         await popupButton.click();
-        await browser.pages()[0].bringToFront();
+        browser.switchTab(t => t.url.includes('windows.html'));
         expect(page.locator('#new-tab-link')).toBeVisible();
     });
 

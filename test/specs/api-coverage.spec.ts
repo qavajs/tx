@@ -1,14 +1,14 @@
 import { test } from '@qavajs/tx';
 
-async function loadTestPage({ page, browser }: any) {
-    const dirname = await browser.task('dirname');
+async function loadTestPage({ page, node }: any) {
+    const dirname = await node.task('dirname');
     await page.goto(`file://${dirname}/app/testPage.html`);
 }
 
 // ── getBy* locator factories ───────────────────────────────────────────────────
 
 test.describe('getByText', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('exact string clicks correct button', async ({ page, expect }) => {
         await page.getByText('Click', { exact: true }).click();
@@ -21,7 +21,7 @@ test.describe('getByText', () => {
 });
 
 test.describe('getByLabel', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('finds wrapped checkbox input', async ({ page, expect }) => {
         const checkbox = page.getByLabel('Checkbox');
@@ -31,7 +31,7 @@ test.describe('getByLabel', () => {
 });
 
 test.describe('getByPlaceholder', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('string finds input', async ({ page, expect }) => {
         const input = page.getByPlaceholder('Type here');
@@ -47,7 +47,7 @@ test.describe('getByPlaceholder', () => {
 });
 
 test.describe('getByAltText', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('string finds image', async ({ page, expect }) => {
         await expect(page.getByAltText('page logo')).toBeVisible();
@@ -59,7 +59,7 @@ test.describe('getByAltText', () => {
 });
 
 test.describe('getByTitle', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('string finds link', async ({ page, expect }) => {
         await expect(page.getByTitle('bottom link')).toBeVisible();
@@ -73,7 +73,7 @@ test.describe('getByTitle', () => {
 // ── Locator chaining ───────────────────────────────────────────────────────────
 
 test.describe('Locator chaining', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('locator().locator() chains child selector', async ({ page, expect }) => {
         const mouseCard = page.locator('.card').filter({ hasText: 'Mouse / Pointer' });
@@ -104,7 +104,7 @@ test.describe('Locator chaining', () => {
 // ── Locator query methods ──────────────────────────────────────────────────────
 
 test.describe('Locator query methods', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('isHidden returns true for hidden element', async ({ page, expect }) => {
         expect(await page.locator('#delayedElement').isHidden()).toBe(true);
@@ -150,7 +150,7 @@ test.describe('Locator query methods', () => {
 // ── Locator actions ────────────────────────────────────────────────────────────
 
 test.describe('Locator actions', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('clear empties a filled input', async ({ page, expect }) => {
         const input = page.locator('#textInput');
@@ -171,7 +171,7 @@ test.describe('Locator actions', () => {
 // ── Expect matchers – locator ──────────────────────────────────────────────────
 
 test.describe('Expect matchers – locator', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('toBeChecked passes for checked checkbox', async ({ page, expect }) => {
         const checkbox = page.locator('#checkbox');
@@ -212,7 +212,7 @@ test.describe('Expect matchers – locator', () => {
 // ── Expect matchers – page ─────────────────────────────────────────────────────
 
 test.describe('Expect matchers – page', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('toHaveURL matches regex', async ({ page, expect }) => {
         await expect(page).toHaveURL(/testPage\.html/);
@@ -284,7 +284,7 @@ test.describe('Expect matchers – plain values', () => {
 // ── Page APIs ──────────────────────────────────────────────────────────────────
 
 test.describe('Page APIs', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('title returns page title', async ({ page, expect }) => {
         const title = await page.title();
@@ -301,18 +301,18 @@ test.describe('Page APIs', () => {
         await expect(page.locator('#clickBtn')).toBeVisible();
     });
 
-    test('addInitScript string form injects on navigation', async ({ page, browser, expect }) => {
+    test('addInitScript string form injects on navigation', async ({ page, node, expect }) => {
         const handle = page.addInitScript('window.__initFlag = "injected";');
-        const dirname = await browser.task('dirname');
+        const dirname = await node.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
         const val = await page.evaluate(() => (window as any).__initFlag);
         expect(val).toBe('injected');
         handle.dispose();
     });
 
-    test('addInitScript function form injects on navigation', async ({ page, browser, expect }) => {
+    test('addInitScript function form injects on navigation', async ({ page, node, expect }) => {
         const handle = page.addInitScript(() => { (window as any).__initFn = 99; });
-        const dirname = await browser.task('dirname');
+        const dirname = await node.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
         const val = await page.evaluate(() => (window as any).__initFn);
         expect(val).toBe(99);
@@ -325,12 +325,12 @@ test.describe('Page APIs', () => {
         expect(shot.length).toBeGreaterThan(0);
     });
 
-    test('page.off removes event listener', async ({ page, browser, expect }) => {
+    test('page.off removes event listener', async ({ page, node, expect }) => {
         let count = 0;
         const handler = () => { count++; };
         page.on('load', handler);
         page.off('load', handler);
-        const dirname = await browser.task('dirname');
+        const dirname = await node.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
         expect(count).toBe(0);
     });
@@ -389,7 +389,7 @@ test.describe('waitForRequest and waitForResponse', () => {
 // ── Keyboard API ───────────────────────────────────────────────────────────────
 
 test.describe('Keyboard API', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('keyboard.type types into focused input', async ({ page, expect }) => {
         await page.locator('#textInput').focus();
@@ -420,7 +420,7 @@ test.describe('Keyboard API', () => {
 // ── Mouse API ──────────────────────────────────────────────────────────────────
 
 test.describe('Mouse API', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('mouse.wheel dispatches wheel event', async ({ page, expect }) => {
         await page.evaluate(() => {
@@ -455,7 +455,7 @@ test.describe('Mouse API', () => {
 // ── Locator handlers ───────────────────────────────────────────────────────────
 
 test.describe('Locator handlers', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('addLocatorHandler fires when locator is visible', async ({ page, expect }) => {
         let handlerCalled = false;
@@ -489,7 +489,7 @@ test.describe('Locator handlers', () => {
 // ── Locator chaining – nth / last ──────────────────────────────────────────────
 
 test.describe('Locator chaining – nth / last', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('nth returns element at given index', async ({ page, expect }) => {
         const second = page.locator('.card h2').nth(1);
@@ -505,7 +505,7 @@ test.describe('Locator chaining – nth / last', () => {
 // ── Locator actions – extended ─────────────────────────────────────────────────
 
 test.describe('Locator actions – extended', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('dblclick triggers double-click event', async ({ page, expect }) => {
         await page.locator('#dblClickBtn').dblclick();
@@ -554,7 +554,7 @@ test.describe('Locator actions – extended', () => {
 // ── Locator evaluate ───────────────────────────────────────────────────────────
 
 test.describe('Locator evaluate', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('evaluate reads element property via function', async ({ page, expect }) => {
         const tagName = await page.locator('#clickBtn').evaluate((el: Element) => el.tagName.toLowerCase());
@@ -565,7 +565,7 @@ test.describe('Locator evaluate', () => {
 // ── Locator waitFor ────────────────────────────────────────────────────────────
 
 test.describe('Locator waitFor', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('waitFor resolves when element becomes visible', async ({ page, expect }) => {
         const delayed = page.locator('#delayedElement');
@@ -578,7 +578,7 @@ test.describe('Locator waitFor', () => {
 // ── Locator isVisible ──────────────────────────────────────────────────────────
 
 test.describe('Locator isVisible', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('isVisible returns true for a visible element', async ({ page, expect }) => {
         expect(await page.locator('#clickBtn').isVisible()).toBe(true);
@@ -592,7 +592,7 @@ test.describe('Locator isVisible', () => {
 // ── Expect matchers – locator extended ────────────────────────────────────────
 
 test.describe('Expect matchers – locator extended', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('toBeHidden passes for hidden element', async ({ page, expect }) => {
         await expect(page.locator('#delayedElement')).toBeHidden();
@@ -626,7 +626,7 @@ test.describe('Expect matchers – toEqual', () => {
 // ── Page navigation – extended ─────────────────────────────────────────────────
 
 test.describe('Page navigation – extended', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('reload resets page state', async ({ page, expect }) => {
         await page.locator('#clickBtn').click();
@@ -639,8 +639,8 @@ test.describe('Page navigation – extended', () => {
         expect(page.url()).toContain('testPage.html');
     });
 
-    test('waitForURL resolves when URL matches', async ({ page, browser, expect }) => {
-        const dirname = await browser.task('dirname');
+    test('waitForURL resolves when URL matches', async ({ page, node, expect }) => {
+        const dirname = await node.task('dirname');
         const urlPromise = page.waitForURL(/testPage\.html/, { timeout: 5000 });
         page.goto(`file://${dirname}/app/testPage.html`);
         await urlPromise;
@@ -651,7 +651,7 @@ test.describe('Page navigation – extended', () => {
 // ── Page locator factories – extended ─────────────────────────────────────────
 
 test.describe('Page locator factories – extended', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('getByRole finds button by accessible name', async ({ page, expect }) => {
         await expect(page.getByRole('button', { name: 'Click', exact: true })).toBeVisible();
@@ -670,8 +670,8 @@ test.describe('Page locator factories – extended', () => {
 // ── page.once ─────────────────────────────────────────────────────────────────
 
 test.describe('page.once', () => {
-    test('once fires the handler exactly once across two navigations', async ({ page, browser, expect }) => {
-        const dirname = await browser.task('dirname');
+    test('once fires the handler exactly once across two navigations', async ({ page, node, expect }) => {
+        const dirname = await node.task('dirname');
         let count = 0;
         page.once('load', () => { count++; });
         page.goto(`file://${dirname}/app/testPage.html`);
@@ -685,7 +685,7 @@ test.describe('page.once', () => {
 // ── page.waitForEvent ─────────────────────────────────────────────────────────
 
 test.describe('page.waitForEvent', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('waitForEvent resolves on dialog event', async ({ page, expect }) => {
         const dialogPromise = page.waitForEvent('dialog', { timeout: 5000 });
@@ -707,37 +707,21 @@ test.describe('page.waitForEvent', () => {
 
 test.describe('Browser multi-page', () => {
     test('newPage opens an additional tab', async ({ browser, expect }) => {
-        const popup = await browser.newPage();
-        expect(typeof popup).toBe('object');
-        await popup.close();
+        await browser.newPage();
+        const tabs = browser.tabs();
+        expect(tabs.length).toBeGreaterThan(1);
     });
 
-    test('pages returns all currently open tabs', async ({ browser, expect }) => {
-        const popup = await browser.newPage();
-        const all = browser.pages();
-        expect(all.length).toBeGreaterThan(1);
-        await popup.close();
-    });
-
-    test('bringToFront does not throw on popup', async ({ browser }) => {
-        const popup = await browser.newPage();
-        await popup.bringToFront();
-        await popup.close();
-    });
-
-    test('close reduces the open page count', async ({ browser, expect }) => {
-        const popup = await browser.newPage();
-        const countBefore = browser.pages().length;
-        await popup.close();
-        const countAfter = browser.pages().length;
-        expect(countAfter).toBeLessThan(countBefore);
+    test('switchTab does not throw', async ({ browser }) => {
+        await browser.newPage();
+        browser.switchTab(t => !t.active);
     });
 });
 
 // ── Mouse API – extended ───────────────────────────────────────────────────────
 
-test.describe('Mouse API – extended', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+test.describe('Mouse API - extended', () => {
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('mouse.click at coordinates triggers click event', async ({ page, expect }) => {
         const btn = page.locator('#clickBtn');
@@ -772,7 +756,7 @@ test.describe('Mouse API – extended', () => {
 // ── Keyboard – press ──────────────────────────────────────────────────────────
 
 test.describe('Keyboard press', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('keyboard.press fires keydown event', async ({ page, expect }) => {
         await page.locator('#textInput').focus();
@@ -790,7 +774,7 @@ test.describe('Keyboard press', () => {
 // ── Route – fulfill / route.request() ────────────────────────────────────────
 
 test.describe('Route – fulfill and request()', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('route.fulfill returns a synthetic response', async ({ page, expect }) => {
         await page.route('https://httpbin.org/get', async route => {
@@ -844,16 +828,16 @@ test.describe('Fixtures – log and attach', () => {
 // ── Page events – navigation lifecycle ────────────────────────────────────────
 
 test.describe('Page events – load / domcontentloaded', () => {
-    test('load fires after navigation', async ({ page, browser, expect }) => {
-        const dirname = await browser.task('dirname');
+    test('load fires after navigation', async ({ page, node, expect }) => {
+        const dirname = await node.task('dirname');
         let fired = false;
         page.on('load', () => { fired = true; });
         await page.goto(`file://${dirname}/app/testPage.html`);
         expect(fired).toBe(true);
     });
 
-    test('domcontentloaded fires during navigation', async ({ page, browser, expect }) => {
-        const dirname = await browser.task('dirname');
+    test('domcontentloaded fires during navigation', async ({ page, node, expect }) => {
+        const dirname = await node.task('dirname');
         let fired = false;
         page.on('domcontentloaded', () => { fired = true; });
         await page.goto(`file://${dirname}/app/testPage.html`);
@@ -864,7 +848,7 @@ test.describe('Page events – load / domcontentloaded', () => {
 // ── Page events – network ─────────────────────────────────────────────────────
 
 test.describe('Page events – request / response / requestfinished / requestfailed', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('request fires for a page-initiated fetch', async ({ page, expect }) => {
         const urls: string[] = [];
@@ -903,7 +887,7 @@ test.describe('Page events – request / response / requestfinished / requestfai
 // ── Page events – pageerror ───────────────────────────────────────────────────
 
 test.describe('Page events – pageerror', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('pageerror fires on an uncaught exception in the page', async ({ page, expect }) => {
         let capturedError: Error | null = null;
@@ -920,24 +904,24 @@ test.describe('Page events – pageerror', () => {
 // ── Page events – frame ───────────────────────────────────────────────────────
 
 test.describe('Page events – frameattached / framenavigated / framedetached', () => {
-    test('frameattached fires when a page with an iframe is loaded', async ({ page, browser, expect }) => {
-        const dirname = await browser.task('dirname');
+    test('frameattached fires when a page with an iframe is loaded', async ({ page, node, expect }) => {
+        const dirname = await node.task('dirname');
         const attached: any[] = [];
         page.on('frameattached', frame => { attached.push(frame); });
         await page.goto(`file://${dirname}/app/testPage.html`);
         expect(attached.length).toBeGreaterThan(0);
     });
 
-    test('framenavigated fires during page navigation', async ({ page, browser, expect }) => {
-        const dirname = await browser.task('dirname');
+    test('framenavigated fires during page navigation', async ({ page, node, expect }) => {
+        const dirname = await node.task('dirname');
         let navigated = false;
         page.on('framenavigated', () => { navigated = true; });
         await page.goto(`file://${dirname}/app/testPage.html`);
         expect(navigated).toBe(true);
     });
 
-    test('framedetached fires when an iframe is removed from the DOM', async ({ page, browser, expect }) => {
-        await loadTestPage({ page, browser });
+    test('framedetached fires when an iframe is removed from the DOM', async ({ page, browser, expect, node }) => {
+        await loadTestPage({ page, node });
         let detached = false;
         page.on('framedetached', () => { detached = true; });
         await page.evaluate(() => {
@@ -951,14 +935,14 @@ test.describe('Page events – frameattached / framenavigated / framedetached', 
 
 // ── Page events – popup ───────────────────────────────────────────────────────
 
-test.describe('Page events – popup', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+test.describe('Page events - popup', () => {
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('popup fires when window.open is called', async ({ page, expect }) => {
         const popupPromise = page.waitForEvent('popup', { timeout: 5000 });
         await page.evaluate(() => { window.open('about:blank', '_blank'); });
         const popup = await popupPromise;
-        expect(popup).not.toBeNull();
+        expect(popup.url()).not.toBeNull();
         await popup.close();
     });
 });
@@ -966,7 +950,7 @@ test.describe('Page events – popup', () => {
 // ── Page events – filechooser ─────────────────────────────────────────────────
 
 test.describe('Page events – filechooser', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('filechooser fires when a file input is activated', async ({ page, expect }) => {
         const chooserPromise = page.waitForEvent('filechooser', { timeout: 5000 });
@@ -978,12 +962,15 @@ test.describe('Page events – filechooser', () => {
 
 // ── Page events – close ───────────────────────────────────────────────────────
 
-test.describe('Page events – close', () => {
-    test('close fires on a popup page when it is closed', async ({ browser, expect }) => {
-        const popup = await browser.newPage();
+test.describe('Page events - close', () => {
+    test('close fires on a popup page when it is closed', async ({ browser, expect, page }) => {
         let closed = false;
-        popup.on('close', () => { closed = true; });
-        await popup.close();
+        await browser.newPage();
+        await page.waitForTimeout(500);
+        const secondTab = browser.tabs()[1];
+        browser.switchTab(t => t.id === secondTab.id);
+        page.on('close', () => { closed = true; });
+        await page.close();
         expect(closed).toBe(true);
     });
 });
@@ -991,7 +978,7 @@ test.describe('Page events – close', () => {
 // ── Page events – download ────────────────────────────────────────────────────
 
 test.describe('Page events – download', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('download fires when a file download is triggered', async ({ page, expect }) => {
         const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
@@ -1011,7 +998,7 @@ test.describe('Page events – download', () => {
 // ── FileChooser – full API ────────────────────────────────────────────────────
 
 test.describe('FileChooser – full API', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('element() returns the file HTMLInputElement', async ({ page, expect }) => {
         const chooserPromise = page.waitForEvent('filechooser', { timeout: 5000 });
@@ -1092,7 +1079,7 @@ test.describe('FileChooser – full API', () => {
 // ── Download – full API ───────────────────────────────────────────────────────
 
 test.describe('Download – full API', () => {
-    test.beforeEach(async ({ page, browser }) => { await loadTestPage({ page, browser }); });
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('url() returns the href of the triggering link', async ({ page, expect }) => {
         const dlPromise = page.waitForEvent('download', { timeout: 5000 });
@@ -1162,8 +1149,8 @@ test.describe('Download – full API', () => {
         expect(text).toBe('stream-content');
     });
 
-    test('saveAs() writes the file to the given path on disk', async ({ page, browser, expect }) => {
-        const dirname = await browser.task('dirname');
+    test('saveAs() writes the file to the given path on disk', async ({ page, node, expect }) => {
+        const dirname = await node.task('dirname');
         const dlPromise = page.waitForEvent('download', { timeout: 5000 });
         await page.evaluate(() => {
             const a = document.createElement('a');
@@ -1176,9 +1163,9 @@ test.describe('Download – full API', () => {
         const dl = await dlPromise;
         const savePath = `${dirname}/../__tx_download_test__.txt`;
         await dl.saveAs(savePath);
-        const content = await browser.task('readFile', { path: savePath });
+        const content = await node.task('readFile', { path: savePath });
         expect(content).toBe('saved-content');
-        await browser.task('deleteFile', { path: savePath });
+        await node.task('deleteFile', { path: savePath });
     });
 });
 

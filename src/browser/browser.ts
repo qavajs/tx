@@ -354,7 +354,7 @@ export function createTab(url?: string) {
   setActiveTab(tabId);
   log('new tab');
   _onTabsChanged?.();
-  return _makePopupPage(tabId);
+  return page;
 }
 
 export function closeTab(tabId: string) {
@@ -2135,10 +2135,6 @@ export const page = {
     }));
   },
 
-  async bringToFront(): Promise<void> {
-    if (_activeTabId) setActiveTab(_activeTabId);
-  },
-
   async evaluate(pageFunction: string | ((...args: any[]) => any), arg?: any): Promise<any> {
     const win = iframeWin() as any;
     if (!win) throw new Error('no active page');
@@ -2575,43 +2571,6 @@ export const testApi = {
   title(): string { return iframeDoc()?.title ?? ''; },
 };
 
-// ── Popup page factory ────────────────────────────────────────────────────────
-
-function _makePopupPage(tabId: string) {
-  const _activate = () => { if (_tabs.find(t => t.id === tabId)) setActiveTab(tabId); };
-  const popupPage = {
-    async goto(url: string) { _activate(); return page.goto(url); },
-    reload() { _activate(); return page.reload(); },
-    url() { _activate(); return page.url(); },
-    async title() { _activate(); return page.title(); },
-    locator(selector: string) {
-      return new Locator(() => { _activate(); return page.locator(selector)._els(); });
-    },
-    getByText: (text: string | RegExp, opts?: any) => new Locator(() => { _activate(); return page.getByText(text, opts)._els(); }),
-    getByRole: (role: string, opts?: any) => new Locator(() => { _activate(); return page.getByRole(role, opts)._els(); }),
-    getByLabel: (text: string | RegExp, opts?: any) => new Locator(() => { _activate(); return page.getByLabel(text, opts)._els(); }),
-    getByPlaceholder: (text: string | RegExp) => new Locator(() => { _activate(); return page.getByPlaceholder(text)._els(); }),
-    getByTestId: (id: string) => new Locator(() => { _activate(); return page.getByTestId(id)._els(); }),
-    getByAltText: (text: string | RegExp) => new Locator(() => { _activate(); return page.getByAltText(text)._els(); }),
-    getByTitle: (text: string | RegExp) => new Locator(() => { _activate(); return page.getByTitle(text)._els(); }),
-    frameLocator: (selector: string) => new FrameLocator(selector, () => { _activate(); return iframeDoc(); }),
-    waitForURL: (url: string | RegExp, opts?: any) => { _activate(); return page.waitForURL(url, opts); },
-    waitForSelector: (sel: string, opts?: any) => { _activate(); return page.waitForSelector(sel, opts); },
-    waitForTimeout: (ms: number) => page.waitForTimeout(ms),
-    waitForRequest: (urlOrPredicate: any, opts?: any) => { _activate(); return page.waitForRequest(urlOrPredicate, opts); },
-    waitForResponse: (urlOrPredicate: any, opts?: any) => { _activate(); return page.waitForResponse(urlOrPredicate, opts); },
-    async bringToFront() { _activate(); },
-    on:   (event: string, fn: any) => { _addPageListener(event, fn); return popupPage; },
-    off:  (event: string, fn: any) => { _removePageListener(event, fn); return popupPage; },
-    once: (event: string, fn: any) => { page.once(event, fn); return popupPage; },
-    waitForEvent: (event: string, optionsOrPredicate?: any) => page.waitForEvent(event, optionsOrPredicate),
-    async close() { _emitPage('close'); closeTab(tabId); },
-  };
-  return popupPage;
-}
-
-export type PopupPage = ReturnType<typeof _makePopupPage>;
-
 // ── Early bridge watcher ──────────────────────────────────────────────────────
 // Polls via rAF to detect new iframe windows as soon as they appear — well
 // before the outer `load` event fires — so requests made during page init
@@ -2757,18 +2716,19 @@ export const node = {
 // ── Browser object ────────────────────────────────────────────────────────────
 
 export const browser = {
-  /** Open a new tab and return a Page-like object for it */
-  async newPage(): Promise<PopupPage> {
-    return createTab();
+  /** Open a new tab, make it active, and return the global page object */
+  async newPage(): Promise<void> {
+    createTab();
   },
 
-  /** Return Page-like objects for all currently open tabs */
-  pages(): PopupPage[] {
-    return _tabs.map(t => _makePopupPage(t.id));
+  /** Return a snapshot of all open tabs. */
+  tabs(): ReturnType<typeof getTabsSnapshot> {
+    return getTabsSnapshot();
   },
 
-  /** Execute a named task in the Node.js context and return its result */
-  async task<T = unknown>(name: string, payload?: unknown): Promise<T> {
-    return node.task<T>(name, payload);
-  },
+  /** Switch the active tab by matching against tab snapshot fields (id, title, url, active) */
+  switchTab(predicate: (tab: ReturnType<typeof getTabsSnapshot>[number]) => boolean): void {
+    const tab = getTabsSnapshot().find(predicate);
+    if (tab) setActiveTab(tab.id);
+  }
 };
