@@ -1,6 +1,6 @@
 {
   "name": "@qavajs/tx",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "@qavajs/tx — testing framework via Hammerhead proxy",
   "license": "MIT",
   "author": "",
