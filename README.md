@@ -1117,8 +1117,8 @@ Subscribe via `page.on(event, handler)`. Events are emitted by bridges installed
 | `close`            | `() => void`                                   | `page.close()` was called |
 | `console`          | `(msg) => void`                                | Console output. `msg.type()`, `msg.text()`, `msg.args()`, `msg.location()` |
 | `dialog`           | `(dialog) => void`                             | `alert`/`confirm`/`prompt`. `dialog.type()`, `.message()`, `.accept(text?)`, `.dismiss()` |
-| `download`         | `(dl) => void`                                 | User clicked a download link. `dl.url()`, `dl.suggestedFilename()` |
-| `filechooser`      | `(fc) => void`                                 | File input clicked. `fc.element()`, `fc.isMultiple()`, `fc.accept()`, `fc.setFiles(files[])` |
+| `download`         | `(dl) => void`                                 | User clicked a download link. See [`Download`](#download) |
+| `filechooser`      | `(fc) => void`                                 | File input clicked. See [`FileChooser`](#filechooser) |
 | `frameattached`    | `(frame) => void`                              | A sub-frame was added. `frame.url()`, `frame.name()`, `frame.isMainFrame()` |
 | `framedetached`    | `(frame) => void`                              | A sub-frame was removed |
 | `framenavigated`   | `(frame) => void`                              | A sub-frame navigated |
@@ -1139,6 +1139,104 @@ page.on('dialog', async dialog => {
 
 page.on('console', msg => {
   if (msg.type() === 'error') console.error('[page]', msg.text());
+});
+```
+
+---
+
+### `Download`
+
+Passed to handlers registered with `page.on('download', …)` and `page.waitForEvent('download')`. Emitted whenever the user clicks a link that carries a `download` attribute or whose URL ends with a recognized file extension (`.pdf`, `.zip`, `.csv`, etc.).
+
+```ts
+dl.url(): string
+```
+Returns the `href` of the link that triggered the download.
+
+```ts
+dl.suggestedFilename(): string
+```
+Returns the `download` attribute value when set; otherwise falls back to the last path segment of the URL.
+
+```ts
+await dl.createReadStream(): Promise<ReadableStream<Uint8Array>>
+```
+Fetches the download URL and returns its content as a Web [`ReadableStream<Uint8Array>`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream). Use a `ReadableStreamDefaultReader` to consume the bytes.
+
+```ts
+await dl.saveAs(path: string): Promise<void>
+```
+Fetches the download URL and writes the content to `path` on the **server's** filesystem. Parent directories are created automatically.
+
+```ts
+// Inspect and stream content
+page.on('download', async dl => {
+  console.log(dl.url());                 // 'https://example.com/report.csv'
+  console.log(dl.suggestedFilename());   // 'report.csv'
+
+  const stream = await dl.createReadStream();
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const text = new TextDecoder().decode(
+    chunks.reduce((a, c) => {
+      const m = new Uint8Array(a.length + c.length);
+      m.set(a); m.set(c, a.length);
+      return m;
+    }, new Uint8Array(0))
+  );
+  console.log(text);
+});
+
+// Save to disk
+page.on('download', async dl => {
+  await dl.saveAs(`/tmp/downloads/${dl.suggestedFilename()}`);
+});
+```
+
+---
+
+### `FileChooser`
+
+Passed to handlers registered with `page.on('filechooser', …)` and `page.waitForEvent('filechooser')`. Emitted whenever a `<input type="file">` element receives a click.
+
+```ts
+fc.element(): HTMLInputElement
+```
+Returns the underlying file `<input>` element.
+
+```ts
+fc.isMultiple(): boolean
+```
+Returns `true` when the input carries the `multiple` attribute.
+
+```ts
+fc.accept(): string
+```
+Returns the value of the `accept` attribute, or an empty string when the attribute is absent.
+
+```ts
+fc.setFiles(files: File[]): void
+```
+Programmatically sets the input's `FileList` to the supplied array and dispatches a `change` event on the element. Use the browser's built-in `File` constructor to create entries.
+
+```ts
+// Accept all file-chooser dialogs automatically
+page.on('filechooser', fc => {
+  fc.setFiles([
+    new File(['hello world'], 'hello.txt', { type: 'text/plain' }),
+  ]);
+});
+
+// Inspect chooser properties before deciding
+page.on('filechooser', fc => {
+  console.log(fc.isMultiple()); // true / false
+  console.log(fc.accept());     // e.g. 'image/png,image/jpeg'
+  console.log(fc.element().id); // DOM id of the input
 });
 ```
 

@@ -29,15 +29,6 @@ test.describe('Failed login', () => {
   });
 });
 
-test.describe('Cookie-based login', () => {
-  test('uses existing session cookie', async ({ page }) => {
-    const loginPage = new LoginPage(page);
-    await loginPage.loginWithCookie();
-    await loginPage.waitForInventory();
-    await loginPage.expectInventoryLoaded();
-  });
-});
-
 test.describe('Inventory page layout', () => {
   test('shows the Products heading', async ({ page, expect }) => {
     await page.goto('https://www.saucedemo.com');

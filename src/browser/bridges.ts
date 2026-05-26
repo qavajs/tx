@@ -1,6 +1,6 @@
 // ── Per-protocol bridge installers ────────────────────────────────────────────
 
-import { _emitPage, fromProxiedUrl, iframeWin, iframeDoc, createTab } from './browser';
+import { _emitPage, fromProxiedUrl, iframeWin, iframeDoc, createTab, wsRequest } from './browser';
 import { Route, routeHandlers, dispatchRoute, matchesRoutePattern } from './route';
 
 let _frameObserver: MutationObserver | null = null;
@@ -313,6 +313,25 @@ function _bridgeDocumentEvents(doc: Document): void {
       _emitPage('download', {
         url:               () => href,
         suggestedFilename: () => a.download || href.split('/').pop()?.split('?')[0] || 'download',
+        createReadStream:  async () => {
+          const resp = await fetch(href);
+          if (!resp.ok) throw new Error(`download.createReadStream: fetch failed (${resp.status})`);
+          if (!resp.body) throw new Error('download.createReadStream: response body is null');
+          return resp.body;
+        },
+        saveAs: async (filePath: string) => {
+          const resp = await fetch(href);
+          if (!resp.ok) throw new Error(`download.saveAs: fetch failed (${resp.status})`);
+          const buf = await resp.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          const chunkSize = 8192;
+          let binary = '';
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...(bytes.subarray(i, i + chunkSize) as any));
+          }
+          const b64 = btoa(binary);
+          await wsRequest<unknown>('save-download', { path: filePath, data: b64 });
+        },
       });
     }
   }, true);
@@ -365,7 +384,13 @@ function _bridgeDocumentEvents(doc: Document): void {
     }
   });
   const docRoot = doc.documentElement ?? doc.body;
-  if (docRoot) _frameObserver.observe(docRoot, { subtree: true, childList: true });
+  if (docRoot) {
+    _frameObserver.observe(docRoot, { subtree: true, childList: true });
+    for (const el of Array.from(doc.querySelectorAll('iframe, frame'))) {
+      const frame = { url: () => (el as HTMLIFrameElement).src, name: () => (el as any).name ?? '', isMainFrame: () => false };
+      _emitPage('frameattached', frame);
+    }
+  }
 }
 
 // ── Event bridge orchestrators ────────────────────────────────────────────────

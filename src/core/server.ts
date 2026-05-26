@@ -215,6 +215,18 @@ export class TestServer {
         break;
       }
 
+      case 'save-download': {
+        const { id, path: filePath, data } = msg as { id: string; path: string; data: string };
+        try {
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
+          ws.send(JSON.stringify({ id }));
+        } catch (err: any) {
+          ws.send(JSON.stringify({ id, error: err.message ?? String(err) }));
+        }
+        break;
+      }
+
       case 'get-tests': {
         const { id } = msg as { id: string };
         try {

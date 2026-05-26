@@ -68,7 +68,7 @@
 
     <section class="card">
       <h2>Mouse / Pointer</h2>
-      <button id="clickBtn">Click</button>
+      <button id="clickBtn" data-testid="click-button">Click</button>
       <button id="dblClickBtn">Double Click</button>
       <button id="rightClickBtn">Right Click</button>
       <button id="hoverTarget">Hover Me</button>
@@ -150,8 +150,9 @@
 
     <section class="card">
       <h2>Navigation</h2>
-      <a id="linkNav" href="#bottom">Jump to bottom</a>
+      <a id="linkNav" href="#bottom" title="bottom link">Jump to bottom</a>
       <br>
+      <img id="logoImg" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" alt="page logo" width="24" height="24" style="display:block;margin:4px 0" />
       <button onclick="history.back()">Back</button>
       <button onclick="history.forward()">Forward</button>
       <button onclick="location.reload()">Reload</button>

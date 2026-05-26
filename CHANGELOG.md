@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-05-26
+
+### Added
+- `TxDownload.createReadStream()` — returns a Web `ReadableStream<Uint8Array>` of the downloaded file's bytes
+- `TxDownload.saveAs(path)` — saves the downloaded file to the given path on the server filesystem via WebSocket
+- `page.resetSession()` — clears route handlers, locator handlers, page listeners, and navigates to a blank page; also clears `localStorage`, `sessionStorage`, and cookies for the current origin
+- `save-download` WebSocket message handler in `TestServer` for writing base64-encoded file data to disk
+
+### Changed
+- Popup page `close()` now emits the `'close'` page event before closing the tab
+- Removed unimplemented `'crash'`, `'websocket'`, and `'worker'` event overloads from the `Page` type definitions
+- `waitForEvent` signature cleaned up: removed `'crash'`, `'websocket'`, and `'worker'` overloads
+
 ## [0.0.2] - 2026-05-25
 
 ### Changed
