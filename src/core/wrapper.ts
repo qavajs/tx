@@ -327,6 +327,7 @@ export class TxWrapper {
           args = [
             '--no-remote',
             '--new-instance',
+            '--disable-popup-blocking',
             ...(this.config.headless ? ['--headless'] : []),
             this.controlPanelProxyUrl,
           ];
@@ -340,6 +341,7 @@ export class TxWrapper {
             '--no-first-run',
             '--no-default-browser-check',
             '--enable-automation',
+            '--disable-popup-blocking',
             ...(this.config.headless ? headlessArgs(exePath) : []),
             this.controlPanelProxyUrl,
           ];

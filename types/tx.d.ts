@@ -526,6 +526,12 @@ interface Browser {
    */
   newPage(): Promise<void>;
 
+  /**
+   * Open a new window (popup), make it active, and return the global `page` object.
+   * Interact with the new window immediately via `page` — no need to use the return value.
+   */
+  newWindow(url?: string): Promise<void>;
+
   /** Return a snapshot of all open tabs. */
   tabs(): TxTabInfo[];
 
