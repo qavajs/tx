@@ -384,7 +384,13 @@ function _bridgeDocumentEvents(doc: Document): void {
     }
   });
   const docRoot = doc.documentElement ?? doc.body;
-  if (docRoot) _frameObserver.observe(docRoot, { subtree: true, childList: true });
+  if (docRoot) {
+    _frameObserver.observe(docRoot, { subtree: true, childList: true });
+    for (const el of Array.from(doc.querySelectorAll('iframe, frame'))) {
+      const frame = { url: () => (el as HTMLIFrameElement).src, name: () => (el as any).name ?? '', isMainFrame: () => false };
+      _emitPage('frameattached', frame);
+    }
+  }
 }
 
 // ── Event bridge orchestrators ────────────────────────────────────────────────
