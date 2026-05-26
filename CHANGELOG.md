@@ -4,6 +4,18 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed
+- All `Locator` query methods (`textContent`, `innerText`, `inputValue`, `getAttribute`, `isVisible`, `isHidden`, `isEnabled`, `isDisabled`, `isChecked`, `isEditable`, `count`) now emit `_withCommand` log entries, consistent with action methods
+- `page.resetSession()` now emits a `_withCommand` log entry (pending → pass/fail with timing)
+- `page.unroute()` now emits a log entry, consistent with `page.route()`
+- `page.removeLocatorHandler()` now emits a log entry, consistent with `page.addLocatorHandler()`
+- `browser.newPage()` now emits a log entry
+- `browser.switchTab()` now emits a log entry showing the matched tab's title
+- `page.title()` now emits a `_withCommand` log entry
+- `Locator.waitFor()` and all `expect` / `expect.not` retry callbacks use internal sync helpers (`_checkVisibility`, `_checkEnabled`, `_checkChecked`, `_checkEditable`, `_textContent`, `_inputValue`, `_getAttribute`) to avoid emitting spurious log entries on every retry iteration
+
 ## [0.0.4]
 
 ### Added
