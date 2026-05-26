@@ -1,8 +1,8 @@
-import { test } from '@qavajs/tx';
+import { test, expect } from '@qavajs/tx';
 
 test.describe('testauto.app', () => {
 
-    test('new window', async ({ page, expect }) => {
+    test('new window', async ({ page }) => {
         await page.goto('https://qa-practice.razvanvancea.ro/window.html');
         const newTabButton = page.locator('#newWindowBtn');
         // const pagePromise = page.context().waitForEvent('page', { timeout: 5000 });

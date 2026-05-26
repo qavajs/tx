@@ -1,7 +1,7 @@
-import { test } from '@qavajs/tx';
+import { test, expect } from '@qavajs/tx';
 
 test.describe('UI5', () => {
-    test('ui5 cart functionality', async ({ page, expect }) => {
+    test('ui5 cart functionality', async ({ page }) => {
         await page.goto('https://ui5.sap.com/test-resources/sap/m/demokit/cart/webapp/index.html?sap-ui-theme=sap_horizon_dark#');
         await page.locator('[role="listitem"][id*=category][title="Open category Keyboards"]').click();
         await page.locator('[title="Open details for Internet Keyboard"]').click();

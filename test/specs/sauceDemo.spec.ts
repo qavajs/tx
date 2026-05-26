@@ -1,4 +1,4 @@
-import { test } from '@qavajs/tx';
+import { test, expect } from '@qavajs/tx';
 import { LoginPage } from '../pages/LoginPage';
 
 test.describe('Successful login', () => {
@@ -30,7 +30,7 @@ test.describe('Failed login', () => {
 });
 
 test.describe('Inventory page layout', () => {
-  test('shows the Products heading', async ({ page, expect }) => {
+  test('shows the Products heading', async ({ page }) => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
     await page.getByTestId('password').fill('secret_sauce');
@@ -45,7 +45,7 @@ test.describe('Inventory page layout', () => {
 });
 
 test.describe('Adding items to cart', () => {
-  test('add items to cart', async ({ page, expect }) => {
+  test('add items to cart', async ({ page }) => {
     await page.goto('https://www.saucedemo.com/');
     await page.evaluate(() => localStorage.clear());
     await page.getByTestId('username').fill('standard_user');

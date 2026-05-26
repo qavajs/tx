@@ -44,10 +44,10 @@ Write a spec file:
 
 ```ts
 // specs/login.spec.ts
-import { test } from '@qavajs/tx';
+import { test, expect } from '@qavajs/tx';
 
 test.describe('Login', () => {
-  test('redirects to inventory on valid credentials', async ({ page, expect }) => {
+  test('redirects to inventory on valid credentials', async ({ page }) => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
     await page.getByTestId('password').fill('secret_sauce');
@@ -235,13 +235,13 @@ preprocessor(source, filePath) {
 
 ## Writing Tests
 
-Tests look and feel like Playwright. Import `test` from `'@qavajs/tx'`. Fixtures (`page`, `browser`, `node`, `expect`, `request`, `log`, `attach`) are injected via destructuring — not globals.
+Tests look and feel like Playwright. Import `test` and `expect` from `'@qavajs/tx'`. Fixtures (`page`, `browser`, `node`, `request`, `log`, `attach`) are injected via destructuring — not globals.
 
 ```ts
-import { test } from '@qavajs/tx';
+import { test, expect } from '@qavajs/tx';
 
 test.describe('Login', () => {
-  test('navigates to inventory after valid credentials', async ({ page, expect }) => {
+  test('navigates to inventory after valid credentials', async ({ page }) => {
     await page.goto('https://www.saucedemo.com');
     await page.getByTestId('username').fill('standard_user');
     await page.getByTestId('password').fill('secret_sauce');
@@ -251,7 +251,7 @@ test.describe('Login', () => {
   });
 
   // Tags are displayed as chips in the control panel and matched by --grep
-  test('smoke check', { tag: ['@smoke'] }, async ({ page, expect }) => {
+  test('smoke check', { tag: ['@smoke'] }, async ({ page }) => {
     await page.goto('https://www.saucedemo.com');
     await expect(page.getByTestId('login-button')).toBeVisible();
   });
@@ -263,6 +263,7 @@ test.describe('Login', () => {
 | Export            | Description |
 |-------------------|-------------|
 | `test`            | Define a test case |
+| `expect`          | Assertion function (see [expect](#expect)) |
 | `test.describe`   | Define a test suite |
 | `test.beforeEach` | Hook run before each test in the nearest `test.describe` |
 | `test.afterEach`  | Hook run after each test in the nearest `test.describe` |
@@ -278,7 +279,6 @@ test.describe('Login', () => {
 | `browser`    | Multi-tab browser object (see [browser](#browser)) |
 | `node`       | Node.js context bridge (see [node](#node)) |
 | `request`    | HTTP request context (see [request](#request)) |
-| `expect`     | Assertion function (see [expect](#expect)) |
 | `log`        | `(message, opts?) => void` — write to the panel console; `opts`: `{ type?: 'info'\|'success'\|'error', cmd?: string, duration?: number }` |
 | `log.open`   | `(message, cmd) => TxCommandHandle` — open a pending entry; resolve with `.success()` / `.fail()` |
 | `attach`     | `(label, body, contentType?) => void` — attach data to the test result |
@@ -366,7 +366,7 @@ const myTest = test.extend({
 });
 
 myTest('dashboard shows username', async ({ loggedInPage, credentials }) => {
-  await expect(loggedInPage.getByTestId('welcome')).toHaveText(credentials.username);
+  await expect(loggedInPage.getByTestId('welcome')).toHaveText(credentials.username); // expect imported from '@qavajs/tx'
 });
 ```
 
@@ -393,7 +393,7 @@ test.describe('suite', () => {
   test.beforeEach(async ({ page }) => { await page.goto('https://example.com'); });
   test.afterEach(async  () => { /* runs after  each test */ });
 
-  test('test', async ({ page, expect }) => { /* ... */ });
+  test('test', async ({ page }) => { /* ... */ });
 });
 ```
 
@@ -890,7 +890,13 @@ await locator.waitFor(opts?: {
 
 ### `expect`
 
-`expect` is the Playwright-style assertion function. Matchers that take a `Locator` auto-retry until the condition is met or the timeout expires (default 5000 ms). Matchers that take a plain value are synchronous.
+`expect` is the Playwright-style assertion function. Import it directly from `'@qavajs/tx'` — it is not a fixture.
+
+```ts
+import { test, expect } from '@qavajs/tx';
+```
+
+Matchers that take a `Locator` auto-retry until the condition is met or the timeout expires (default 5000 ms). Matchers that take a plain value are synchronous.
 
 #### Locator matchers (async, auto-retry)
 
@@ -934,6 +940,16 @@ expect(array).toHaveLength(n: number): void
 expect(fn).toThrow(): void
 ```
 
+#### `toPass` (async polling)
+
+Retries an arbitrary callback until it stops throwing, useful for wrapping multi-step assertions:
+
+```ts
+await expect(async () => {
+  await expect(page.locator('.status')).toHaveText('ready');
+}).toPass({ timeout: 10_000 });
+```
+
 #### Negation
 
 All matchers are available under `.not`:
@@ -942,6 +958,67 @@ All matchers are available under `.not`:
 await expect(locator).not.toBeVisible();
 expect(value).not.toBe(expected);
 ```
+
+#### Custom matchers — `expect.extend`
+
+`expect.extend(matchers)` returns a **new** `expect` function with the given matchers added. It does not mutate the original — call it once at the top of a spec file (or in a shared module) and use the result throughout.
+
+```ts
+import { expect as baseExpect } from '@qavajs/tx';
+
+const expect = baseExpect.extend({
+  async toHaveItemCount(locator, expected: number) {
+    const actual = await locator.count();
+    return {
+      pass: actual === expected,
+      message: `Expected item count ${expected}, got ${actual}`,
+    };
+  },
+
+  toBeWithinRange(value: number, min: number, max: number) {
+    return {
+      pass: value >= min && value <= max,
+      message: `Expected ${value} to be within [${min}, ${max}]`,
+    };
+  },
+});
+
+// usage (custom matchers are also available under .not)
+await expect(page.locator('.item')).toHaveItemCount(3);
+await expect(page.locator('.item')).not.toHaveItemCount(0);
+expect(score).toBeWithinRange(1, 10);
+```
+
+**Sharing across files** — export the extended function from a support module:
+
+```ts
+// support/expect.ts
+import { expect as baseExpect } from '@qavajs/tx';
+
+export const expect = baseExpect.extend({
+  toBeWithinRange(value: number, min: number, max: number) {
+    return {
+      pass: value >= min && value <= max,
+      message: `Expected ${value} to be within [${min}, ${max}]`,
+    };
+  },
+});
+```
+
+```ts
+// specs/my.spec.ts
+import { test } from '@qavajs/tx';
+import { expect } from '../support/expect';
+
+test('score is in range', () => {
+  expect(score).toBeWithinRange(1, 10);
+});
+```
+
+The matcher function receives the value passed to `expect()` as its first argument, followed by any additional arguments. Return `{ pass: boolean, message: string }`:
+
+- **`pass: true`** — the assertion currently holds. Positive call passes; `.not` call fails with `message`.
+- **`pass: false`** — the assertion does not hold. Positive call fails with `message`; `.not` call passes.
 
 ---
 
@@ -966,7 +1043,7 @@ Switch the active tab to the first tab where `predicate` returns `true`. Use `pa
 
 ```ts
 // Multi-tab flow
-test('multi-tab', async ({ page, browser, expect }) => {
+test('multi-tab', async ({ page, browser }) => {
   await page.goto('https://example.com');
 
   await browser.newPage();
@@ -1021,7 +1098,7 @@ module.exports = {
 **Using `node.task` in tests:**
 
 ```ts
-test('reads a fixture from disk', async ({ node, expect }) => {
+test('reads a fixture from disk', async ({ node }) => {
   const json = await node.task('readFile', { path: './fixtures/user.json' });
   const user = JSON.parse(json);
   expect(user.name).toBe('Alice');
@@ -1067,7 +1144,7 @@ await request.fetch(url: string, options?: RequestInit): Promise<APIResponse>
 | `body()` | `Promise<ArrayBuffer>` | Raw body bytes |
 
 ```ts
-test('CRUD operations', async ({ request, expect }) => {
+test('CRUD operations', async ({ request }) => {
   const resp = await request.fetch('https://api.example.com/users');
   expect(resp.status()).toBe(200);
   const users = await resp.json();
@@ -1641,7 +1718,7 @@ Assert.less(actual, threshold, message?)
 1. **Startup** — `@qavajs/tx` starts a Hammerhead proxy (two ports) and a lightweight HTTP server.
 2. **Proxy session** — Hammerhead creates a session URL for the target site, rewriting all network requests and responses so they flow through the proxy from inside the iframe.
 3. **Control panel** — the HTTP server serves an HTML page that embeds the iframe and the spec runner UI.
-4. **Test execution** — when a test runs, the spec file is fetched from the server, transpiled on the fly, and `new Function(code)()` is called in the browser context. A `require('@qavajs/tx')` shim is installed so that `import { test } from '@qavajs/tx'` works, and fixtures (`page`, `browser`, `expect`, etc.) are resolved and injected via the DI system before each test body runs.
+4. **Test execution** — when a test runs, the spec file is fetched from the server, transpiled on the fly, and `new Function(code)()` is called in the browser context. A `require('@qavajs/tx')` shim is installed so that `import { test, expect } from '@qavajs/tx'` works, and fixtures (`page`, `browser`, `node`, etc.) are resolved and injected via the DI system before each test body runs.
 5. **Reporting** — results are posted back to the server, which forwards them to any configured reporter.
 
 ---

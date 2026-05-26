@@ -4,6 +4,20 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- `expect` is now a top-level named export from `'@qavajs/tx'` — import it directly alongside `test` instead of receiving it as a fixture
+- `expect.extend(matchers)` — returns a new scoped `expect` function with the given custom matchers merged in; pure and side-effect-free, the original `expect` is unmodified
+- `expect(value).toPass(opts?)` — async polling assertion that retries an arbitrary callback until it stops throwing, with configurable timeout
+- `TxExpect<T>` generic interface — custom matcher types propagate through `.extend<M>()` calls so `expect(x).toCustomMatcher()` type-checks without extra declarations
+- `TxLocatorMatchers`, `TxPageMatchers`, `TxValueMatchers` — empty ambient interfaces for augmenting built-in assertion types via declaration merging
+
+### Changed
+- `expect` removed from `TxBaseFixtures` — it is no longer injected as a test fixture; update destructuring patterns to use the module import instead
+- `not` is no longer a separate object with duplicated matcher definitions; the unified `_makeExpect(target, negated, localMatchers)` factory threads a `negated` flag through all matchers, halving the internal implementation size
+- Custom matchers registered via `expect.extend` are scoped to the returned function and do not mutate any shared state
+
 ## [0.0.5]
 
 ### Added

@@ -8,6 +8,55 @@
  *   const { page, expect, Locator } = require('@qavajs/tx')
  */
 
+// ── Custom matcher extension ──────────────────────────────────────────────────
+
+interface CustomMatcherResult {
+  /** `true` if the assertion currently passes (before negation is applied). */
+  pass: boolean;
+  /** Error message shown when the assertion fails (positive or negative). */
+  message: string;
+}
+
+type CustomMatcherFn = (target: any, ...args: any[]) => CustomMatcherResult | Promise<CustomMatcherResult>;
+
+/**
+ * Derives the assertion method signature from a custom matcher function.
+ * The first parameter (target) is consumed by `expect(target)`, so it is
+ * dropped from the assertion method's parameter list.
+ */
+type MatcherToAssertion<F> =
+  F extends (target: any, ...args: infer Args) => any
+    ? (...args: Args) => Promise<void>
+    : never;
+
+/** Converts a record of custom matcher functions to assertion methods. */
+type MatchersToAssertions<M> = { [K in keyof M]: MatcherToAssertion<M[K]> };
+
+/**
+ * Intersects a base assertion interface with custom matchers `T`, replacing
+ * `not` so it also carries the custom matchers.
+ */
+type TxAssertions<Base extends object, T extends object> =
+  Omit<Base, 'not'> & T & { not: Omit<Base, 'not'> & T };
+
+/**
+ * Augment these interfaces in your test setup file to add types for custom
+ * matchers registered via `expect.extend(...)`.
+ *
+ * @example
+ * declare global {
+ *   interface TxLocatorMatchers {
+ *     toHaveItemCount(expected: number): Promise<void>;
+ *   }
+ *   interface TxValueMatchers {
+ *     toBeWithinRange(min: number, max: number): void;
+ *   }
+ * }
+ */
+interface TxLocatorMatchers {}
+interface TxPageMatchers {}
+interface TxValueMatchers {}
+
 // ── Shared option types ───────────────────────────────────────────────────────
 
 interface TxTimeoutOptions { timeout?: number; }
@@ -86,7 +135,7 @@ interface Locator {
 
 // ── Assertions ────────────────────────────────────────────────────────────────
 
-interface LocatorAssertions {
+interface LocatorAssertions extends TxLocatorMatchers {
   toBeVisible(opts?: TxTimeoutOptions): Promise<void>;
   toBeHidden(opts?: TxTimeoutOptions): Promise<void>;
   toBeEnabled(opts?: TxTimeoutOptions): Promise<void>;
@@ -100,16 +149,18 @@ interface LocatorAssertions {
   toHaveAttribute(name: string, value?: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   toHaveCount(count: number, opts?: TxTimeoutOptions): Promise<void>;
   toHaveClass(cls: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  toPass(opts?: TxTimeoutOptions): Promise<void>;
   not: Omit<LocatorAssertions, 'not'>;
 }
 
-interface PageAssertions {
+interface PageAssertions extends TxPageMatchers {
   toHaveTitle(titleOrRegExp: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
   toHaveURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  toPass(opts?: TxTimeoutOptions): Promise<void>;
   not: Omit<PageAssertions, 'not'>;
 }
 
-interface ValueAssertions {
+interface ValueAssertions extends TxValueMatchers {
   toBe(expected: any): void;
   toEqual(expected: any): void;
   toBeTruthy(): void;
@@ -120,6 +171,7 @@ interface ValueAssertions {
   toBeLessThan(n: number): void;
   toContain(item: any): void;
   toMatch(r: RegExp | string): void;
+  toPass(opts?: TxTimeoutOptions): Promise<void>;
   not: Omit<ValueAssertions, 'not'>;
 }
 
@@ -494,6 +546,18 @@ interface NodeContext {
   task<T = unknown>(name: string, payload?: unknown): Promise<T>;
 }
 
+// ── TxExpect ──────────────────────────────────────────────────────────────────
+
+interface TxExpect<T extends object = {}> {
+  (actual: Page): TxAssertions<PageAssertions, T>;
+  (actual: Locator): TxAssertions<LocatorAssertions, T>;
+  (actual: any): TxAssertions<ValueAssertions, T>;
+  /** Returns a new scoped expect with the given custom matchers merged in. */
+  extend<M extends Record<string, (target: any, ...args: any[]) => CustomMatcherResult | Promise<CustomMatcherResult>>>(
+    matchers: M
+  ): TxExpect<T & MatchersToAssertions<M>>;
+}
+
 // ── Fixture types ─────────────────────────────────────────────────────────────
 
 type TxUseCallback<T> = (value: T) => Promise<void>;
@@ -555,11 +619,6 @@ interface TxBaseFixtures {
   browser: Browser;
   node: NodeContext;
   request: APIRequestContext;
-  expect: {
-    (actual: Page): PageAssertions;
-    (actual: Locator): LocatorAssertions;
-    (actual: any): ValueAssertions;
-  };
   log: TxLogFn;
   attach: TxAttachFn;
 }
@@ -599,6 +658,8 @@ declare module '@qavajs/tx' {
   export { NodeContext };
   export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions, TxDescribeOptions };
+  export { CustomMatcherResult, CustomMatcherFn };
+  export { TxLocatorMatchers, TxPageMatchers, TxValueMatchers };
   export { Keyboard };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
   export { APIResponse, APIRequestContext };
@@ -612,9 +673,8 @@ declare module '@qavajs/tx' {
   export const log: TxLogFn;
   export const attach: TxAttachFn;
 
-  export function expect(actual: Page): PageAssertions;
-  export function expect(actual: Locator): LocatorAssertions;
-  export function expect(actual: any): ValueAssertions;
+  export { TxExpect };
+  export const expect: TxExpect;
 
   export function describe(name: string, fn: () => void): void;
   export function describe(name: string, options: TxDescribeOptions, fn: () => void): void;

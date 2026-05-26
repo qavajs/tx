@@ -1,4 +1,4 @@
-import { test, type Page } from '@qavajs/tx';
+import { test, expect, type Page } from '@qavajs/tx';
 
 type Credentials = { username: string; password: string };
 type ServerData = { data: number };
@@ -29,29 +29,29 @@ const myTest = test.extend<{
 });
 
 myTest.describe('Fixtures', () => {
-  myTest('credentials fixture provides login data', async ({ credentials, expect }) => {
+  myTest('credentials fixture provides login data', async ({ credentials }) => {
     expect(credentials.username).toBe('standard_user');
     expect(credentials.password).toBe('secret_sauce');
   });
 
-  myTest('serverData fixture reads file via node.task', async ({ serverData, expect }) => {
+  myTest('serverData fixture reads file via node.task', async ({ serverData }) => {
     expect(serverData).toEqual({ data: 42 });
     expect(serverData.data).toBeGreaterThan(0);
   });
 
-  myTest('loggedInPage fixture lands on inventory', async ({ loggedInPage, expect }) => {
+  myTest('loggedInPage fixture lands on inventory', async ({ loggedInPage }) => {
     expect(loggedInPage.url()).toContain('inventory');
     await expect(loggedInPage.getByTestId('title')).toHaveText('Products');
   });
 
-  myTest('loggedInPage fixture shows correct item count', async ({ loggedInPage, expect }) => {
+  myTest('loggedInPage fixture shows correct item count', async ({ loggedInPage }) => {
     await expect(loggedInPage.locator('[data-test="inventory-item"]')).toHaveCount(6);
   });
 
 });
 
 test.describe('API', () => {
-  test('request fixture fetches JSON from an API', async ({ request, expect }) => {
+  test('request fixture fetches JSON from an API', async ({ request }) => {
     const resp = await request.fetch('https://httpbin.org/get');
     expect(resp.status()).toBe(200);
     expect(resp.ok()).toBe(true);
@@ -59,7 +59,7 @@ test.describe('API', () => {
     expect(body.url).toContain('httpbin.org');
   });
 
-  test('request fixture posts JSON body', async ({ request, expect }) => {
+  test('request fixture posts JSON body', async ({ request }) => {
     const resp = await request.fetch('https://httpbin.org/post', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

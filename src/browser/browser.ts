@@ -2297,11 +2297,13 @@ async function _retry(fn: () => Promise<void>, timeout?: number): Promise<void> 
   throw last;
 }
 
-export function expect(target: any) {
+type CustomMatcherFn = (target: any, ...args: any[]) => { pass: boolean; message: string } | Promise<{ pass: boolean; message: string }>;
+
+function _makeExpect(target: any, negated: boolean, localMatchers: Record<string, CustomMatcherFn>): any {
   const t = (ms?: number) => ms ?? window.__CONFIG__?.expectTimeout ?? 5000;
   const locDesc = (target instanceof Locator) ? (target as Locator)._desc : '';
+  const pfx = negated ? 'not.' : '';
 
-  // la = async matcher log helper, ls = sync matcher log helper
   const la = async (cmd: string, msg: string, fn: () => Promise<void>) => {
     const entry = logCommand(msg, cmd);
     try { await fn(); entry.success(); }
@@ -2313,206 +2315,231 @@ export function expect(target: any) {
     catch (e: any) { entry.fail(e?.message ?? String(e)); throw e; }
   };
 
-  // Runs `fn` in a retry loop; fn must throw with a descriptive error on failure.
   const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number) =>
-    la(cmd, locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
+    la(pfx + cmd, locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
 
-  // ── Locator assertions (auto-retry) ──────────────────────────────────────────
+  const assertions: Record<string, any> = {
+    get not() { return _makeExpect(target, !negated, localMatchers); },
 
-  const matchers = {
+    // ── Locator assertions (auto-retry) ────────────────────────────────────────
+
     async toBeVisible(opts?: { timeout?: number }) {
       await locAssert('toBeVisible', async l => {
-        if (!l._checkVisibility()) throw new Error('Expected element to be visible');
+        if (negated ? l._checkVisibility() : !l._checkVisibility())
+          throw new Error(`Expected element ${negated ? 'NOT ' : ''}to be visible`);
       }, opts?.timeout);
     },
     async toBeHidden(opts?: { timeout?: number }) {
       await locAssert('toBeHidden', async l => {
-        if (l._checkVisibility()) throw new Error('Expected element to be hidden');
+        if (negated ? !l._checkVisibility() : l._checkVisibility())
+          throw new Error(`Expected element ${negated ? 'NOT ' : ''}to be hidden`);
       }, opts?.timeout);
     },
     async toBeEnabled(opts?: { timeout?: number }) {
       await locAssert('toBeEnabled', async l => {
-        if (!l._checkEnabled()) throw new Error('Expected element to be enabled');
+        if (negated ? l._checkEnabled() : !l._checkEnabled())
+          throw new Error(`Expected element ${negated ? 'NOT ' : ''}to be enabled`);
       }, opts?.timeout);
     },
     async toBeDisabled(opts?: { timeout?: number }) {
       await locAssert('toBeDisabled', async l => {
-        if (l._checkEnabled()) throw new Error('Expected element to be disabled');
+        if (negated ? !l._checkEnabled() : l._checkEnabled())
+          throw new Error(`Expected element ${negated ? 'NOT ' : ''}to be disabled`);
       }, opts?.timeout);
     },
     async toBeChecked(opts?: { timeout?: number }) {
       await locAssert('toBeChecked', async l => {
-        if (!l._checkChecked()) throw new Error('Expected element to be checked');
+        if (negated ? l._checkChecked() : !l._checkChecked())
+          throw new Error(`Expected element ${negated ? 'NOT ' : ''}to be checked`);
       }, opts?.timeout);
     },
     async toBeEditable(opts?: { timeout?: number }) {
       await locAssert('toBeEditable', async l => {
-        if (!l._checkEditable()) throw new Error('Expected element to be editable');
+        if (negated ? l._checkEditable() : !l._checkEditable())
+          throw new Error(`Expected element ${negated ? 'NOT ' : ''}to be editable`);
       }, opts?.timeout);
     },
     async toBeEmpty(opts?: { timeout?: number }) {
       await locAssert('toBeEmpty', async l => {
         const got = l._inputValue();
-        if (got !== '') throw new Error(`Expected empty input, got ${JSON.stringify(got)}`);
+        if (negated ? got === '' : got !== '')
+          throw new Error(negated ? 'Expected input NOT to be empty' : `Expected empty input, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
       await locAssert('toHaveText', async l => {
         const got = (l._textContent() ?? '').trim();
-        if (!(text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string)))
-          throw new Error(`Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
+        const matches = text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
+        if (negated ? matches : !matches)
+          throw new Error(negated
+            ? `Expected text NOT to match ${JSON.stringify(text)}, got ${JSON.stringify(got)}`
+            : `Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toContainText', async l => {
         const got = l._textContent() ?? '';
-        if (!(text instanceof RegExp ? text.test(got) : got.includes(text as string)))
-          throw new Error(`Expected text to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
+        const matches = text instanceof RegExp ? text.test(got) : got.includes(text as string);
+        if (negated ? matches : !matches)
+          throw new Error(negated
+            ? `Expected NOT to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`
+            : `Expected text to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveValue(value: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveValue', async l => {
         const got = l._inputValue();
-        if (!(value instanceof RegExp ? value.test(got) : got === value))
-          throw new Error(`Expected value ${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
+        const matches = value instanceof RegExp ? value.test(got) : got === value;
+        if (negated ? matches : !matches)
+          throw new Error(`Expected value ${negated ? 'NOT ' : ''}${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveAttribute(name: string, value: string | RegExp = '', opts?: { timeout?: number }) {
       await locAssert('toHaveAttr', async l => {
         const got = l._getAttribute(name);
-        if (!(value instanceof RegExp ? value.test(got ?? '') : got === value))
-          throw new Error(`Expected [${name}]=${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
+        const matches = value instanceof RegExp ? value.test(got ?? '') : got === value;
+        if (negated ? matches : !matches)
+          throw new Error(`Expected [${name}]${negated ? ' NOT' : ''}=${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
       await locAssert('toHaveCount', async l => {
         const got = l._els().length;
-        if (got !== count) throw new Error(`Expected ${count} elements, got ${got}`);
+        if (negated ? got === count : got !== count)
+          throw new Error(`Expected ${negated ? 'NOT ' : ''}${count} elements, got ${got}`);
       }, opts?.timeout);
     },
     async toHaveClass(cls: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveClass', async l => {
         const got = l._el()?.className ?? '';
-        if (!(cls instanceof RegExp ? cls.test(got) : got.split(/\s+/).includes(cls as string)))
-          throw new Error(`Expected class ${JSON.stringify(cls)}, got ${JSON.stringify(got)}`);
+        const matches = cls instanceof RegExp ? cls.test(got) : got.split(/\s+/).includes(cls as string);
+        if (negated ? matches : !matches)
+          throw new Error(`Expected class ${negated ? 'NOT ' : ''}${JSON.stringify(cls)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
 
-    // ── Page-level assertions ───────────────────────────────────────────────
+    // ── Page-level assertions ──────────────────────────────────────────────────
+
     async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
-      await la('toHaveURL', String(url), async () => {
+      await la(pfx + 'toHaveURL', String(url), async () => {
         await _retry(async () => {
           const u = page.url();
-          if (!(url instanceof RegExp ? url.test(u) : u.includes(url as string)))
-            throw new Error(`Expected URL to match ${url}, got "${u}"`);
+          const matches = url instanceof RegExp ? url.test(u) : u.includes(url as string);
+          if (negated ? matches : !matches)
+            throw new Error(`Expected URL ${negated ? 'NOT ' : ''}to match ${url}, got "${u}"`);
         }, t(opts?.timeout));
       });
     },
     async toHaveTitle(title: string | RegExp, opts?: { timeout?: number }) {
-      await la('toHaveTitle', String(title), async () => {
+      await la(pfx + 'toHaveTitle', String(title), async () => {
         await _retry(async () => {
           const got = iframeDoc()?.title ?? '';
-          if (!(title instanceof RegExp ? title.test(got) : got === title))
-            throw new Error(`Expected title ${JSON.stringify(title)}, got "${got}"`);
+          const matches = title instanceof RegExp ? title.test(got) : got === title;
+          if (negated ? matches : !matches)
+            throw new Error(`Expected title ${negated ? 'NOT ' : ''}${JSON.stringify(title)}, got "${got}"`);
         }, t(opts?.timeout));
       });
     },
 
-    // ── Plain-value assertions (sync) ───────────────────────────────────────
-    toBe(expected: any) { ls('toBe', JSON.stringify(expected), () => { if (target !== expected) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`); }); },
-    toEqual(expected: any) { ls('toEqual', JSON.stringify(expected), () => { if (JSON.stringify(target) !== JSON.stringify(expected)) throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`); }); },
-    toBeTruthy() { ls('toBeTruthy', '', () => { if (!target) throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
-    toBeFalsy() { ls('toBeFalsy', '', () => { if (target) throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
-    toBeNull() { ls('toBeNull', '', () => { if (target !== null) throw new Error(`Expected null, got ${JSON.stringify(target)}`); }); },
-    toBeUndefined() { ls('toBeUndef', '', () => { if (target !== undefined) throw new Error(`Expected undefined, got ${JSON.stringify(target)}`); }); },
-    toBeGreaterThan(n: number) { ls('toBeGt', String(n), () => { if (target <= n) throw new Error(`${target} is not > ${n}`); }); },
-    toBeLessThan(n: number) { ls('toBeLt', String(n), () => { if (target >= n) throw new Error(`${target} is not < ${n}`); }); },
+    // ── Value assertions (sync) ────────────────────────────────────────────────
+
+    toBe(expected: any) {
+      ls(pfx + 'toBe', JSON.stringify(expected), () => {
+        if (negated ? target === expected : target !== expected)
+          throw new Error(negated ? `Expected NOT ${JSON.stringify(expected)}` : `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
+      });
+    },
+    toEqual(expected: any) {
+      ls(pfx + 'toEqual', JSON.stringify(expected), () => {
+        if (negated ? JSON.stringify(target) === JSON.stringify(expected) : JSON.stringify(target) !== JSON.stringify(expected))
+          throw new Error(negated ? `Expected NOT equal ${JSON.stringify(expected)}` : `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
+      });
+    },
+    toBeTruthy() {
+      ls(pfx + 'toBeTruthy', '', () => {
+        if (negated ? !!target : !target)
+          throw new Error(negated ? `Expected falsy, got ${JSON.stringify(target)}` : `Expected truthy, got ${JSON.stringify(target)}`);
+      });
+    },
+    toBeFalsy() {
+      ls(pfx + 'toBeFalsy', '', () => {
+        if (negated ? !target : !!target)
+          throw new Error(negated ? `Expected truthy, got ${JSON.stringify(target)}` : `Expected falsy, got ${JSON.stringify(target)}`);
+      });
+    },
+    toBeNull() {
+      ls(pfx + 'toBeNull', '', () => {
+        if (negated ? target === null : target !== null)
+          throw new Error(negated ? 'Expected NOT null' : `Expected null, got ${JSON.stringify(target)}`);
+      });
+    },
+    toBeUndefined() {
+      ls(pfx + 'toBeUndef', '', () => {
+        if (negated ? target === undefined : target !== undefined)
+          throw new Error(negated ? 'Expected NOT undefined' : `Expected undefined, got ${JSON.stringify(target)}`);
+      });
+    },
+    toBeGreaterThan(n: number) {
+      ls(pfx + 'toBeGt', String(n), () => {
+        if (negated ? target > n : target <= n)
+          throw new Error(`${target} is ${negated ? '' : 'not '}> ${n}`);
+      });
+    },
+    toBeLessThan(n: number) {
+      ls(pfx + 'toBeLt', String(n), () => {
+        if (negated ? target < n : target >= n)
+          throw new Error(`${target} is ${negated ? '' : 'not '}< ${n}`);
+      });
+    },
     toContain(item: any) {
-      ls('toContain', JSON.stringify(item), () => {
-        if (Array.isArray(target)) { if (!target.includes(item)) throw new Error(`Array does not contain ${JSON.stringify(item)}`); }
-        else { if (!String(target).includes(String(item))) throw new Error(`"${target}" does not contain "${item}"`); }
+      ls(pfx + 'toContain', JSON.stringify(item), () => {
+        const contains = Array.isArray(target) ? target.includes(item) : String(target).includes(String(item));
+        if (negated ? contains : !contains)
+          throw new Error(Array.isArray(target)
+            ? `Expected array ${negated ? 'NOT ' : ''}to contain ${JSON.stringify(item)}`
+            : `"${target}" ${negated ? 'contains' : 'does not contain'} "${item}"`);
       });
     },
     toMatch(r: RegExp | string) {
-      ls('toMatch', String(r), () => {
+      ls(pfx + 'toMatch', String(r), () => {
         const re = typeof r === 'string' ? new RegExp(r) : r;
-        if (!re.test(String(target))) throw new Error(`"${target}" does not match ${re}`);
+        if (negated ? re.test(String(target)) : !re.test(String(target)))
+          throw new Error(`"${target}" ${negated ? 'matches' : 'does not match'} ${re}`);
+      });
+    },
+    async toPass(opts?: { timeout?: number }) {
+      await la(pfx + 'toPass', '', async () => {
+        if (negated) {
+          try { await Promise.resolve((target as () => any)()); }
+          catch { return; }
+          throw new Error('Expected callback to fail, but it passed');
+        } else {
+          await _retry(async () => { await Promise.resolve((target as () => any)()); }, t(opts?.timeout));
+        }
       });
     },
   };
 
-  const not = {
-    async toBeVisible(opts?: { timeout?: number }) {
-      await locAssert('not.toBeVisible', async l => {
-        if (l._checkVisibility()) throw new Error('Expected element NOT to be visible');
-      }, opts?.timeout);
-    },
-    async toBeHidden(opts?: { timeout?: number }) {
-      await locAssert('not.toBeHidden', async l => {
-        if (!l._checkVisibility()) throw new Error('Expected element NOT to be hidden');
-      }, opts?.timeout);
-    },
-    async toBeEnabled(opts?: { timeout?: number }) {
-      await locAssert('not.toBeEnabled', async l => {
-        if (l._checkEnabled()) throw new Error('Expected element NOT to be enabled');
-      }, opts?.timeout);
-    },
-    async toBeChecked(opts?: { timeout?: number }) {
-      await locAssert('not.toBeChecked', async l => {
-        if (l._checkChecked()) throw new Error('Expected element NOT to be checked');
-      }, opts?.timeout);
-    },
-    async toBeEmpty(opts?: { timeout?: number }) {
-      await locAssert('not.toBeEmpty', async l => {
-        const got = l._inputValue();
-        if (got === '') throw new Error('Expected input NOT to be empty');
-      }, opts?.timeout);
-    },
-    async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
-      const exact = opts?.exact ?? false;
-      await locAssert('not.toHaveText', async l => {
-        const got = (l._textContent() ?? '').trim();
-        if (text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string))
-          throw new Error(`Expected text NOT to match ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
-    },
-    async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
-      await locAssert('not.toContain', async l => {
-        const got = l._textContent() ?? '';
-        if (text instanceof RegExp ? text.test(got) : got.includes(text as string))
-          throw new Error(`Expected NOT to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
-    },
-    async toHaveCount(count: number, opts?: { timeout?: number }) {
-      await locAssert('not.toHaveCount', async l => {
-        const got = l._els().length;
-        if (got === count) throw new Error(`Expected count NOT to be ${count}, got ${got}`);
-      }, opts?.timeout);
-    },
-    async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
-      await la('not.toHaveURL', String(url), async () => {
-        await _retry(async () => {
-          const u = page.url();
-          if (url instanceof RegExp ? url.test(u) : u.includes(url as string))
-            throw new Error(`Expected URL NOT to match ${url}, got "${u}"`);
-        }, t(opts?.timeout));
+  for (const [name, matcherFn] of Object.entries(localMatchers)) {
+    assertions[name] = async (...args: any[]) => {
+      await la(pfx + name, name, async () => {
+        const result = await Promise.resolve(matcherFn(target, ...args));
+        if (negated ? result.pass : !result.pass) throw new Error(result.message);
       });
-    },
-    toBe(expected: any) { ls('not.toBe', JSON.stringify(expected), () => { if (target === expected) throw new Error(`Expected NOT ${JSON.stringify(expected)}`); }); },
-    toBeTruthy() { ls('not.toBeTruthy', '', () => { if (target) throw new Error(`Expected falsy, got ${JSON.stringify(target)}`); }); },
-    toBeFalsy() { ls('not.toBeFalsy', '', () => { if (!target) throw new Error(`Expected truthy, got ${JSON.stringify(target)}`); }); },
-    toBeNull() { ls('not.toBeNull', '', () => { if (target === null) throw new Error('Expected NOT null'); }); },
-    toContain(item: any) {
-      ls('not.toContain', JSON.stringify(item), () => {
-        if (Array.isArray(target)) { if (target.includes(item)) throw new Error(`Expected array NOT to contain ${JSON.stringify(item)}`); }
-        else { if (String(target).includes(String(item))) throw new Error(`Expected NOT to contain "${item}"`); }
-      });
-    },
-  };
+    };
+  }
 
-  return { ...matchers, not };
+  return assertions;
 }
+
+function _buildExpect(localMatchers: Record<string, CustomMatcherFn>) {
+  const fn = (target: any) => _makeExpect(target, false, localMatchers);
+  fn.extend = (matchers: Record<string, CustomMatcherFn>) => _buildExpect({ ...localMatchers, ...matchers });
+  return fn;
+}
+
+export const expect = _buildExpect({});
 
 // ── Legacy tx API (backward compat) ──────────────────────────────────────────
 

@@ -1,39 +1,53 @@
-import { test } from '@qavajs/tx';
+import { test, expect as baseExpect } from '@qavajs/tx';
 import { theAnswer } from './testData.js';
+
+const expect = baseExpect.extend({
+  toBeEven(value: number) {
+    return {
+      pass: value % 2 === 0,
+      message: `Expected ${value} to be even`,
+    };
+  },
+});
 
 test.describe('Utilities', () => {
   test.beforeAll(() => {
     console.log('Before all tests');
   });
 
-  test('should return the correct answer to the Ultimate Question of Life, The Universe, and Everything', ({ expect }) => {
+  test('should return the correct answer to the Ultimate Question of Life, The Universe, and Everything', () => {
     expect(theAnswer).toBe(42);
   });
 
-  test('adds numbers correctly', ({ expect }) => {
+  test('adds numbers correctly', () => {
     expect(1 + 1).toBe(2);
     expect(10 - 3).toBe(7);
   });
 
-  test('handles string operations', ({ expect }) => {
+  test('handles string operations', () => {
     const greeting = 'Hello, World!';
     expect(greeting).toContain('World');
     expect(greeting.length).toBeGreaterThan(5);
   });
 
-  test('works with arrays', ({ expect }) => {
+  test('works with arrays', () => {
     const items = ['apple', 'banana', 'cherry'];
     expect(items).toContain('banana');
     expect(items.length).toBe(3);
   });
 
-  test('task', async ({ node, expect }) => {
+  test('custom matcher', () => {
+    expect(4).toBeEven();
+    expect(3).not.toBeEven();
+  });
+
+  test('task', async ({ node }) => {
     const file = await node.task<string>('readFile', { path: './test/serverFile.json' });
     expect(JSON.parse(file)).toEqual({ data: 42 });
   });
 
   test('log', async ({ log }) => {
-    log('this is custom log')
+    log('this is custom log');
   });
 
   test('attach', async ({ attach }) => {

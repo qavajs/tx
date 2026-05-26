@@ -1,4 +1,4 @@
-import { test } from '@qavajs/tx';
+import { test, expect } from '@qavajs/tx';
 import { fail } from './testData';
 
 test.describe('apptesting forms', { tag: ['@smoke'] }, () => {
@@ -6,25 +6,25 @@ test.describe('apptesting forms', { tag: ['@smoke'] }, () => {
         await page.goto('https://apptesting.pl/pages/forms.html');
     });
 
-    test('simple input', { tag: ['@tag1'] }, async ({ page, expect }) => {
+    test('simple input', { tag: ['@tag1'] }, async ({ page }) => {
         const input = page.locator('#text-input');
         await input.fill('test input');
         await expect(input).toHaveValue('test input');
     });
 
-    test('slider input', { tag: ['@tag2'] }, async ({ page, expect }) => {
+    test('slider input', { tag: ['@tag2'] }, async ({ page }) => {
         const input = page.locator('#range-slider');
         await input.fill('42');
         await expect(input).toHaveValue('42');
     });
 
-    test('color picker', async ({ page, expect }) => {
+    test('color picker', async ({ page }) => {
         const input = page.locator('#color-picker');
         await input.fill('#ff0000');
         await expect(input).toHaveValue('#ff0000');
     });
 
-    test('disabled input', async ({ page, expect }) => {
+    test('disabled input', async ({ page }) => {
         const input = page.locator('#disabled-input');
         await expect(input).toBeDisabled();
     });
@@ -35,7 +35,7 @@ test.describe('apptesting interactions', () => {
         await page.goto('https://apptesting.pl/pages/interactions.html');
     });
 
-    test('press and hold', async ({ page, expect }) => {
+    test('press and hold', async ({ page }) => {
         const button = page.locator('#longpress-btn');
         await button.scrollIntoViewIfNeeded();
         const { centerX, centerY } = await button.evaluate((element: HTMLElement) => {
@@ -83,7 +83,7 @@ test.describe('apptesting widgets', () => {
         await page.goto('https://apptesting.pl/pages/widgets.html');
     });
 
-    test('accordion', async ({ page, expect }) => {
+    test('accordion', async ({ page }) => {
         const accordionContent = page.locator('.active .accordion-content');
 
         const firstHeader = page.locator('#accordion-header-1');
@@ -97,7 +97,7 @@ test.describe('apptesting widgets', () => {
         await expect(accordionContent).toHaveText('Content for section 2.');
     });
 
-    test('tabs', async ({ page, expect }) => {
+    test('tabs', async ({ page }) => {
         const tabContent = page.locator('.tab-content.active');
 
         const tab2 = page.locator('#tab-btn-2');
@@ -111,14 +111,14 @@ test.describe('apptesting widgets', () => {
         await expect(tabContent).toContainText('Content for tab 1.');
     });
 
-    test('modal', async ({ page, expect }) => {
+    test('modal', async ({ page }) => {
         const openModal = page.locator('#modal-trigger');
         await openModal.click();
         await expect(page.locator('.modal')).toBeVisible();
         await expect(page.locator('.modal .modal-body')).toHaveText('This is modal content.');
     });
 
-    test('tooltip', async ({ page, expect }) => {
+    test('tooltip', async ({ page }) => {
         const tooltip = page.locator('#tooltip-btn');
         await tooltip.scrollIntoViewIfNeeded();
         await tooltip.hover();
@@ -126,7 +126,7 @@ test.describe('apptesting widgets', () => {
         await expect(page.locator('.tooltip')).toHaveText('Tooltip text!');
     });
 
-    test('autocomplete', async ({ page, expect }) => {
+    test('autocomplete', async ({ page }) => {
         const input = page.locator('#autocomplete');
         await input.fill('java');
         const suggestions = page.locator('.autocomplete-item');
@@ -143,7 +143,7 @@ test.describe('apptesting windows', () => {
         await page.goto('https://apptesting.pl/pages/windows.html');
     });
 
-    test('new tab', async ({ browser, page, expect }) => {
+    test('new tab', async ({ browser, page }) => {
         const newTab = page.locator('#new-tab-link');
         await newTab.click();
         await expect(page.locator('textarea[aria-label]')).toBeVisible();
@@ -151,7 +151,7 @@ test.describe('apptesting windows', () => {
         expect(page.locator('#new-tab-link')).toBeVisible();
     });
 
-    test('popup window', async ({ browser, page, expect }) => {
+    test('popup window', async ({ browser, page }) => {
         const newWindow = page.locator('#new-window-btn');
         await newWindow.click();
         const popupElement = page.locator('h1');
@@ -182,7 +182,7 @@ test.describe('apptesting alerts', { tag: ['@alerts'] }, () => {
         await page.goto('https://apptesting.pl/pages/alerts.html');
     });
 
-    test('alert', async ({ page, expect }) => {
+    test('alert', async ({ page }) => {
         const button = page.locator('#alert-btn');
         const result = page.locator('#alert-output');
         const dialogPromise = page.waitForEvent('dialog');
@@ -194,7 +194,7 @@ test.describe('apptesting alerts', { tag: ['@alerts'] }, () => {
     });
 
     for (const testCase of [{action: 'accept', button: 'OK'}, { action: 'dismiss', button: 'Cancel' }]) {
-        test(`confirm: ${testCase.action}`, async ({ page, expect }) => {
+        test(`confirm: ${testCase.action}`, async ({ page }) => {
             const button = page.locator('#confirm-btn');
             const result = page.locator('#confirm-output');
             const dialogPromise = page.waitForEvent('dialog');
@@ -206,7 +206,7 @@ test.describe('apptesting alerts', { tag: ['@alerts'] }, () => {
         });
     }
 
-    test('prompt', async ({ page, expect }) => {
+    test('prompt', async ({ page }) => {
         const button = page.locator('#prompt-btn');
         const result = page.locator('#prompt-output');
         page.on('dialog', dialog => dialog.accept('test value'))

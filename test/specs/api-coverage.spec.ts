@@ -1,4 +1,4 @@
-import { test } from '@qavajs/tx';
+import { test, expect } from '@qavajs/tx';
 
 async function loadTestPage({ page, node }: any) {
     const dirname = await node.task('dirname');
@@ -10,12 +10,12 @@ async function loadTestPage({ page, node }: any) {
 test.describe('getByText', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('exact string clicks correct button', async ({ page, expect }) => {
+    test('exact string clicks correct button', async ({ page }) => {
         await page.getByText('Click', { exact: true }).click();
         await expect(page.locator('#mouseResult')).toHaveText('Clicked');
     });
 
-    test('regex finds element', async ({ page, expect }) => {
+    test('regex finds element', async ({ page }) => {
         await expect(page.getByText(/double click/i)).toBeVisible();
     });
 });
@@ -23,7 +23,7 @@ test.describe('getByText', () => {
 test.describe('getByLabel', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('finds wrapped checkbox input', async ({ page, expect }) => {
+    test('finds wrapped checkbox input', async ({ page }) => {
         const checkbox = page.getByLabel('Checkbox');
         await checkbox.check();
         await expect(checkbox).toBeChecked();
@@ -33,13 +33,13 @@ test.describe('getByLabel', () => {
 test.describe('getByPlaceholder', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('string finds input', async ({ page, expect }) => {
+    test('string finds input', async ({ page }) => {
         const input = page.getByPlaceholder('Type here');
         await input.fill('placeholder test');
         await expect(input).toHaveValue('placeholder test');
     });
 
-    test('regex finds textarea', async ({ page, expect }) => {
+    test('regex finds textarea', async ({ page }) => {
         const textarea = page.getByPlaceholder(/textarea/i);
         await textarea.fill('regex placeholder');
         await expect(textarea).toHaveValue('regex placeholder');
@@ -49,11 +49,11 @@ test.describe('getByPlaceholder', () => {
 test.describe('getByAltText', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('string finds image', async ({ page, expect }) => {
+    test('string finds image', async ({ page }) => {
         await expect(page.getByAltText('page logo')).toBeVisible();
     });
 
-    test('regex finds image', async ({ page, expect }) => {
+    test('regex finds image', async ({ page }) => {
         await expect(page.getByAltText(/logo/i)).toBeVisible();
     });
 });
@@ -61,11 +61,11 @@ test.describe('getByAltText', () => {
 test.describe('getByTitle', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('string finds link', async ({ page, expect }) => {
+    test('string finds link', async ({ page }) => {
         await expect(page.getByTitle('bottom link')).toBeVisible();
     });
 
-    test('regex finds link', async ({ page, expect }) => {
+    test('regex finds link', async ({ page }) => {
         await expect(page.getByTitle(/bottom/i)).toBeVisible();
     });
 });
@@ -75,18 +75,18 @@ test.describe('getByTitle', () => {
 test.describe('Locator chaining', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('locator().locator() chains child selector', async ({ page, expect }) => {
+    test('locator().locator() chains child selector', async ({ page }) => {
         const mouseCard = page.locator('.card').filter({ hasText: 'Mouse / Pointer' });
         await mouseCard.locator('#clickBtn').click();
         await expect(page.locator('#mouseResult')).toHaveText('Clicked');
     });
 
-    test('filter by hasText narrows results', async ({ page, expect }) => {
+    test('filter by hasText narrows results', async ({ page }) => {
         const cards = page.locator('.card').filter({ hasText: 'Drag' });
         await expect(cards).toHaveCount(1);
     });
 
-    test('filter by hasNotText excludes matching cards', async ({ page, expect }) => {
+    test('filter by hasNotText excludes matching cards', async ({ page }) => {
         const allCards = page.locator('.card');
         const filtered = page.locator('.card').filter({ hasNotText: 'Mouse' });
         const total = await allCards.count();
@@ -94,7 +94,7 @@ test.describe('Locator chaining', () => {
         expect(reduced).toBeLessThan(total);
     });
 
-    test('filter by visible returns only visible elements', async ({ page, expect }) => {
+    test('filter by visible returns only visible elements', async ({ page }) => {
         const visibleButtons = page.locator('button').filter({ visible: true });
         const count = await visibleButtons.count();
         expect(count).toBeGreaterThan(0);
@@ -106,43 +106,43 @@ test.describe('Locator chaining', () => {
 test.describe('Locator query methods', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('isHidden returns true for hidden element', async ({ page, expect }) => {
+    test('isHidden returns true for hidden element', async ({ page }) => {
         expect(await page.locator('#delayedElement').isHidden()).toBe(true);
     });
 
-    test('isEnabled returns true for enabled input', async ({ page, expect }) => {
+    test('isEnabled returns true for enabled input', async ({ page }) => {
         expect(await page.locator('#textInput').isEnabled()).toBe(true);
     });
 
-    test('isDisabled returns true for disabled button', async ({ page, expect }) => {
+    test('isDisabled returns true for disabled button', async ({ page }) => {
         expect(await page.locator('#disabledBtn').isDisabled()).toBe(true);
     });
 
-    test('isChecked returns false then true after check', async ({ page, expect }) => {
+    test('isChecked returns false then true after check', async ({ page }) => {
         const checkbox = page.locator('#checkbox');
         expect(await checkbox.isChecked()).toBe(false);
         await checkbox.check();
         expect(await checkbox.isChecked()).toBe(true);
     });
 
-    test('isEditable returns true for enabled input', async ({ page, expect }) => {
+    test('isEditable returns true for enabled input', async ({ page }) => {
         expect(await page.locator('#textInput').isEditable()).toBe(true);
     });
 
-    test('innerText returns button label', async ({ page, expect }) => {
+    test('innerText returns button label', async ({ page }) => {
         expect(await page.locator('#clickBtn').innerText()).toBe('Click');
     });
 
-    test('textContent returns element text', async ({ page, expect }) => {
+    test('textContent returns element text', async ({ page }) => {
         expect(await page.locator('#clickBtn').textContent()).toBe('Click');
     });
 
-    test('inputValue returns current value', async ({ page, expect }) => {
+    test('inputValue returns current value', async ({ page }) => {
         await page.locator('#textInput').fill('query value');
         expect(await page.locator('#textInput').inputValue()).toBe('query value');
     });
 
-    test('getAttribute returns attribute value', async ({ page, expect }) => {
+    test('getAttribute returns attribute value', async ({ page }) => {
         expect(await page.locator('#textInput').getAttribute('id')).toBe('textInput');
     });
 });
@@ -152,14 +152,14 @@ test.describe('Locator query methods', () => {
 test.describe('Locator actions', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('clear empties a filled input', async ({ page, expect }) => {
+    test('clear empties a filled input', async ({ page }) => {
         const input = page.locator('#textInput');
         await input.fill('some text');
         await input.clear();
         await expect(input).toBeEmpty();
     });
 
-    test('uncheck unchecks a checked checkbox', async ({ page, expect }) => {
+    test('uncheck unchecks a checked checkbox', async ({ page }) => {
         const checkbox = page.locator('#checkbox');
         await checkbox.check();
         await expect(checkbox).toBeChecked();
@@ -173,38 +173,38 @@ test.describe('Locator actions', () => {
 test.describe('Expect matchers – locator', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('toBeChecked passes for checked checkbox', async ({ page, expect }) => {
+    test('toBeChecked passes for checked checkbox', async ({ page }) => {
         const checkbox = page.locator('#checkbox');
         await checkbox.check();
         await expect(checkbox).toBeChecked();
     });
 
-    test('toBeEditable passes for enabled input', async ({ page, expect }) => {
+    test('toBeEditable passes for enabled input', async ({ page }) => {
         await expect(page.locator('#textInput')).toBeEditable();
     });
 
-    test('toBeEmpty passes for empty input', async ({ page, expect }) => {
+    test('toBeEmpty passes for empty input', async ({ page }) => {
         await expect(page.locator('#textInput')).toBeEmpty();
     });
 
-    test('toHaveClass passes when element has class', async ({ page, expect }) => {
+    test('toHaveClass passes when element has class', async ({ page }) => {
         await expect(page.locator('.card').first()).toHaveClass('card');
     });
 
-    test('not.toBeChecked passes for unchecked checkbox', async ({ page, expect }) => {
+    test('not.toBeChecked passes for unchecked checkbox', async ({ page }) => {
         await expect(page.locator('#checkbox')).not.toBeChecked();
     });
 
-    test('not.toBeEmpty passes for filled input', async ({ page, expect }) => {
+    test('not.toBeEmpty passes for filled input', async ({ page }) => {
         await page.locator('#textInput').fill('hello');
         await expect(page.locator('#textInput')).not.toBeEmpty();
     });
 
-    test('not.toContainText passes when text is absent', async ({ page, expect }) => {
+    test('not.toContainText passes when text is absent', async ({ page }) => {
         await expect(page.locator('#mouseResult')).not.toContainText('Clicked');
     });
 
-    test('not.toHaveCount passes when count differs', async ({ page, expect }) => {
+    test('not.toHaveCount passes when count differs', async ({ page }) => {
         await expect(page.locator('.card')).not.toHaveCount(0);
     });
 });
@@ -214,15 +214,15 @@ test.describe('Expect matchers – locator', () => {
 test.describe('Expect matchers – page', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('toHaveURL matches regex', async ({ page, expect }) => {
+    test('toHaveURL matches regex', async ({ page }) => {
         await expect(page).toHaveURL(/testPage\.html/);
     });
 
-    test('toHaveTitle matches page title', async ({ page, expect }) => {
+    test('toHaveTitle matches page title', async ({ page }) => {
         await expect(page).toHaveTitle('UI Automation Verification Playground');
     });
 
-    test('not.toHaveURL passes when URL does not match', async ({ page, expect }) => {
+    test('not.toHaveURL passes when URL does not match', async ({ page }) => {
         await expect(page).not.toHaveURL(/google\.com/);
     });
 });
@@ -230,53 +230,53 @@ test.describe('Expect matchers – page', () => {
 // ── Expect matchers – plain values ────────────────────────────────────────────
 
 test.describe('Expect matchers – plain values', () => {
-    test('toBeTruthy passes for truthy value', ({ expect }) => {
+    test('toBeTruthy passes for truthy value', () => {
         expect('hello').toBeTruthy();
     });
 
-    test('toBeFalsy passes for empty string', ({ expect }) => {
+    test('toBeFalsy passes for empty string', () => {
         expect('').toBeFalsy();
     });
 
-    test('toBeNull passes for null', ({ expect }) => {
+    test('toBeNull passes for null', () => {
         const n: number | null = null;
         expect(n).toBeNull();
     });
 
-    test('toBeUndefined passes for undefined', ({ expect }) => {
+    test('toBeUndefined passes for undefined', () => {
         const u: number | undefined = undefined;
         expect(u).toBeUndefined();
     });
 
-    test('toBeLessThan passes when value is less', ({ expect }) => {
+    test('toBeLessThan passes when value is less', () => {
         expect(3).toBeLessThan(10);
     });
 
-    test('toMatch passes when regex matches string', ({ expect }) => {
+    test('toMatch passes when regex matches string', () => {
         expect('hello world').toMatch(/world/);
     });
 
-    test('not.toBe passes when values differ', ({ expect }) => {
+    test('not.toBe passes when values differ', () => {
         expect('a').not.toBe('b');
     });
 
-    test('not.toBeTruthy passes for zero', ({ expect }) => {
+    test('not.toBeTruthy passes for zero', () => {
         expect(0).not.toBeTruthy();
     });
 
-    test('not.toBeFalsy passes for truthy value', ({ expect }) => {
+    test('not.toBeFalsy passes for truthy value', () => {
         expect(1).not.toBeFalsy();
     });
 
-    test('not.toBeNull passes for non-null', ({ expect }) => {
+    test('not.toBeNull passes for non-null', () => {
         expect('value').not.toBeNull();
     });
 
-    test('not.toContain passes when item absent from array', ({ expect }) => {
+    test('not.toContain passes when item absent from array', () => {
         expect([1, 2, 3]).not.toContain(4);
     });
 
-    test('not.toContain passes when substring absent from string', ({ expect }) => {
+    test('not.toContain passes when substring absent from string', () => {
         expect('hello').not.toContain('xyz');
     });
 });
@@ -286,22 +286,22 @@ test.describe('Expect matchers – plain values', () => {
 test.describe('Page APIs', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('title returns page title', async ({ page, expect }) => {
+    test('title returns page title', async ({ page }) => {
         const title = await page.title();
         expect(title).toBe('UI Automation Verification Playground');
     });
 
-    test('waitForSelector resolves when element is visible', async ({ page, expect }) => {
+    test('waitForSelector resolves when element is visible', async ({ page }) => {
         const loc = await page.waitForSelector('#clickBtn');
         await expect(loc).toBeVisible();
     });
 
-    test('setViewportSize does not break page', async ({ page, expect }) => {
+    test('setViewportSize does not break page', async ({ page }) => {
         page.setViewportSize({ width: 1280, height: 720 });
         await expect(page.locator('#clickBtn')).toBeVisible();
     });
 
-    test('addInitScript string form injects on navigation', async ({ page, node, expect }) => {
+    test('addInitScript string form injects on navigation', async ({ page, node }) => {
         const handle = page.addInitScript('window.__initFlag = "injected";');
         const dirname = await node.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
@@ -310,7 +310,7 @@ test.describe('Page APIs', () => {
         handle.dispose();
     });
 
-    test('addInitScript function form injects on navigation', async ({ page, node, expect }) => {
+    test('addInitScript function form injects on navigation', async ({ page, node }) => {
         const handle = page.addInitScript(() => { (window as any).__initFn = 99; });
         const dirname = await node.task('dirname');
         await page.goto(`file://${dirname}/app/testPage.html`);
@@ -319,13 +319,13 @@ test.describe('Page APIs', () => {
         handle.dispose();
     });
 
-    test('screenshot returns a non-empty data URL', async ({ page, expect }) => {
+    test('screenshot returns a non-empty data URL', async ({ page }) => {
         const shot = await page.screenshot();
         expect(typeof shot).toBe('string');
         expect(shot.length).toBeGreaterThan(0);
     });
 
-    test('page.off removes event listener', async ({ page, node, expect }) => {
+    test('page.off removes event listener', async ({ page, node }) => {
         let count = 0;
         const handler = () => { count++; };
         page.on('load', handler);
@@ -335,7 +335,7 @@ test.describe('Page APIs', () => {
         expect(count).toBe(0);
     });
 
-    test('resetSession navigates to blank page', async ({ page, expect }) => {
+    test('resetSession navigates to blank page', async ({ page }) => {
         await page.resetSession();
         await expect(page.locator('#clickBtn')).toHaveCount(0);
     });
@@ -344,7 +344,7 @@ test.describe('Page APIs', () => {
 // ── Route APIs ─────────────────────────────────────────────────────────────────
 
 test.describe('Route APIs', () => {
-    test('route.continue passes request through unmodified', async ({ page, expect }) => {
+    test('route.continue passes request through unmodified', async ({ page }) => {
         await page.goto('https://practice.expandtesting.com/webpark');
         await page.route(/\/webpark\/calculate-cost/, async route => {
             await route.continue();
@@ -355,7 +355,7 @@ test.describe('Route APIs', () => {
         expect(result).not.toContain('An error occurred while processing your request');
     });
 
-    test('unroute removes handler so real request proceeds', async ({ page, expect }) => {
+    test('unroute removes handler so real request proceeds', async ({ page }) => {
         await page.goto('https://practice.expandtesting.com/webpark');
         const pattern = /\/webpark\/calculate-cost/;
         const abortHandler = async (route: any) => { await route.abort(); };
@@ -371,14 +371,14 @@ test.describe('Route APIs', () => {
 // ── waitForRequest / waitForResponse ──────────────────────────────────────────
 
 test.describe('waitForRequest and waitForResponse', () => {
-    test('waitForRequest resolves on matching request', async ({ page, request, expect }) => {
+    test('waitForRequest resolves on matching request', async ({ page, request }) => {
         const reqPromise = page.waitForRequest('https://httpbin.org/get', { timeout: 15000 });
         await request.fetch('https://httpbin.org/get');
         const req = await reqPromise;
         expect(req.url()).toContain('httpbin.org');
     });
 
-    test('waitForResponse resolves with matching response', async ({ page, request, expect }) => {
+    test('waitForResponse resolves with matching response', async ({ page, request }) => {
         const respPromise = page.waitForResponse('https://httpbin.org/get', { timeout: 15000 });
         await request.fetch('https://httpbin.org/get');
         const resp = await respPromise;
@@ -391,25 +391,25 @@ test.describe('waitForRequest and waitForResponse', () => {
 test.describe('Keyboard API', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('keyboard.type types into focused input', async ({ page, expect }) => {
+    test('keyboard.type types into focused input', async ({ page }) => {
         await page.locator('#textInput').focus();
         await page.keyboard.type('typed text');
         await expect(page.locator('#textInput')).toHaveValue('typed text');
     });
 
-    test('keyboard.insertText inserts into focused input', async ({ page, expect }) => {
+    test('keyboard.insertText inserts into focused input', async ({ page }) => {
         await page.locator('#textInput').focus();
         await page.keyboard.insertText('inserted');
         await expect(page.locator('#textInput')).toHaveValue('inserted');
     });
 
-    test('keyboard.down dispatches keydown event', async ({ page, expect }) => {
+    test('keyboard.down dispatches keydown event', async ({ page }) => {
         await page.locator('#textInput').focus();
         await page.keyboard.down('Enter');
         await expect(page.locator('#lastKey')).toHaveText('Enter');
     });
 
-    test('keyboard.up releases key after down', async ({ page, expect }) => {
+    test('keyboard.up releases key after down', async ({ page }) => {
         await page.locator('#textInput').focus();
         await page.keyboard.down('Shift');
         await page.keyboard.up('Shift');
@@ -422,7 +422,7 @@ test.describe('Keyboard API', () => {
 test.describe('Mouse API', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('mouse.wheel dispatches wheel event', async ({ page, expect }) => {
+    test('mouse.wheel dispatches wheel event', async ({ page }) => {
         await page.evaluate(() => {
             (window as any).__wheelFired = false;
             document.getElementById('scrollBox')!.addEventListener('wheel', () => {
@@ -441,7 +441,7 @@ test.describe('Mouse API', () => {
         expect(fired).toBe(true);
     });
 
-    test('mouse.dblclick triggers dblclick event', async ({ page, expect }) => {
+    test('mouse.dblclick triggers dblclick event', async ({ page }) => {
         const btn = page.locator('#dblClickBtn');
         const rect = await btn.evaluate((el: HTMLElement) => {
             const r = el.getBoundingClientRect();
@@ -457,7 +457,7 @@ test.describe('Mouse API', () => {
 test.describe('Locator handlers', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('addLocatorHandler fires when locator is visible', async ({ page, expect }) => {
+    test('addLocatorHandler fires when locator is visible', async ({ page }) => {
         let handlerCalled = false;
         const alwaysVisible = page.locator('#clickBtn');
 
@@ -470,7 +470,7 @@ test.describe('Locator handlers', () => {
         expect(handlerCalled).toBe(true);
     });
 
-    test('removeLocatorHandler prevents handler from firing', async ({ page, expect }) => {
+    test('removeLocatorHandler prevents handler from firing', async ({ page }) => {
         let callCount = 0;
         const alwaysVisible = page.locator('#clickBtn');
 
@@ -491,12 +491,12 @@ test.describe('Locator handlers', () => {
 test.describe('Locator chaining – nth / last', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('nth returns element at given index', async ({ page, expect }) => {
+    test('nth returns element at given index', async ({ page }) => {
         const second = page.locator('.card h2').nth(1);
         await expect(second).toHaveText('Keyboard & Inputs');
     });
 
-    test('last returns final matching element', async ({ page, expect }) => {
+    test('last returns final matching element', async ({ page }) => {
         const last = page.locator('.card h2').last();
         await expect(last).toHaveText('Hidden / Dynamic Element');
     });
@@ -507,33 +507,33 @@ test.describe('Locator chaining – nth / last', () => {
 test.describe('Locator actions – extended', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('dblclick triggers double-click event', async ({ page, expect }) => {
+    test('dblclick triggers double-click event', async ({ page }) => {
         await page.locator('#dblClickBtn').dblclick();
         await expect(page.locator('#mouseResult')).toHaveText('Double clicked');
     });
 
-    test('rightClick triggers contextmenu event', async ({ page, expect }) => {
+    test('rightClick triggers contextmenu event', async ({ page }) => {
         await page.locator('#rightClickBtn').rightClick();
         await expect(page.locator('#mouseResult')).toHaveText('Right clicked');
     });
 
-    test('type enters text character by character', async ({ page, expect }) => {
+    test('type enters text character by character', async ({ page }) => {
         await page.locator('#textInput').type('hello');
         await expect(page.locator('#textInput')).toHaveValue('hello');
     });
 
-    test('press fires key event on focused element', async ({ page, expect }) => {
+    test('press fires key event on focused element', async ({ page }) => {
         await page.locator('#textInput').focus();
         await page.locator('#textInput').press('Tab');
         await expect(page.locator('#lastKey')).toHaveText('Tab');
     });
 
-    test('selectOption sets dropdown value', async ({ page, expect }) => {
+    test('selectOption sets dropdown value', async ({ page }) => {
         await page.locator('#countrySelect').selectOption('Latvia');
         await expect(page.locator('#countrySelect')).toHaveValue('Latvia');
     });
 
-    test('hover triggers mouseenter on element', async ({ page, expect }) => {
+    test('hover triggers mouseenter on element', async ({ page }) => {
         await page.evaluate(() => {
             (window as any).__hovered = false;
             document.getElementById('hoverTarget')!.addEventListener('mouseenter', () => {
@@ -545,7 +545,7 @@ test.describe('Locator actions – extended', () => {
         expect(hovered).toBe(true);
     });
 
-    test('setInputFiles sets file input value', async ({ page, expect }) => {
+    test('setInputFiles sets file input value', async ({ page }) => {
         await page.locator('#fileUpload').setInputFiles('test/specs/api-coverage.spec.ts');
         await expect(page.locator('#fileUpload')).toHaveValue('test/specs/api-coverage.spec.ts');
     });
@@ -556,7 +556,7 @@ test.describe('Locator actions – extended', () => {
 test.describe('Locator evaluate', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('evaluate reads element property via function', async ({ page, expect }) => {
+    test('evaluate reads element property via function', async ({ page }) => {
         const tagName = await page.locator('#clickBtn').evaluate((el: Element) => el.tagName.toLowerCase());
         expect(tagName).toBe('button');
     });
@@ -567,7 +567,7 @@ test.describe('Locator evaluate', () => {
 test.describe('Locator waitFor', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('waitFor resolves when element becomes visible', async ({ page, expect }) => {
+    test('waitFor resolves when element becomes visible', async ({ page }) => {
         const delayed = page.locator('#delayedElement');
         await page.locator('#showDelayed').click();
         await delayed.waitFor({ state: 'visible', timeout: 4000 });
@@ -580,11 +580,11 @@ test.describe('Locator waitFor', () => {
 test.describe('Locator isVisible', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('isVisible returns true for a visible element', async ({ page, expect }) => {
+    test('isVisible returns true for a visible element', async ({ page }) => {
         expect(await page.locator('#clickBtn').isVisible()).toBe(true);
     });
 
-    test('isVisible returns false for a hidden element', async ({ page, expect }) => {
+    test('isVisible returns false for a hidden element', async ({ page }) => {
         expect(await page.locator('#delayedElement').isVisible()).toBe(false);
     });
 });
@@ -594,23 +594,23 @@ test.describe('Locator isVisible', () => {
 test.describe('Expect matchers – locator extended', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('toBeHidden passes for hidden element', async ({ page, expect }) => {
+    test('toBeHidden passes for hidden element', async ({ page }) => {
         await expect(page.locator('#delayedElement')).toBeHidden();
     });
 
-    test('toBeEnabled passes for enabled input', async ({ page, expect }) => {
+    test('toBeEnabled passes for enabled input', async ({ page }) => {
         await expect(page.locator('#textInput')).toBeEnabled();
     });
 
-    test('toBeDisabled passes for disabled button', async ({ page, expect }) => {
+    test('toBeDisabled passes for disabled button', async ({ page }) => {
         await expect(page.locator('#disabledBtn')).toBeDisabled();
     });
 
-    test('toHaveAttribute passes for exact attribute value', async ({ page, expect }) => {
+    test('toHaveAttribute passes for exact attribute value', async ({ page }) => {
         await expect(page.locator('#textInput')).toHaveAttribute('id', 'textInput');
     });
 
-    test('toHaveAttribute passes for regex attribute value', async ({ page, expect }) => {
+    test('toHaveAttribute passes for regex attribute value', async ({ page }) => {
         await expect(page.locator('#textInput')).toHaveAttribute('placeholder', /type here/i);
     });
 });
@@ -618,7 +618,7 @@ test.describe('Expect matchers – locator extended', () => {
 // ── Expect matchers – toEqual ─────────────────────────────────────────────────
 
 test.describe('Expect matchers – toEqual', () => {
-    test('toEqual passes for deep-equal objects', ({ expect }) => {
+    test('toEqual passes for deep-equal objects', () => {
         expect({ a: 1, b: [2, 3] }).toEqual({ a: 1, b: [2, 3] });
     });
 });
@@ -628,18 +628,18 @@ test.describe('Expect matchers – toEqual', () => {
 test.describe('Page navigation – extended', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('reload resets page state', async ({ page, expect }) => {
+    test('reload resets page state', async ({ page }) => {
         await page.locator('#clickBtn').click();
         await expect(page.locator('#mouseResult')).toHaveText('Clicked');
         await page.reload();
         await expect(page.locator('#mouseResult')).toHaveText('');
     });
 
-    test('url returns current page URL', async ({ page, expect }) => {
+    test('url returns current page URL', async ({ page }) => {
         expect(page.url()).toContain('testPage.html');
     });
 
-    test('waitForURL resolves when URL matches', async ({ page, node, expect }) => {
+    test('waitForURL resolves when URL matches', async ({ page, node }) => {
         const dirname = await node.task('dirname');
         const urlPromise = page.waitForURL(/testPage\.html/, { timeout: 5000 });
         page.goto(`file://${dirname}/app/testPage.html`);
@@ -653,15 +653,15 @@ test.describe('Page navigation – extended', () => {
 test.describe('Page locator factories – extended', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('getByRole finds button by accessible name', async ({ page, expect }) => {
+    test('getByRole finds button by accessible name', async ({ page }) => {
         await expect(page.getByRole('button', { name: 'Click', exact: true })).toBeVisible();
     });
 
-    test('getByTestId finds element by data-testid attribute', async ({ page, expect }) => {
+    test('getByTestId finds element by data-testid attribute', async ({ page }) => {
         await expect(page.getByTestId('click-button')).toBeVisible();
     });
 
-    test('frameLocator reaches inside iframe', async ({ page, expect }) => {
+    test('frameLocator reaches inside iframe', async ({ page }) => {
         const frame = page.frameLocator('iframe');
         await expect(frame.locator('#frameBtn')).toBeVisible();
     });
@@ -670,7 +670,7 @@ test.describe('Page locator factories – extended', () => {
 // ── page.once ─────────────────────────────────────────────────────────────────
 
 test.describe('page.once', () => {
-    test('once fires the handler exactly once across two navigations', async ({ page, node, expect }) => {
+    test('once fires the handler exactly once across two navigations', async ({ page, node }) => {
         const dirname = await node.task('dirname');
         let count = 0;
         page.once('load', () => { count++; });
@@ -687,7 +687,7 @@ test.describe('page.once', () => {
 test.describe('page.waitForEvent', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('waitForEvent resolves on dialog event', async ({ page, expect }) => {
+    test('waitForEvent resolves on dialog event', async ({ page }) => {
         const dialogPromise = page.waitForEvent('dialog', { timeout: 5000 });
         page.getByRole('button', { name: 'Alert' }).click();
         const dialog = await dialogPromise;
@@ -695,7 +695,7 @@ test.describe('page.waitForEvent', () => {
         dialog.accept();
     });
 
-    test('waitForEvent resolves on console message', async ({ page, expect }) => {
+    test('waitForEvent resolves on console message', async ({ page }) => {
         const msgPromise = page.waitForEvent('console', { timeout: 5000 });
         page.locator('#clickBtn').click();
         const msg = await msgPromise;
@@ -706,7 +706,7 @@ test.describe('page.waitForEvent', () => {
 // ── Browser multi-page ─────────────────────────────────────────────────────────
 
 test.describe('Browser multi-page', () => {
-    test('newPage opens an additional tab', async ({ browser, expect }) => {
+    test('newPage opens an additional tab', async ({ browser }) => {
         await browser.newPage();
         const tabs = browser.tabs();
         expect(tabs.length).toBeGreaterThan(1);
@@ -723,7 +723,7 @@ test.describe('Browser multi-page', () => {
 test.describe('Mouse API - extended', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('mouse.click at coordinates triggers click event', async ({ page, expect }) => {
+    test('mouse.click at coordinates triggers click event', async ({ page }) => {
         const btn = page.locator('#clickBtn');
         const rect = await btn.evaluate((el: HTMLElement) => {
             const r = el.getBoundingClientRect();
@@ -733,7 +733,7 @@ test.describe('Mouse API - extended', () => {
         await expect(page.locator('#mouseResult')).toHaveText('Clicked');
     });
 
-    test('mouse.down and mouse.up dispatch press and release events', async ({ page, expect }) => {
+    test('mouse.down and mouse.up dispatch press and release events', async ({ page }) => {
         await page.evaluate(() => {
             (window as any).__mouseEvents = [] as string[];
             const btn = document.getElementById('clickBtn')!;
@@ -758,13 +758,13 @@ test.describe('Mouse API - extended', () => {
 test.describe('Keyboard press', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('keyboard.press fires keydown event', async ({ page, expect }) => {
+    test('keyboard.press fires keydown event', async ({ page }) => {
         await page.locator('#textInput').focus();
         await page.keyboard.press('Enter');
         await expect(page.locator('#lastKey')).toHaveText('Enter');
     });
 
-    test('keyboard.press with Shift modifier fires uppercase key', async ({ page, expect }) => {
+    test('keyboard.press with Shift modifier fires uppercase key', async ({ page }) => {
         await page.locator('#textInput').focus();
         await page.keyboard.press('Shift+A');
         await expect(page.locator('#lastKey')).toHaveText('A');
@@ -776,7 +776,7 @@ test.describe('Keyboard press', () => {
 test.describe('Route – fulfill and request()', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('route.fulfill returns a synthetic response', async ({ page, expect }) => {
+    test('route.fulfill returns a synthetic response', async ({ page }) => {
         await page.route('https://httpbin.org/get', async route => {
             await route.fulfill({
                 status: 200,
@@ -790,7 +790,7 @@ test.describe('Route – fulfill and request()', () => {
         expect((result as any).mocked).toBe(true);
     });
 
-    test('route.request() exposes the intercepted request URL', async ({ page, expect }) => {
+    test('route.request() exposes the intercepted request URL', async ({ page }) => {
         let capturedUrl = '';
         await page.route('https://httpbin.org/get', async route => {
             capturedUrl = route.request().url();
@@ -828,7 +828,7 @@ test.describe('Fixtures – log and attach', () => {
 // ── Page events – navigation lifecycle ────────────────────────────────────────
 
 test.describe('Page events – load / domcontentloaded', () => {
-    test('load fires after navigation', async ({ page, node, expect }) => {
+    test('load fires after navigation', async ({ page, node }) => {
         const dirname = await node.task('dirname');
         let fired = false;
         page.on('load', () => { fired = true; });
@@ -836,7 +836,7 @@ test.describe('Page events – load / domcontentloaded', () => {
         expect(fired).toBe(true);
     });
 
-    test('domcontentloaded fires during navigation', async ({ page, node, expect }) => {
+    test('domcontentloaded fires during navigation', async ({ page, node }) => {
         const dirname = await node.task('dirname');
         let fired = false;
         page.on('domcontentloaded', () => { fired = true; });
@@ -850,7 +850,7 @@ test.describe('Page events – load / domcontentloaded', () => {
 test.describe('Page events – request / response / requestfinished / requestfailed', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('request fires for a page-initiated fetch', async ({ page, expect }) => {
+    test('request fires for a page-initiated fetch', async ({ page }) => {
         const urls: string[] = [];
         page.on('request', req => { urls.push(req.url()); });
         await page.evaluate(() => fetch('https://httpbin.org/get').catch(() => {}));
@@ -858,7 +858,7 @@ test.describe('Page events – request / response / requestfinished / requestfai
         expect(urls.some(u => u.includes('httpbin.org'))).toBe(true);
     });
 
-    test('response fires when a fetch response arrives', async ({ page, expect }) => {
+    test('response fires when a fetch response arrives', async ({ page }) => {
         const statuses: number[] = [];
         page.on('response', resp => { statuses.push(resp.status()); });
         await page.evaluate(() => fetch('https://httpbin.org/get').catch(() => {}));
@@ -866,7 +866,7 @@ test.describe('Page events – request / response / requestfinished / requestfai
         expect(statuses.some(s => s === 200)).toBe(true);
     });
 
-    test('requestfinished fires after a successful request', async ({ page, expect }) => {
+    test('requestfinished fires after a successful request', async ({ page }) => {
         const finished: string[] = [];
         page.on('requestfinished', req => { finished.push(req.url()); });
         await page.evaluate(() => fetch('https://httpbin.org/get').catch(() => {}));
@@ -874,7 +874,7 @@ test.describe('Page events – request / response / requestfinished / requestfai
         expect(finished.some(u => u.includes('httpbin.org'))).toBe(true);
     });
 
-    test('requestfailed fires when route.abort() cancels a request', async ({ page, expect }) => {
+    test('requestfailed fires when route.abort() cancels a request', async ({ page }) => {
         let failedUrl = '';
         page.on('requestfailed', req => { failedUrl = req.url(); });
         await page.route('https://httpbin.org/get', async route => { await route.abort(); });
@@ -889,7 +889,7 @@ test.describe('Page events – request / response / requestfinished / requestfai
 test.describe('Page events – pageerror', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('pageerror fires on an uncaught exception in the page', async ({ page, expect }) => {
+    test('pageerror fires on an uncaught exception in the page', async ({ page }) => {
         let capturedError: Error | null = null;
         page.on('pageerror', err => { capturedError = err; });
         await page.evaluate(() => {
@@ -904,7 +904,7 @@ test.describe('Page events – pageerror', () => {
 // ── Page events – frame ───────────────────────────────────────────────────────
 
 test.describe('Page events – frameattached / framenavigated / framedetached', () => {
-    test('frameattached fires when a page with an iframe is loaded', async ({ page, node, expect }) => {
+    test('frameattached fires when a page with an iframe is loaded', async ({ page, node }) => {
         const dirname = await node.task('dirname');
         const attached: any[] = [];
         page.on('frameattached', frame => { attached.push(frame); });
@@ -912,7 +912,7 @@ test.describe('Page events – frameattached / framenavigated / framedetached', 
         expect(attached.length).toBeGreaterThan(0);
     });
 
-    test('framenavigated fires during page navigation', async ({ page, node, expect }) => {
+    test('framenavigated fires during page navigation', async ({ page, node }) => {
         const dirname = await node.task('dirname');
         let navigated = false;
         page.on('framenavigated', () => { navigated = true; });
@@ -920,7 +920,7 @@ test.describe('Page events – frameattached / framenavigated / framedetached', 
         expect(navigated).toBe(true);
     });
 
-    test('framedetached fires when an iframe is removed from the DOM', async ({ page, browser, expect, node }) => {
+    test('framedetached fires when an iframe is removed from the DOM', async ({ page, browser, node }) => {
         await loadTestPage({ page, node });
         let detached = false;
         page.on('framedetached', () => { detached = true; });
@@ -938,7 +938,7 @@ test.describe('Page events – frameattached / framenavigated / framedetached', 
 test.describe('Page events - popup', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('popup fires when window.open is called', async ({ page, expect }) => {
+    test('popup fires when window.open is called', async ({ page }) => {
         const popupPromise = page.waitForEvent('popup', { timeout: 5000 });
         await page.evaluate(() => { window.open('about:blank', '_blank'); });
         const popup = await popupPromise;
@@ -952,7 +952,7 @@ test.describe('Page events - popup', () => {
 test.describe('Page events – filechooser', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('filechooser fires when a file input is activated', async ({ page, expect }) => {
+    test('filechooser fires when a file input is activated', async ({ page }) => {
         const chooserPromise = page.waitForEvent('filechooser', { timeout: 5000 });
         await page.locator('#fileUpload').click();
         const chooser = await chooserPromise;
@@ -963,7 +963,7 @@ test.describe('Page events – filechooser', () => {
 // ── Page events – close ───────────────────────────────────────────────────────
 
 test.describe('Page events - close', () => {
-    test('close fires on a popup page when it is closed', async ({ browser, expect, page }) => {
+    test('close fires on a popup page when it is closed', async ({ browser, page }) => {
         let closed = false;
         await browser.newPage();
         await page.waitForTimeout(500);
@@ -980,7 +980,7 @@ test.describe('Page events - close', () => {
 test.describe('Page events – download', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('download fires when a file download is triggered', async ({ page, expect }) => {
+    test('download fires when a file download is triggered', async ({ page }) => {
         const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
         await page.evaluate(() => {
             const a = document.createElement('a');
@@ -1000,7 +1000,7 @@ test.describe('Page events – download', () => {
 test.describe('FileChooser – full API', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('element() returns the file HTMLInputElement', async ({ page, expect }) => {
+    test('element() returns the file HTMLInputElement', async ({ page }) => {
         const chooserPromise = page.waitForEvent('filechooser', { timeout: 5000 });
         await page.locator('#fileUpload').click();
         const fc = await chooserPromise;
@@ -1009,14 +1009,14 @@ test.describe('FileChooser – full API', () => {
         expect(el.type).toBe('file');
     });
 
-    test('isMultiple() returns false for a standard file input', async ({ page, expect }) => {
+    test('isMultiple() returns false for a standard file input', async ({ page }) => {
         const chooserPromise = page.waitForEvent('filechooser', { timeout: 5000 });
         await page.locator('#fileUpload').click();
         const fc = await chooserPromise;
         expect(fc.isMultiple()).toBe(false);
     });
 
-    test('isMultiple() returns true for an input with the multiple attribute', async ({ page, expect }) => {
+    test('isMultiple() returns true for an input with the multiple attribute', async ({ page }) => {
         await page.evaluate(() => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -1030,14 +1030,14 @@ test.describe('FileChooser – full API', () => {
         expect(fc.isMultiple()).toBe(true);
     });
 
-    test('accept() returns empty string when no accept attribute is set', async ({ page, expect }) => {
+    test('accept() returns empty string when no accept attribute is set', async ({ page }) => {
         const chooserPromise = page.waitForEvent('filechooser', { timeout: 5000 });
         await page.locator('#fileUpload').click();
         const fc = await chooserPromise;
         expect(fc.accept()).toBe('');
     });
 
-    test('accept() returns the value of the accept attribute', async ({ page, expect }) => {
+    test('accept() returns the value of the accept attribute', async ({ page }) => {
         await page.evaluate(() => {
             const input = document.createElement('input');
             input.type = 'file';
@@ -1051,7 +1051,7 @@ test.describe('FileChooser – full API', () => {
         expect(fc.accept()).toBe('image/png,image/jpeg');
     });
 
-    test('setFiles() sets the file on the input and fires a change event', async ({ page, expect }) => {
+    test('setFiles() sets the file on the input and fires a change event', async ({ page }) => {
         const chooserPromise = page.waitForEvent('filechooser', { timeout: 5000 });
         await page.locator('#fileUpload').click();
         const fc = await chooserPromise;
@@ -1081,7 +1081,7 @@ test.describe('FileChooser – full API', () => {
 test.describe('Download – full API', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
-    test('url() returns the href of the triggering link', async ({ page, expect }) => {
+    test('url() returns the href of the triggering link', async ({ page }) => {
         const dlPromise = page.waitForEvent('download', { timeout: 5000 });
         await page.evaluate(() => {
             const a = document.createElement('a');
@@ -1095,7 +1095,7 @@ test.describe('Download – full API', () => {
         expect(dl.url()).toBe('data:text/plain,url-test');
     });
 
-    test('suggestedFilename() returns the download attribute value when set', async ({ page, expect }) => {
+    test('suggestedFilename() returns the download attribute value when set', async ({ page }) => {
         const dlPromise = page.waitForEvent('download', { timeout: 5000 });
         await page.evaluate(() => {
             const a = document.createElement('a');
@@ -1109,7 +1109,7 @@ test.describe('Download – full API', () => {
         expect(dl.suggestedFilename()).toBe('my-report.csv');
     });
 
-    test('suggestedFilename() falls back to the last URL path segment when download attribute is empty', async ({ page, expect }) => {
+    test('suggestedFilename() falls back to the last URL path segment when download attribute is empty', async ({ page }) => {
         const dlPromise = page.waitForEvent('download', { timeout: 5000 });
         await page.evaluate(() => {
             const a = document.createElement('a');
@@ -1123,7 +1123,7 @@ test.describe('Download – full API', () => {
         expect(dl.suggestedFilename()).toBe('archive.zip');
     });
 
-    test('createReadStream() returns a ReadableStream of the file bytes', async ({ page, expect }) => {
+    test('createReadStream() returns a ReadableStream of the file bytes', async ({ page }) => {
         const dlPromise = page.waitForEvent('download', { timeout: 5000 });
         await page.evaluate(() => {
             const a = document.createElement('a');
@@ -1149,7 +1149,7 @@ test.describe('Download – full API', () => {
         expect(text).toBe('stream-content');
     });
 
-    test('saveAs() writes the file to the given path on disk', async ({ page, node, expect }) => {
+    test('saveAs() writes the file to the given path on disk', async ({ page, node }) => {
         const dirname = await node.task('dirname');
         const dlPromise = page.waitForEvent('download', { timeout: 5000 });
         await page.evaluate(() => {
