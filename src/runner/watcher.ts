@@ -66,7 +66,13 @@ export async function startWatcher(
         clearTimeout(debounce.get(fullPath));
         debounce.set(fullPath, setTimeout(() => {
           debounce.delete(fullPath);
-          if (fs.existsSync(fullPath)) processFile(fullPath, server, baseDir);
+          if (fs.existsSync(fullPath)) {
+            processFile(fullPath, server, baseDir);
+          } else {
+            const basename = path.basename(fullPath);
+            server.removeFile(basename);
+            console.log(`🗑️  Removed: ${basename}`);
+          }
         }, 300));
       });
     } catch (err: any) {
