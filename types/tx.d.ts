@@ -459,6 +459,33 @@ interface Page {
    * to a blank page. Also clears localStorage, sessionStorage, and cookies
    * for the current origin (best-effort — cross-origin values are skipped).
    */
+  // ── Component Testing ───────────────────────────────────────────────────────
+  /**
+   * Mount a component into the page.
+   *
+   * @example
+   * await page.mount(MyComponent, { props: { name: 'World' } });
+   *
+   * // Or with a custom mounter function
+   * await page.mount(async (container) => {
+   *   const root = createRoot(container);
+   *   root.render(<MyComponent />);
+   * });
+   */
+  mount<T = any>(component: T, options?: any): Promise<void>;
+
+  /**
+   * Register a framework-specific mounter (e.g. for React, Vue, Angular).
+   *
+   * @example
+   * await page.registerMount(async (Component, container, options) => {
+   *   const { createRoot } = await import('react-dom/client');
+   *   const root = createRoot(container);
+   *   root.render(<Component {...options.props} />);
+   * });
+   */
+  registerMount(mounter: (component: any, container: HTMLElement, options: any) => void | Promise<void>): Promise<void>;
+
   resetSession(): Promise<void>;
 
   close(): Promise<void>;

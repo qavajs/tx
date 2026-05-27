@@ -84,7 +84,7 @@ export async function bundleTestFile(filePath: string): Promise<string> {
   const raw = fs.readFileSync(filePath, 'utf-8');
   const contents = _preprocessor ? _preprocessor(raw, filePath) : raw;
   const result = await esbuild.build({
-    stdin: { contents, resolveDir: path.dirname(filePath), sourcefile: filePath, loader: 'ts' },
+    stdin: { contents, resolveDir: path.dirname(filePath), sourcefile: filePath, loader: filePath.endsWith('.tsx') || filePath.endsWith('.jsx') ? 'tsx' : 'ts' },
     bundle: true,
     platform: 'browser',
     format: 'iife',
@@ -92,6 +92,12 @@ export async function bundleTestFile(filePath: string): Promise<string> {
     logLevel: 'silent',
     external: ['@qavajs/tx'],
     sourcemap: 'inline',
+    loader: {
+      '.js': 'jsx',
+      '.ts': 'tsx',
+      '.jsx': 'jsx',
+      '.tsx': 'tsx',
+    },
   });
   return result.outputFiles[0].text;
 }
@@ -102,9 +108,9 @@ export function parseTestFile(filePath: string): ParsedFile {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const source = _preprocessor ? _preprocessor(raw, filePath) : raw;
     const { code } = esbuild.transformSync(source, {
-      loader: 'ts',
+      loader: filePath.endsWith('.tsx') || filePath.endsWith('.jsx') ? 'tsx' : 'ts',
       target: 'node22',
-      format: 'cjs',
+      format: 'iife',
       sourcefile: filePath,
     });
     return { filename, tests: parseTestCode(code) };

@@ -2001,6 +2001,65 @@ export const page = {
     return _withCommand(`${ms}ms`, 'wait', () => _awaitOrAbort(ms));
   },
 
+  // ── Component Testing ───────────────────────────────────────────────────────
+
+  async mount(component: any, options: any = {}): Promise<void> {
+    return _withCommand('component', 'mount', async () => {
+      const doc = iframeDoc();
+      if (!doc) throw new Error('no active tab');
+
+      // Clear body and create a container
+      doc.body.innerHTML = '<div id="root"></div>';
+      const container = doc.getElementById('root')!;
+
+      const win = iframeWin() as any;
+      if (!win.__tx_mount) _runInitScripts();
+
+      const isReactComponent = (c: any) => 
+        (typeof c === 'function' && (c.prototype?.isReactComponent || c.$$typeof || c.name?.match(/^[A-Z]/))) ||
+        (typeof c === 'object' && c !== null && (c.$$typeof || c.render));
+
+      if (typeof component === 'function' && !win.__tx_mount && !isReactComponent(component)) {
+        // It's a custom mount function: (container, options) => ...
+        await component(container, options);
+      } else {
+        // It's a component (React, Vue, etc.)
+        if (win.__tx_mount) {
+          await win.__tx_mount(component, container, options);
+        } else {
+          // Fallback: if it's a DOM element, just append it
+          if (component instanceof Node) {
+            container.appendChild(component);
+          } else if (typeof component === 'function') {
+            // If no mounter but it's a function, maybe it's a mount function?
+            await component(container, options);
+          } else {
+            throw new Error(
+              'No mounter found. If you are passing a framework component (React, Vue, Angular, etc.), ' +
+              'you must register a mounter using page.addInitScript().\n\n' +
+              'Example for React:\n' +
+              'await page.addInitScript(() => {\n' +
+              '  window.__tx_mount = async (Component, container, options) => {\n' +
+              '    const { createRoot } = await import("react-dom/client");\n' +
+              '    const root = createRoot(container);\n' +
+              '    root.render(window.React.createElement(Component, options.props));\n' +
+              '  };\n' +
+              '});'
+            );
+          }
+        }
+      }
+    });
+  },
+
+  async registerMount(mounter: any): Promise<void> {
+    return _withCommand('mounter', 'registerMount', async () => {
+      console.log(mounter)
+      // @ts-ignore
+      window['__tx_mount'] = mounter
+    });
+  },
+
   waitForRequest(
     urlOrPredicate: string | RegExp | ((req: any) => boolean | Promise<boolean>),
     options?: { timeout?: number }

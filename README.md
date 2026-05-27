@@ -403,6 +403,64 @@ test.describe('suite', () => {
 
 Operates on the proxied iframe. Available as the `page` fixture via destructuring.
 
+#### Component Testing
+
+`@qavajs/tx` supports testing components from frameworks like React, Vue, and Angular by mounting them into a clean DOM container.
+
+```ts
+await page.mount(component: any, options?: { props?: any }): Promise<void>
+```
+
+Mounts a component into the current page. It clears the `<body>` and creates a `#root` container.
+
+**Example: Plain DOM**
+
+```ts
+test('vanilla component', async ({ page }) => {
+  await page.mount((container) => {
+    container.innerHTML = '<button id="btn">Click me</button>';
+  });
+  await page.locator('#btn').click();
+});
+```
+
+**Example: React**
+
+To test React components, you first need to register a mounter in your test setup or via `addInitScript`:
+
+```ts
+// tx.config.js
+module.exports = {
+  // ...
+  preprocessor(source, filePath) {
+    // Optional: inject mounter setup into every file
+    if (filePath.endsWith('.spec.tsx')) {
+      return `import { createRoot } from 'react-dom/client';\n` +
+             `import React from 'react';\n` +
+             `page.addInitScript(() => {\n` +
+             `  window.__tx_mount = async (Component, container, options) => {\n` +
+             `    const root = createRoot(container);\n` +
+             `    root.render(React.createElement(Component, options.props));\n` +
+             `  };\n` +
+             `});\n` + source;
+    }
+    return source;
+  }
+};
+```
+
+Then in your test:
+
+```tsx
+import { test, expect } from '@qavajs/tx';
+import { MyButton } from './MyButton';
+
+test('renders button', async ({ page }) => {
+  await page.mount(MyButton, { props: { label: 'Submit' } });
+  await expect(page.getByRole('button')).toHaveText('Submit');
+});
+```
+
 #### Navigation
 
 ```ts
