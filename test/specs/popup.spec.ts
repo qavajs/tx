@@ -29,6 +29,9 @@ test.describe('browser.newWindow', () => {
         // Switch back to the popup
         browser.switchTab(t => t.url.includes('interactions.html'));
         await expect(popupTitle).toHaveText('Interactions');
+        
+        await page.waitForTimeout(2000);
+        await page.close();
     });
 
     test('should handle navigation in popup', async ({ browser, page }) => {
@@ -37,6 +40,8 @@ test.describe('browser.newWindow', () => {
     });
 
     test.afterEach(async ({ page }) => {
+        await page.waitForTimeout(2000);
         await page.close();
+        await page.waitForTimeout(2000);
     });
 });

@@ -1806,8 +1806,8 @@ async function captureScreenshot(): Promise<string> {
   const doc = iframeDoc();
   if (!doc) throw new Error('no active tab');
   const tab = _activeTab()!;
-  const w = viewportW ?? (tab.iframe.offsetWidth || 1280);
-  const h = viewportH ?? (tab.iframe.offsetHeight || 720);
+  const w = viewportW ?? (tab.iframe?.offsetWidth || 1280);
+  const h = viewportH ?? (tab.iframe?.offsetHeight || 720);
   return domToPng(doc.documentElement, { width: w, height: h });
 }
 
@@ -1831,9 +1831,7 @@ export const page = {
         tab.iframe.src = toProxiedUrl(url);
       } else if (tab.popup) {
         const popup = tab.popup;
-        let navResolved = false;
         const cleanup = () => {
-          navResolved = true;
           clearTimeout(timer);
           clearInterval(poll);
         };
@@ -2608,7 +2606,7 @@ export const testApi = {
   visit(url: string) {
     const tab = _activeTab();
     if (!tab) { log('iframe not ready', { type: 'error' }); return; }
-    tab.iframe.src = toProxiedUrl(url);
+    tab.iframe!.src = toProxiedUrl(url);
     const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
     if (navInput) navInput.value = url;
     log(url, { cmd: 'visit' });
@@ -2836,7 +2834,7 @@ export function createWindow(url?: string) {
   try {
     // @ts-ignore
     popupWin = window['%hammerhead%'].nativeMethods.windowOpen.call(window, targetUrl, tabId, 'width=1280,height=720');
-  } catch (e) {}
+  } catch (_) {}
 
   if (!popupWin) {
     popupWin = window.open(targetUrl, tabId, 'width=1280,height=720');
@@ -2869,7 +2867,7 @@ export function createWindow(url?: string) {
       if (window.__CONFIG__.snapshot) _captureSnapshot('load');
       _emitPage('framenavigated', { url: () => page.url(), name: () => '', isMainFrame: () => true });
       _onTabsChanged?.();
-    } catch (e) {
+    } catch (_) {
       // Cross-origin access failure typically means we are between pages
     }
   };
