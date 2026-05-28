@@ -8,6 +8,7 @@ The API is modelled after Playwright (`page`, `expect`, `browser`, `request`, fi
 
 - **No browser driver** — runs in any browser (including Safari) via a proxy iframe; no WebDriver or CDP required
 - **Playwright-compatible API** — `page`, `locator`, `expect`, `browser`, `request`, hooks, `test.extend()` fixtures
+- **Multi-window / popup support** — open and control native browser popup windows via `browser.newWindow()` or intercept `window.open()` / `target="_blank"` links via the `popup` event
 - **Interactive control panel** — live browser view, network inspector, console panel, and CSS selector playground in one UI
 - **Node.js bridge** — call file-system, database, or any Node.js task from browser-side test code via `node.task()`
 - **TypeScript first** — spec files written in TypeScript, compiled on the fly with esbuild
@@ -1032,14 +1033,19 @@ await browser.newPage(): Promise<void>
 Open a new blank tab and make it the active tab. After the call, interact with it via the global `page` fixture.
 
 ```ts
+await browser.newWindow(url?: string): Promise<void>
+```
+Open a new native browser window, navigate it to `url` if provided, and make it the active page. After the call, interact with it via the global `page` fixture. Use `browser.switchTab()` to move between open tabs and windows.
+
+```ts
 browser.tabs(): TxTabInfo[]
 ```
-Return a snapshot array of all open tabs. Each entry has `id`, `title`, `url`, and `active` fields.
+Return a snapshot array of all open tabs and windows. Each entry has `id`, `title`, `url`, and `active` fields.
 
 ```ts
 browser.switchTab(predicate: (tab: TxTabInfo) => boolean): void
 ```
-Switch the active tab to the first tab where `predicate` returns `true`. Use `page` to interact with it afterwards.
+Switch the active tab to the first tab where `predicate` returns `true`. Works for both iframe-based tabs and popup windows. Use `page` to interact with it afterwards.
 
 ```ts
 // Multi-tab flow
@@ -1057,8 +1063,21 @@ test('multi-tab', async ({ page, browser }) => {
   await page.close();  // close the active tab
 });
 
+// Open a popup window programmatically
+test('popup via newWindow', async ({ browser, page }) => {
+  await browser.newWindow('https://example.com/popup');
+
+  // page now controls the popup window
+  await expect(page.locator('h1')).toHaveText('Popup');
+  await page.locator('#submit').click();
+
+  // switch back to the original tab
+  browser.switchTab(t => t.url.includes('main'));
+  await expect(page).toHaveURL(/main/);
+});
+
 // Handle window.open / target="_blank"
-test('popup', async ({ page }) => {
+test('popup intercepted', async ({ page }) => {
   page.on('popup', async popup => {
     await popup.waitForURL(/popup-page/);
     console.log(await popup.title());
@@ -1067,6 +1086,91 @@ test('popup', async ({ page }) => {
   await page.locator('a[target="_blank"]').click();
 });
 ```
+
+---
+
+### Popup Windows
+
+Popup windows are native browser windows (not iframe tabs) opened either by test code or by the page under test. All standard `page` APIs work identically in popup windows.
+
+#### Opening a popup from a test
+
+Use `browser.newWindow(url?)` to open a window programmatically. The new window immediately becomes the active page:
+
+```ts
+test('controls a popup window', async ({ browser, page }) => {
+  await page.goto('https://example.com');
+
+  await browser.newWindow('https://example.com/admin');
+
+  // page now refers to the popup window
+  await expect(page.locator('h1')).toHaveText('Admin');
+  await page.locator('#save').click();
+
+  // switch focus back to the original tab
+  browser.switchTab(t => t.url.includes('example.com') && !t.url.includes('admin'));
+  await expect(page).toHaveURL(/example\.com/);
+
+  // close the popup
+  browser.switchTab(t => t.url.includes('admin'));
+  await page.close();
+});
+```
+
+#### Intercepting windows opened by the page
+
+When the page calls `window.open()` or the user clicks a `target="_blank"` link, a `popup` event fires on the current page. Use `page.on('popup', …)` to handle it asynchronously, or `page.waitForEvent('popup')` to await the next popup synchronously:
+
+```ts
+// Async handler — fires whenever the page opens a window
+test('intercepts window.open', async ({ page }) => {
+  page.on('popup', async popup => {
+    await popup.waitForURL(/new-window/);
+    await expect(popup.locator('h1')).toHaveText('New Window');
+    await popup.close();
+  });
+
+  await page.locator('#open-window-btn').click();
+});
+
+// Await the next popup in-line
+test('awaits target=_blank click', async ({ page }) => {
+  const [, popup] = await Promise.all([
+    page.locator('a[target="_blank"]').click(),
+    page.waitForEvent('popup'),
+  ]);
+
+  await popup.waitForURL(/target-page/);
+  await expect(popup.locator('.content')).toBeVisible();
+  await popup.close();
+});
+```
+
+#### Tab management with popup windows
+
+`browser.tabs()` returns all open tabs and popup windows in the same list. Use `browser.switchTab()` to move focus between them — it works identically for both:
+
+```ts
+test('manages multiple windows', async ({ browser, page }) => {
+  await page.goto('https://example.com/page-a');
+  await browser.newWindow('https://example.com/page-b');
+
+  console.log(browser.tabs().length); // 2
+
+  browser.switchTab(t => t.url.includes('page-a'));
+  await expect(page).toHaveURL(/page-a/);
+
+  browser.switchTab(t => t.url.includes('page-b'));
+  await expect(page).toHaveURL(/page-b/);
+});
+```
+
+#### Notes
+
+- Popup windows are real browser windows — they are not sandboxed like iframes and are not subject to iframe CSP restrictions.
+- `page.goto()` and `page.reload()` work in popup windows using polling instead of iframe load events.
+- `page.close()` closes the popup window and returns focus to the most recently used tab.
+- Popup blocking must be disabled in the browser for `window.open()` interception to work. The framework does this automatically via launch arguments (`--disable-popup-blocking` on Chrome/Firefox).
 
 ---
 
