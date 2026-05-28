@@ -330,7 +330,7 @@ function _ensureHighlightStyle(doc: Document) {
   if (doc.getElementById(_HIGHLIGHT_STYLE_ID)) return;
   const s = doc.createElement('style');
   s.id = _HIGHLIGHT_STYLE_ID;
-  s.textContent = `.__tx_sel_hi__ { outline: 2px solid #00d084 !important; outline-offset: 1px !important; background-color: rgba(0,208,132,0.08) !important; }`;
+  s.textContent = `.__tx_sel_hi__ { outline: 2px solid #34a870 !important; outline-offset: 1px !important; background-color: rgba(52,168,112,0.08) !important; }`;
   (doc.head || doc.documentElement).appendChild(s);
 }
 

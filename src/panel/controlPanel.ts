@@ -26,11 +26,11 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            --jade:        #00d084;
-            --jade-bg:     rgba(0, 208, 132, 0.10);
-            --jade-glow:   rgba(0, 208, 132, 0.25);
-            --pass:        #22c55e;
-            --pass-bg:     rgba(34, 197, 94, 0.10);
+            --jade:        #34a870;
+            --jade-bg:     rgba(52, 168, 112, 0.10);
+            --jade-glow:   rgba(52, 168, 112, 0.22);
+            --pass:        #4ead7a;
+            --pass-bg:     rgba(78, 173, 122, 0.10);
             --fail:        #ef4444;
             --fail-bg:     rgba(239, 68, 68, 0.10);
             --warn:        #f59e0b;
@@ -125,8 +125,8 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             letter-spacing: 0.1px;
         }
 
-        .tx-run-all-btn:hover  { background: #00c07a; box-shadow: 0 0 12px var(--jade-glow); }
-        .tx-run-all-btn:active { background: #00a96c; }
+        .tx-run-all-btn:hover  { background: #2d9963; box-shadow: 0 0 12px var(--jade-glow); }
+        .tx-run-all-btn:active { background: #268557; }
         .tx-run-all-btn:disabled {
             background: var(--bg-card);
             color: var(--text-muted);
