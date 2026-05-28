@@ -48,11 +48,13 @@ export class HtmlReporter implements Reporter {
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
-    const steps = (result.logs ?? [])
+    const allLogs = flattenLogs(result.logs ?? []);
+
+    const steps = allLogs
       .filter((l: LogEntry) => l.cmd !== 'attach')
       .map((l: LogEntry) => ({ cmd: l.cmd, message: l.message, state: l.state, duration: l.duration }));
 
-    const attachments = (result.logs ?? [])
+    const attachments = allLogs
       .filter((l: LogEntry) => l.cmd === 'attach' && l.attachment)
       .map((l: LogEntry) => ({
         label: l.message,
@@ -80,6 +82,15 @@ export class HtmlReporter implements Reporter {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function flattenLogs(logs: LogEntry[]): LogEntry[] {
+  const out: LogEntry[] = [];
+  for (const entry of logs) {
+    out.push(entry);
+    if (entry.children?.length) out.push(...flattenLogs(entry.children));
+  }
+  return out;
+}
 
 function esc(s: unknown): string {
   return String(s ?? '')

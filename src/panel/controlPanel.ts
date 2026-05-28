@@ -3,16 +3,16 @@
  */
 
 export interface ControlPanelConfig {
-  proxyUrl: string;
-  controlPanelPort?: number;
-  viewport?: { width: number; height: number };
-  testMode?: boolean;
-  snapshot?: boolean;
-  grep?: RegExp;
-  actionTimeout?: number;
-  expectTimeout?: number;
-  testTimeout?: number;
-  retries?: number;
+    proxyUrl: string;
+    controlPanelPort?: number;
+    viewport?: { width: number; height: number };
+    testMode?: boolean;
+    snapshot?: boolean;
+    grep?: RegExp;
+    actionTimeout?: number;
+    expectTimeout?: number;
+    testTimeout?: number;
+    retries?: number;
 }
 
 export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, viewport, testMode, snapshot, grep, actionTimeout, expectTimeout, testTimeout, retries }: ControlPanelConfig): string {
@@ -208,7 +208,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         /* ══ Specs panel ══════════════════════════════════════════════════ */
 
         .tx-specs {
-            width: 400px;
+            width: 500px;
             min-width: 180px;
             flex-shrink: 0;
             background: var(--bg-panel);
@@ -461,7 +461,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
 
         .tx-test-item {
             padding: 3px 10px 3px 24px;
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-muted);
             display: flex;
             align-items: center;
@@ -567,7 +567,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd-icon.info { color: var(--text-muted); }
 
         .tx-cmd-label {
-            font-size: 9.5px;
             font-weight: 700;
             letter-spacing: 0.3px;
             flex-shrink: 0;
@@ -579,6 +578,9 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd-label.info { color: var(--text-muted); }
 
         .tx-cmd-msg {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             flex: 1;
             color: var(--text);
             word-break: break-word;
