@@ -424,6 +424,7 @@ export interface LogEntry {
   state: 'pass' | 'fail' | 'info';
   duration?: number;
   attachment?: { body: string; contentType: string };
+  children?: LogEntry[];
 }
 
 let _collectedLogs: LogEntry[] | null = null;
@@ -508,6 +509,11 @@ export interface TxCommandHandle {
   fail(error?: string): void;
 }
 
+export interface TxGroupHandle {
+  /** Close the group and finalize its pass/fail state based on child entries. */
+  end(): void;
+}
+
 /**
  * Open a pending command entry in the test log and return a handle to resolve it.
  *
@@ -560,7 +566,88 @@ function logCommand(message: string, cmd: string): TxCommandHandle {
   };
 }
 
-export const log = Object.assign(_log, { open: logCommand });
+function logGroup(message: string, cmd?: string): TxGroupHandle;
+function logGroup<T>(message: string, fn: () => T | Promise<T>): Promise<T>;
+function logGroup<T>(message: string, cmd: string, fn: () => T | Promise<T>): Promise<T>;
+function logGroup(message: string, cmdOrFn?: string | (() => any), fn?: () => any): TxGroupHandle | Promise<any> {
+  const resolvedCmd = typeof cmdOrFn === 'string' ? cmdOrFn : 'group';
+  const resolvedFn  = typeof cmdOrFn === 'function' ? cmdOrFn : fn;
+
+  const container = _logContainer ?? document.getElementById('console');
+
+  let groupEl: HTMLElement | null = null;
+  let bodyEl: HTMLElement | null = null;
+
+  if (container) {
+    groupEl = document.createElement('div');
+    groupEl.className = 'tx-cmd-group open';
+
+    const hdrEl = document.createElement('div');
+    hdrEl.className = 'tx-cmd-group-hdr';
+    hdrEl.onclick = () => groupEl!.classList.toggle('open');
+
+    const chevronEl = document.createElement('span');
+    chevronEl.className = 'tx-cmd-group-chevron';
+    chevronEl.textContent = '▶';
+
+    const cmdLabelEl = document.createElement('span');
+    cmdLabelEl.className = 'tx-cmd-group-cmd';
+    cmdLabelEl.textContent = resolvedCmd;
+
+    const msgEl = document.createElement('span');
+    msgEl.className = 'tx-cmd-group-msg';
+    msgEl.textContent = message;
+
+    hdrEl.appendChild(chevronEl);
+    hdrEl.appendChild(cmdLabelEl);
+    hdrEl.appendChild(msgEl);
+
+    bodyEl = document.createElement('div');
+    bodyEl.className = 'tx-cmd-group-body';
+
+    groupEl.appendChild(hdrEl);
+    groupEl.appendChild(bodyEl);
+    container.appendChild(groupEl);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  const savedContainer = _logContainer;
+  const savedCollected = _collectedLogs;
+  _logContainer = bodyEl;
+
+  const children: LogEntry[] = [];
+  const groupEntry: LogEntry = { cmd: resolvedCmd, message, state: 'info', children };
+  if (savedCollected !== null) savedCollected.push(groupEntry);
+  _collectedLogs = savedCollected !== null ? children : null;
+
+  const end = () => {
+    _logContainer = savedContainer;
+    _collectedLogs = savedCollected;
+    const hasFail = children.some(c => c.state === 'fail');
+    const hasPass = children.some(c => c.state === 'pass');
+    groupEntry.state = hasFail ? 'fail' : 'info';
+    if (groupEl) {
+      groupEl.classList.toggle('fail', hasFail);
+      groupEl.classList.toggle('pass', !hasFail && hasPass);
+    }
+    if (savedContainer) savedContainer.scrollTop = savedContainer.scrollHeight;
+  };
+
+  if (resolvedFn === undefined) return { end };
+
+  return (async () => {
+    try {
+      const result = await resolvedFn();
+      end();
+      return result;
+    } catch (e) {
+      end();
+      throw e;
+    }
+  })();
+}
+
+export const log = Object.assign(_log, { open: logCommand, group: logGroup });
 
 // ── Command helper ────────────────────────────────────────────────────────────
 

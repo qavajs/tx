@@ -1400,6 +1400,59 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-selector-match-id   { color: #a78bfa; }
         .tx-selector-match-cls  { color: #60a5fa; }
         .tx-selector-match-text { color: var(--text-dim); margin-left: 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* ══ Log groups ══════════════════════════════════════════════ */
+
+        .tx-cmd-group {
+            border-left: 2px solid var(--border-s);
+            margin: 1px 0;
+        }
+        .tx-cmd-group.pass { border-left-color: var(--pass); }
+        .tx-cmd-group.fail { border-left-color: var(--fail); }
+
+        .tx-cmd-group-hdr {
+            display: flex;
+            align-items: baseline;
+            padding: 3px 14px 3px 10px;
+            gap: 6px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            line-height: 1.55;
+            cursor: pointer;
+            user-select: none;
+        }
+        .tx-cmd-group-hdr:hover { background: var(--bg-card); }
+
+        .tx-cmd-group-chevron {
+            font-size: 9px;
+            width: 13px;
+            text-align: center;
+            flex-shrink: 0;
+            color: var(--text-muted);
+            transition: transform 0.14s;
+        }
+        .tx-cmd-group.open .tx-cmd-group-chevron { transform: rotate(90deg); }
+
+        .tx-cmd-group-cmd {
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            flex-shrink: 0;
+            min-width: 68px;
+            color: var(--text-muted);
+        }
+
+        .tx-cmd-group-msg {
+            flex: 1;
+            color: var(--text);
+            word-break: break-word;
+        }
+
+        .tx-cmd-group-body {
+            display: none;
+            margin-left: 10px;
+        }
+        .tx-cmd-group.open .tx-cmd-group-body { display: block; }
     </style>
 </head>
 <body>

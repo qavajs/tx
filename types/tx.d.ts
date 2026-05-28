@@ -570,11 +570,36 @@ type TxUseCallback<T> = (value: T) => Promise<void>;
 type TxFixtureFn<T, F extends Record<string, any>> = (fixtures: F, use: TxUseCallback<T>) => Promise<void>;
 type TxFixtureDefs<NewF extends Record<string, any>, AllF extends Record<string, any> = NewF> = { [K in keyof NewF]: TxFixtureFn<NewF[K], AllF> };
 
+/** Handle returned by `log.group()`. Call `end()` to close the group and finalize its state. */
+interface TxGroupHandle {
+  end(): void;
+}
+
 /** Writes a message to the command log panel during a test. */
 interface TxLogFn {
   (message: string, opts?: { type?: 'info' | 'success' | 'error'; cmd?: string }): void;
   /** Open a pending command entry in the test log and return a handle to resolve it. */
   open: TxLogCommandFn;
+  /**
+   * Open a collapsible group in the test log.
+   *
+   * **Imperative form** — open a group manually and close it by calling `handle.end()`:
+   * ```ts
+   * const g = log.group('My group');
+   * const g = log.group('My group', 'step');   // custom cmd label
+   * // ... log entries here are nested inside the group ...
+   * g.end();
+   * ```
+   *
+   * **Functional form** — all log entries produced inside `fn` are grouped automatically:
+   * ```ts
+   * await log.group('My group', async () => { ... });
+   * await log.group('My group', 'step', async () => { ... });   // custom cmd label
+   * ```
+   */
+  group(message: string, cmd?: string): TxGroupHandle;
+  group<T>(message: string, fn: () => T | Promise<T>): Promise<T>;
+  group<T>(message: string, cmd: string, fn: () => T | Promise<T>): Promise<T>;
 }
 
 /** Attaches named data to the test result for reporters to display. */
@@ -662,7 +687,7 @@ declare module '@qavajs/tx' {
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxTabInfo };
   export { NodeContext };
-  export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle };
+  export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle, TxGroupHandle };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions, TxDescribeOptions };
   export { CustomMatcherResult, CustomMatcherFn };
   export { TxLocatorMatchers, TxPageMatchers, TxValueMatchers };
