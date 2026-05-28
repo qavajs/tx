@@ -284,6 +284,7 @@ test.describe('Login', () => {
 | `log.open`   | `(message, cmd) => TxCommandHandle` — open a pending entry; resolve with `.success()` / `.fail()` |
 | `log.group`  | `(message, cmd?, fn?) => TxGroupHandle \| Promise` — group log entries into a collapsible section (see [log.group](#loggroup)) |
 | `attach`     | `(label, body, contentType?) => void` — attach data to the test result |
+| `step`       | `(title, fn) => T \| Promise<T>` — run `fn` inside a named collapsible group in the log panel (see [step](#step)) |
 
 ### Tags
 
@@ -1324,6 +1325,52 @@ test('setup', async ({ log }) => {
 log.group(message: string, cmd?: string): TxGroupHandle
 log.group<T>(message: string, fn: () => T | Promise<T>): Promise<T>
 log.group<T>(message: string, cmd: string, fn: () => T | Promise<T>): Promise<T>
+```
+
+---
+
+### `step`
+
+Groups all commands executed inside the callback into a named collapsible section in the command panel. The group header reflects the pass/fail state of its children. Supports both async and sync callbacks and passes the return value through.
+
+```ts
+// Async
+await step('Log in', async () => {
+  await page.goto('https://example.com/login');
+  await page.getByTestId('username').fill('alice');
+  await page.getByTestId('password').fill('s3cret');
+  await page.getByTestId('submit').click();
+});
+
+// Sync — returns T directly (no await needed)
+const label = step('Read page title', () => page.url());
+```
+
+**Signatures:**
+
+```ts
+step<T>(title: string, fn: () => Promise<T>): Promise<T>
+step<T>(title: string, fn: () => T): T
+```
+
+The step fixture is a thin wrapper over `log.group` with the `cmd` label fixed to `'step'`. Use it to add readable structure to long test flows without affecting execution order:
+
+```ts
+test('checkout flow', async ({ page, step }) => {
+  await step('Add item to cart', async () => {
+    await page.locator('#add-to-cart').click();
+  });
+
+  await step('Fill shipping address', async () => {
+    await page.getByLabel('Street').fill('Main St 1');
+    await page.getByLabel('City').fill('Springfield');
+  });
+
+  await step('Place order', async () => {
+    await page.locator('#submit-order').click();
+    await expect(page.locator('.confirmation')).toBeVisible();
+  });
+});
 ```
 
 ---

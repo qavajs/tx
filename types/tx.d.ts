@@ -605,6 +605,12 @@ interface TxLogFn {
 /** Attaches named data to the test result for reporters to display. */
 type TxAttachFn = (label: string, body: string, contentType?: string) => void;
 
+/** Groups commands in the log panel under a named collapsible step, and returns the callback's result. */
+interface TxStepFn {
+  <T>(title: string, fn: () => Promise<T>): Promise<T>;
+  <T>(title: string, fn: () => T): T;
+}
+
 /** Handle returned by `logCommand`. Must be resolved by calling `success` or `fail`. */
 interface TxCommandHandle {
   /**
@@ -652,6 +658,7 @@ interface TxBaseFixtures {
   request: APIRequestContext;
   log: TxLogFn;
   attach: TxAttachFn;
+  step: TxStepFn;
 }
 
 interface TxTestOptions {
@@ -687,7 +694,7 @@ declare module '@qavajs/tx' {
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxTabInfo };
   export { NodeContext };
-  export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle, TxGroupHandle };
+  export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle, TxGroupHandle, TxStepFn };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions, TxDescribeOptions };
   export { CustomMatcherResult, CustomMatcherFn };
   export { TxLocatorMatchers, TxPageMatchers, TxValueMatchers };

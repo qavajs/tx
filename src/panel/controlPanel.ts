@@ -578,9 +578,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd-label.info { color: var(--text-muted); }
 
         .tx-cmd-msg {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
             flex: 1;
             color: var(--text);
             word-break: break-word;

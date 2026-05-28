@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `step` fixture — groups commands in the log panel under a named collapsible step; supports both async (`await step('label', async () => { … })`) and sync (`step('label', () => value)`) callbacks; returns the callback's result so values can flow through; the group border reflects child state (red on any failure, green on all pass)
 - `log.group(message, cmd?, fn?)` — groups log entries into a collapsible section in the command panel; supports functional form (`await log.group('label', async () => { … })`) and imperative form (`const g = log.group('label'); …; g.end()`); optional `cmd` argument sets the short label shown in the left column (defaults to `'group'`); groups can be nested; the group border reflects child state (red on any failure, green on all pass)
 
 ### Changed
