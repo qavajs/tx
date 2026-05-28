@@ -73,6 +73,8 @@ export function buildTestQueue(
       if (scopeTests.length > 0) {
         if (scope.beforeAlls.length) scopeTests[0].setupBeforeAlls = [...scope.beforeAlls, ...scopeTests[0].setupBeforeAlls];
         if (scope.afterAlls.length) scopeTests[scopeTests.length - 1].teardownAfterAlls = [...scopeTests[scopeTests.length - 1].teardownAfterAlls, ...scope.afterAlls];
+        if (scope.beforeEachs.length) for (const t of scopeTests) t.beforeEachs = [...scope.beforeEachs, ...t.beforeEachs];
+        if (scope.afterEachs.length) for (const t of scopeTests) t.afterEachs = [...t.afterEachs, ...[...scope.afterEachs].reverse()];
       }
       stack.pop();
       tagStack.pop();
@@ -94,8 +96,8 @@ export function buildTestQueue(
       queue.push({
         name: fullName, fn, tags,
         fixtureDefs, expectsFixtures: fn.length > 0,
-        beforeEachs: hookStack.flatMap(s => s.beforeEachs),
-        afterEachs:  hookStack.flatMap(s => s.afterEachs).reverse(),
+        beforeEachs: [],
+        afterEachs:  [],
         setupBeforeAlls: [], teardownAfterAlls: [],
       });
     };

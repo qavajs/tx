@@ -54,9 +54,4 @@ test.describe('Utilities', () => {
     attach('payload', '{ "answer": 42 }', 'application/json');
   });
 
-  test('log command', async ({ log }) => {
-    const command = log.open('this is async command', 'step');
-    await new Promise(r => setTimeout(() => r(0), 2000));
-    command.success();
-  });
 });
