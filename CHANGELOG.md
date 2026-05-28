@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `browser.newWindow(url?)` — opens a native browser popup window, navigates it to `url` if provided, and makes it the active page; interact with it via the global `page` fixture immediately after the call
+- Popup window support: all `page` APIs (`goto`, `reload`, `locator`, `click`, `fill`, `evaluate`, `route`, events, etc.) work identically in popup windows as in iframe-based tabs
+- `browser.switchTab()` and `browser.tabs()` now include popup windows alongside iframe-based tabs in the same list
+- `page.on('popup')` and `page.waitForEvent('popup')` intercept windows opened by the page via `window.open()` or `target="_blank"` links
+- Popup blocking automatically disabled at browser launch (`--disable-popup-blocking`) on Chrome and Firefox so `window.open()` calls are never suppressed
 - `expect` is now a top-level named export from `'@qavajs/tx'` — import it directly alongside `test` instead of receiving it as a fixture
 - `expect.extend(matchers)` — returns a new scoped `expect` function with the given custom matchers merged in; pure and side-effect-free, the original `expect` is unmodified
 - `expect(value).toPass(opts?)` — async polling assertion that retries an arbitrary callback until it stops throwing, with configurable timeout
