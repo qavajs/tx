@@ -23,14 +23,37 @@ type UseCallback<T> = (value: T) => Promise<void>;
 type FixtureFn<T> = (fixtures: Record<string, any>, use: UseCallback<T>) => Promise<void>;
 export type FixtureDefs = Record<string, FixtureFn<any>>;
 
+function _parseFixtureDeps(fn: FixtureFn<any>): string[] {
+  if ((fn as any)._deps) return (fn as any)._deps as string[];
+  try {
+    const m = fn.toString().match(/\(\s*\{\s*([^}]*?)\s*\}/);
+    if (!m) return [];
+    return m[1].split(',').map(s => s.trim().split(/[\s:=]/)[0].trim()).filter(s => /^[a-zA-Z_$]/.test(s));
+  } catch { return []; }
+}
+
 export async function runWithFixtures(
   fixtureDefs: FixtureDefs,
   testFn: (fixtures: Record<string, any>) => any,
 ): Promise<void> {
   const resolved: Record<string, any> = {};
-  const run = Object.entries(fixtureDefs).reduceRight(
-    (inner: () => Promise<void>, [name, fixtureFn]) => async () => {
-      await fixtureFn(resolved, async (value) => {
+  const ordered: string[] = [];
+  const visiting = new Set<string>();
+  const done = new Set<string>();
+  const visit = (name: string): void => {
+    if (done.has(name) || visiting.has(name)) return;
+    visiting.add(name);
+    for (const dep of _parseFixtureDeps(fixtureDefs[name])) {
+      if (dep !== name && fixtureDefs[dep]) visit(dep);
+    }
+    visiting.delete(name);
+    done.add(name);
+    ordered.push(name);
+  };
+  for (const name of Object.keys(fixtureDefs)) visit(name);
+  const run = ordered.reduceRight(
+    (inner: () => Promise<void>, name) => async () => {
+      await fixtureDefs[name](resolved, async (value) => {
         resolved[name] = value;
         await inner();
       });
@@ -101,7 +124,24 @@ export function buildTestQueue(
         setupBeforeAlls: [], teardownAfterAlls: [],
       });
     };
-    testFn.extend = (newDefs: FixtureDefs) => makeTestFn({ ...fixtureDefs, ...newDefs });
+    testFn.extend = (newDefs: FixtureDefs) => {
+      const merged: FixtureDefs = { ...fixtureDefs };
+      for (const [name, newFn] of Object.entries(newDefs)) {
+        const baseFn = fixtureDefs[name];
+        if (baseFn && _parseFixtureDeps(newFn).includes(name)) {
+          // Playwright-style override: fixture uses its own name to receive base value
+          const baseName = '\x00' + name;
+          merged[baseName] = baseFn;
+          const wrapper = (fixtures: Record<string, any>, use: (v: any) => Promise<void>) =>
+            newFn({ ...fixtures, [name]: fixtures[baseName] }, use);
+          (wrapper as any)._deps = [..._parseFixtureDeps(newFn).filter(d => d !== name), baseName];
+          merged[name] = wrapper;
+        } else {
+          merged[name] = newFn;
+        }
+      }
+      return makeTestFn(merged);
+    };
     testFn.describe = describe;
     testFn.beforeEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].beforeEachs.push({ fn, fixtureDefs }); };
     testFn.afterEach = (fn: HookFn) => { if (hookStack.length) hookStack[hookStack.length - 1].afterEachs.push({ fn, fixtureDefs }); };

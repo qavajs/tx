@@ -61,17 +61,15 @@ test.describe('Adding items to cart', () => {
 });
 
 const tabTest = test.extend({
-  // page: async ({ browser, page }, use) => {
-  //   console.log(page);
-  //   //await browser.newWindow();
-  //   await use(page);
-  //   //await page.close();
-  // }
+  page: async ({ browser, page }, use) => {
+    await browser.newWindow();
+    await use(page);
+    await page.close();
+  }
 });
 
 tabTest.describe('Adding items to cart on new page', () => {
   tabTest('add items to cart', async ({ browser, page }) => {
-    await browser.newWindow();
     await page.goto('https://www.saucedemo.com/');
     await page.evaluate(() => localStorage.clear());
     await page.getByTestId('username').fill('standard_user');
@@ -83,6 +81,5 @@ tabTest.describe('Adding items to cart on new page', () => {
     await expect(page.getByTestId('shopping-cart-badge')).toHaveText('2', { timeout: 3000 });
     await page.locator('[data-test="remove-sauce-labs-bike-light"]').click();
     await expect(page.getByTestId('shopping-cart-badge')).toHaveText('1');
-    await page.close();
   });
 });
