@@ -2397,8 +2397,8 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
     catch (e: any) { entry.fail(e?.message ?? String(e)); throw e; }
   };
 
-  const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number) =>
-    la(pfx + cmd, locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
+  const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number, expected?: string) =>
+    la(pfx + cmd, expected !== undefined ? `${locDesc}  ${expected}` : locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
 
   const assertions: Record<string, any> = {
     get not() { return _makeExpect(target, !negated, localMatchers); },
@@ -2457,7 +2457,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
           throw new Error(negated
             ? `Expected text NOT to match ${JSON.stringify(text)}, got ${JSON.stringify(got)}`
             : `Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(text instanceof RegExp ? text : JSON.stringify(text)));
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toContainText', async l => {
@@ -2467,7 +2467,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
           throw new Error(negated
             ? `Expected NOT to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`
             : `Expected text to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(text instanceof RegExp ? text : JSON.stringify(text)));
     },
     async toHaveValue(value: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveValue', async l => {
@@ -2475,7 +2475,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
         const matches = value instanceof RegExp ? value.test(got) : got === value;
         if (negated ? matches : !matches)
           throw new Error(`Expected value ${negated ? 'NOT ' : ''}${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(value instanceof RegExp ? value : JSON.stringify(value)));
     },
     async toHaveAttribute(name: string, value: string | RegExp = '', opts?: { timeout?: number }) {
       await locAssert('toHaveAttr', async l => {
@@ -2483,14 +2483,14 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
         const matches = value instanceof RegExp ? value.test(got ?? '') : got === value;
         if (negated ? matches : !matches)
           throw new Error(`Expected [${name}]${negated ? ' NOT' : ''}=${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, `[${name}]=${value instanceof RegExp ? value : JSON.stringify(value)}`);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
       await locAssert('toHaveCount', async l => {
         const got = l._els().length;
         if (negated ? got === count : got !== count)
           throw new Error(`Expected ${negated ? 'NOT ' : ''}${count} elements, got ${got}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(count));
     },
     async toHaveClass(cls: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveClass', async l => {
@@ -2498,7 +2498,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
         const matches = cls instanceof RegExp ? cls.test(got) : got.split(/\s+/).includes(cls as string);
         if (negated ? matches : !matches)
           throw new Error(`Expected class ${negated ? 'NOT ' : ''}${JSON.stringify(cls)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(cls instanceof RegExp ? cls : JSON.stringify(cls)));
     },
 
     // ── Page-level assertions ──────────────────────────────────────────────────
@@ -2539,25 +2539,25 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
       });
     },
     toBeTruthy() {
-      ls(pfx + 'toBeTruthy', '', () => {
+      ls(pfx + 'toBeTruthy', JSON.stringify(target), () => {
         if (negated ? !!target : !target)
           throw new Error(negated ? `Expected falsy, got ${JSON.stringify(target)}` : `Expected truthy, got ${JSON.stringify(target)}`);
       });
     },
     toBeFalsy() {
-      ls(pfx + 'toBeFalsy', '', () => {
+      ls(pfx + 'toBeFalsy', JSON.stringify(target), () => {
         if (negated ? !target : !!target)
           throw new Error(negated ? `Expected truthy, got ${JSON.stringify(target)}` : `Expected falsy, got ${JSON.stringify(target)}`);
       });
     },
     toBeNull() {
-      ls(pfx + 'toBeNull', '', () => {
+      ls(pfx + 'toBeNull', JSON.stringify(target), () => {
         if (negated ? target === null : target !== null)
           throw new Error(negated ? 'Expected NOT null' : `Expected null, got ${JSON.stringify(target)}`);
       });
     },
     toBeUndefined() {
-      ls(pfx + 'toBeUndef', '', () => {
+      ls(pfx + 'toBeUndef', JSON.stringify(target), () => {
         if (negated ? target === undefined : target !== undefined)
           throw new Error(negated ? 'Expected NOT undefined' : `Expected undefined, got ${JSON.stringify(target)}`);
       });
