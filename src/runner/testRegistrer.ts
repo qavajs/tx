@@ -30,6 +30,26 @@ export const defaultFixtureDefs: FixtureDefs = {
   request: async (_f, use) => { await use((window as any).tx.request); },
   log:     async (_f, use) => { await use((window as any).tx.log); },
   attach:  async (_f, use) => { await use((window as any).tx.attach); },
+  step:    async (_f, use) => {
+    await use((title: string, fn: () => any): any => {
+      const g = (window as any).tx.log.group(title, 'step');
+      let result: any;
+      try {
+        result = fn();
+      } catch (e) {
+        g.end();
+        throw e;
+      }
+      if (result instanceof Promise) {
+        return result.then(
+          (v: any) => { g.end(); return v; },
+          (e: any) => { g.end(); throw e; },
+        );
+      }
+      g.end();
+      return result;
+    });
+  },
 };
 
 export interface RegistrationCtx {
