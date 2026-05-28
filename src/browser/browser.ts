@@ -50,6 +50,22 @@ export function reapplyViewport() {
   const tag = document.getElementById('viewportTag');
   const tab = _activeTab();
   const iframe = tab?.iframe ?? null;
+
+  if (tab?.popup) {
+    const popup = tab.popup;
+    if (!viewportW || !viewportH) {
+      try { if (tag) tag.textContent = `${popup.innerWidth} × ${popup.innerHeight}`; } catch {}
+      return;
+    }
+    try {
+      const chromeW = popup.outerWidth - popup.innerWidth;
+      const chromeH = popup.outerHeight - popup.innerHeight;
+      popup.resizeTo(viewportW + chromeW, viewportH + chromeH);
+      if (tag) tag.textContent = `${viewportW} × ${viewportH}`;
+    } catch { /* cross-origin or sandboxed */ }
+    return;
+  }
+
   if (!container || !iframe) return;
 
   if (!viewportW || !viewportH) {
@@ -1844,6 +1860,7 @@ export const page = {
                 tab.url = (_proxyPrefix && href.startsWith(_proxyPrefix)) ? href.slice(_proxyPrefix.length) : href;
               } catch { /* ignore cross-origin */ }
               cleanup();
+              reapplyViewport();
               resolve();
             }
           } catch {
@@ -1870,6 +1887,7 @@ export const page = {
             if (popup.closed) { clearInterval(poll); reject(new Error('Window closed')); return; }
             if (popup.document.readyState === 'complete') {
               clearInterval(poll);
+              reapplyViewport();
               resolve();
             }
           } catch { /* ignore cross-origin */ }
@@ -2287,6 +2305,11 @@ export const page = {
       } catch { /* ignore */ }
 
       closeExtraTabs();
+
+      if (_tabs.length === 0) {
+        createTab();
+        return;
+      }
 
       const tab = _activeTab();
       if (!tab) return;
@@ -2829,15 +2852,18 @@ export const node = {
 export function createWindow(url?: string) {
   const tabId = 'tab-' + (++_tabCounter);
   const targetUrl = url ? toProxiedUrl(url) : API_BASE + '/about-blank';
+  const winW = viewportW ?? 1280;
+  const winH = viewportH ?? 720;
+  const winFeatures = `width=${winW},height=${winH}`;
 
   let popupWin: Window | null = null;
   try {
     // @ts-ignore
-    popupWin = window['%hammerhead%'].nativeMethods.windowOpen.call(window, targetUrl, tabId, 'width=1280,height=720');
+    popupWin = window['%hammerhead%'].nativeMethods.windowOpen.call(window, targetUrl, tabId, winFeatures);
   } catch (_) {}
 
   if (!popupWin) {
-    popupWin = window.open(targetUrl, tabId, 'width=1280,height=720');
+    popupWin = window.open(targetUrl, tabId, winFeatures);
   }
 
   if (!popupWin) throw new Error('Popup blocked or failed to open');
@@ -2862,6 +2888,7 @@ export function createWindow(url?: string) {
       }
       _runInitScripts();
       _installEventBridges();
+      reapplyViewport();
       _emitPage('domcontentloaded');
       _emitPage('load');
       if (window.__CONFIG__.snapshot) _captureSnapshot('load');
