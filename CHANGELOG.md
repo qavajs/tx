@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- `log.group(message, cmd?, fn?)` — groups log entries into a collapsible section in the command panel; supports functional form (`await log.group('label', async () => { … })`) and imperative form (`const g = log.group('label'); …; g.end()`); optional `cmd` argument sets the short label shown in the left column (defaults to `'group'`); groups can be nested; the group border reflects child state (red on any failure, green on all pass)
+
 ### Changed
 - Matcher log messages now include the expected value: `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, and `toHaveClass` append the expected value to the locator description in the log entry
 - `toBeTruthy`, `toBeFalsy`, `toBeNull`, and `toBeUndefined` now log the actual target value instead of an empty message

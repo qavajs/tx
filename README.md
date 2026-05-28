@@ -282,6 +282,7 @@ test.describe('Login', () => {
 | `request`    | HTTP request context (see [request](#request)) |
 | `log`        | `(message, opts?) => void` — write to the panel console; `opts`: `{ type?: 'info'\|'success'\|'error', cmd?: string, duration?: number }` |
 | `log.open`   | `(message, cmd) => TxCommandHandle` — open a pending entry; resolve with `.success()` / `.fail()` |
+| `log.group`  | `(message, cmd?, fn?) => TxGroupHandle \| Promise` — group log entries into a collapsible section (see [log.group](#loggroup)) |
 | `attach`     | `(label, body, contentType?) => void` — attach data to the test result |
 
 ### Tags
@@ -1281,6 +1282,49 @@ test('checkout', async ({ page, log, attach }) => {
 ```
 
 The HTML reporter renders image attachments inline and text/JSON attachments in a code block, grouped under the test row they belong to.
+
+---
+
+### `log.group`
+
+Groups log entries into a collapsible section in the command panel. Groups can be nested. The group header turns red if any child entry fails, green if any pass.
+
+**Functional form** — all log entries produced inside the callback are nested automatically; the group closes when the callback resolves or throws:
+
+```ts
+test('checkout', async ({ page, log }) => {
+  await log.group('add item to cart', async () => {
+    await page.click('#add-to-cart');
+    log('item added', { type: 'success' });
+  });
+
+  // Custom cmd label (replaces the default "group" label)
+  await log.group('place order', 'step', async () => {
+    await page.click('#checkout');
+    await page.fill('#email', 'user@example.com');
+  });
+});
+```
+
+**Imperative form** — open the group manually and call `.end()` when done:
+
+```ts
+test('setup', async ({ log }) => {
+  const g = log.group('prepare fixtures');        // cmd defaults to "group"
+  const g = log.group('prepare fixtures', 'step'); // custom cmd label
+  log('seed database', { type: 'success' });
+  log('clear cache',   { type: 'success' });
+  g.end();
+});
+```
+
+**Signatures:**
+
+```ts
+log.group(message: string, cmd?: string): TxGroupHandle
+log.group<T>(message: string, fn: () => T | Promise<T>): Promise<T>
+log.group<T>(message: string, cmd: string, fn: () => T | Promise<T>): Promise<T>
+```
 
 ---
 
