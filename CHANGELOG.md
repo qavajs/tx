@@ -7,10 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `page.snapshot(opts?)` — captures the current page as a self-contained HTML string; all external stylesheets, images, and web fonts are fetched and inlined as data URLs so the file opens correctly without a server; `@import` rules and `url()` references inside CSS are inlined recursively; live form state (checkbox, radio, text inputs, selects, textareas) is synced into the clone before serialisation; pass `{ path }` to also save the file to `<path>.html` relative to the working directory; returns the HTML string in all cases
 - `step` fixture — groups commands in the log panel under a named collapsible step; supports both async (`await step('label', async () => { … })`) and sync (`step('label', () => value)`) callbacks; returns the callback's result so values can flow through; the group border reflects child state (red on any failure, green on all pass)
 - `log.group(message, cmd?, fn?)` — groups log entries into a collapsible section in the command panel; supports functional form (`await log.group('label', async () => { … })`) and imperative form (`const g = log.group('label'); …; g.end()`); optional `cmd` argument sets the short label shown in the left column (defaults to `'group'`); groups can be nested; the group border reflects child state (red on any failure, green on all pass)
 
 ### Changed
+- `HtmlReporter` now renders `text/html` attachments in an embedded `<iframe>` (full-width, 400 px tall) with an **↗** button in the attachment header that opens the snapshot in a new browser tab as a Blob URL; the complete HTML body is stored without truncation (the 4 000-character limit previously applied only to text attachments)
+- Artifact files are now saved at a path relative to the working directory instead of always inside `test-artifacts/`; parent directories are created automatically if they do not exist
+- `page.screenshot({ path })` now saves `<path>.png` relative to the working directory (previously forced into `test-artifacts/`)
 - Matcher log messages now include the expected value: `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, and `toHaveClass` append the expected value to the locator description in the log entry
 - `toBeTruthy`, `toBeFalsy`, `toBeNull`, and `toBeUndefined` now log the actual target value instead of an empty message
 

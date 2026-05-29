@@ -341,9 +341,15 @@ interface Page {
   // ── Screenshot ────────────────────────────────────────────────────────────────
   /**
    * Capture the current iframe as a PNG and return a data URL.
-   * Pass `path` to also save the file to `test-artifacts/<path>.png` on the server.
+   * Pass `path` to also save the file to `<path>.png` relative to the working directory.
    */
   screenshot(opts?: { path?: string }): Promise<string>;
+
+  /**
+   * Capture the current page as a self-contained HTML string with all CSS, images, and fonts
+   * inlined as data URLs. Pass `path` to also save to `<path>.html` relative to the working directory.
+   */
+  snapshot(opts?: { path?: string }): Promise<string>;
 
   // ── Script evaluation ─────────────────────────────────────────────────────────
   /**
