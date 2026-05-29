@@ -4,7 +4,7 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.7]
 
 ### Added
 - `page.snapshot(opts?)` — captures the current page as a self-contained HTML string; all external stylesheets, images, and web fonts are fetched and inlined as data URLs so the file opens correctly without a server; `@import` rules and `url()` references inside CSS are inlined recursively; live form state (checkbox, radio, text inputs, selects, textareas) is synced into the clone before serialisation; pass `{ path }` to also save the file to `<path>.html` relative to the working directory; returns the HTML string in all cases
