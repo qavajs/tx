@@ -216,12 +216,11 @@ export class TestServer {
       case 'artifact': {
         try {
           const { name, ext, data } = msg as { name: string; ext: string; data: string };
-          const dir = path.join(process.cwd(), 'test-artifacts');
-          fs.mkdirSync(dir, { recursive: true });
           const filename = `${name}.${ext ?? 'png'}`;
-          const filePath = path.join(dir, filename);
+          const filePath = path.resolve(process.cwd(), filename);
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
           fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
-          console.log(`📸 Screenshot saved: ${filePath}`);
+          console.log(`💾 Artifact saved: ${filePath}`);
         } catch { /* ignore */ }
         break;
       }

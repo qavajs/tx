@@ -1914,9 +1914,155 @@ async function captureScreenshot(): Promise<string> {
   return domToPng(doc.documentElement, { width: w, height: h });
 }
 
-function saveArtifact(name: string, data: string): void {
-  const base64 = data.startsWith('data:') ? data.split(',')[1] : data;
-  wsSend('artifact', { name, ext: 'png', data: base64 });
+function saveArtifact(name: string, data: string, ext = 'png'): void {
+  let base64: string;
+  if (data.startsWith('data:')) {
+    base64 = data.split(',')[1];
+  } else {
+    const bytes = new TextEncoder().encode(data);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    base64 = btoa(bin);
+  }
+  wsSend('artifact', { name, ext, data: base64 });
+}
+
+// ── Full-page snapshot capture ─────────────────────────────────────────────────
+
+async function _fetchText(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    return res.ok ? await res.text() : null;
+  } catch { return null; }
+}
+
+async function _fetchDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+// url() pattern covering single-quoted, double-quoted, and bare URLs
+const _cssUrlRe = /url\(\s*(?:'([^']*)'|"([^"]*)"|([^'")\s]*))\s*\)/g;
+
+async function _inlineCSSResources(css: string): Promise<string> {
+  // Fetch all @import rules in parallel (each imported sheet is itself inlined recursively)
+  const importRe = /@import\s+(?:url\(\s*['"]?([^'")\s]+)['"]?\s*\)|['"]([^'"]+)['"])[^;]*;/g;
+  const imports: { match: string; url: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = importRe.exec(css)) !== null) imports.push({ match: m[0], url: m[1] || m[2] });
+  if (imports.length > 0) {
+    const inlined = await Promise.all(imports.map(async ({ url }) => {
+      if (url.startsWith('data:')) return null;
+      const imported = await _fetchText(url);
+      return imported != null ? _inlineCSSResources(imported) : null;
+    }));
+    for (let i = 0; i < imports.length; i++) {
+      if (inlined[i] != null) css = css.replace(imports[i].match, inlined[i]!);
+    }
+  }
+
+  // Collect unique url() values then fetch all in parallel
+  const urlMap = new Map<string, string>();
+  _cssUrlRe.lastIndex = 0;
+  while ((m = _cssUrlRe.exec(css)) !== null) {
+    const u = m[1] ?? m[2] ?? m[3];
+    if (u && !u.startsWith('data:')) urlMap.set(u, '');
+  }
+  await Promise.all(Array.from(urlMap.keys()).map(async url => {
+    const d = await _fetchDataUrl(url);
+    if (d) urlMap.set(url, d);
+  }));
+  _cssUrlRe.lastIndex = 0;
+  return css.replace(_cssUrlRe, (_match, u1, u2, u3) => {
+    const url = u1 ?? u2 ?? u3;
+    const d = urlMap.get(url);
+    return d ? `url('${d}')` : _match;
+  });
+}
+
+async function captureFullSnapshot(): Promise<string> {
+  const doc = iframeDoc();
+  if (!doc) throw new Error('no active tab');
+  const pageUrl = page.url();
+
+  const clone = doc.documentElement.cloneNode(true) as HTMLElement;
+  for (const el of Array.from(clone.querySelectorAll('script'))) el.remove();
+
+  // Sync live form state into clone (cloneNode copies attributes, not JS properties)
+  const liveInputs = Array.from(doc.querySelectorAll<HTMLInputElement>('input'));
+  const cloneInputs = Array.from(clone.querySelectorAll<HTMLInputElement>('input'));
+  for (let i = 0; i < liveInputs.length; i++) {
+    if (!cloneInputs[i]) continue;
+    const type = liveInputs[i].type.toLowerCase();
+    if (type === 'checkbox' || type === 'radio') {
+      if (liveInputs[i].checked) cloneInputs[i].setAttribute('checked', '');
+      else cloneInputs[i].removeAttribute('checked');
+    } else {
+      cloneInputs[i].setAttribute('value', liveInputs[i].value);
+    }
+  }
+  const liveTextareas = Array.from(doc.querySelectorAll<HTMLTextAreaElement>('textarea'));
+  const cloneTextareas = Array.from(clone.querySelectorAll<HTMLTextAreaElement>('textarea'));
+  for (let i = 0; i < liveTextareas.length; i++) {
+    if (cloneTextareas[i]) cloneTextareas[i].textContent = liveTextareas[i].value;
+  }
+  const liveSelects = Array.from(doc.querySelectorAll<HTMLSelectElement>('select'));
+  const cloneSelects = Array.from(clone.querySelectorAll<HTMLSelectElement>('select'));
+  for (let i = 0; i < liveSelects.length; i++) {
+    if (!cloneSelects[i]) continue;
+    const liveOpts = Array.from(liveSelects[i].options);
+    const cloneOpts = Array.from(cloneSelects[i].querySelectorAll<HTMLOptionElement>('option'));
+    for (let j = 0; j < liveOpts.length; j++) {
+      if (!cloneOpts[j]) continue;
+      if (liveOpts[j].selected) cloneOpts[j].setAttribute('selected', '');
+      else cloneOpts[j].removeAttribute('selected');
+    }
+  }
+
+  const links = Array.from(clone.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]'))
+    .filter(l => !l.getAttribute('href')!.startsWith('data:'));
+  const styleEls = Array.from(clone.querySelectorAll<HTMLStyleElement>('style'));
+  const imgs = Array.from(clone.querySelectorAll<HTMLImageElement>('img[src]'))
+    .filter(img => !img.getAttribute('src')!.startsWith('data:'));
+
+  // Fetch and process all resources in parallel
+  const [linkCSS, styleCSS, imgDataUrls] = await Promise.all([
+    Promise.all(links.map(async l => {
+      const css = await _fetchText(l.getAttribute('href')!);
+      return css != null ? _inlineCSSResources(css) : null;
+    })),
+    Promise.all(styleEls.map(el => el.textContent ? _inlineCSSResources(el.textContent) : Promise.resolve(null))),
+    Promise.all(imgs.map(img => _fetchDataUrl(img.getAttribute('src')!))),
+  ]);
+
+  for (let i = 0; i < links.length; i++) {
+    if (linkCSS[i] != null) {
+      const style = doc.createElement('style');
+      style.textContent = linkCSS[i]!;
+      links[i].replaceWith(style);
+    }
+  }
+  for (let i = 0; i < styleEls.length; i++) {
+    if (styleCSS[i] != null) styleEls[i].textContent = styleCSS[i];
+  }
+  for (let i = 0; i < imgs.length; i++) {
+    if (imgDataUrls[i]) imgs[i].setAttribute('src', imgDataUrls[i]!);
+  }
+
+  let html = '<!DOCTYPE html>' + clone.outerHTML;
+  if (!/<base\b/i.test(html)) {
+    html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${pageUrl}">`);
+  }
+  return html;
 }
 
 export const page = {
@@ -2449,6 +2595,14 @@ export const page = {
       const dataUrl = await captureScreenshot();
       if (opts?.path) saveArtifact(opts.path, dataUrl);
       return dataUrl;
+    });
+  },
+
+  async snapshot(opts?: { path?: string }): Promise<string> {
+    return _withCommand(opts?.path ?? '', 'snapshot', async () => {
+      const html = await captureFullSnapshot();
+      if (opts?.path) saveArtifact(opts.path, html, 'html');
+      return html;
     });
   },
 };

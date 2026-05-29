@@ -112,12 +112,6 @@ module.exports = {
     ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
   ],
 
-  // Save a PNG screenshot to test-artifacts/ when a test fails
-  screenshotOnFailure: true,
-
-  // Record a WebM video to test-artifacts/ when a test fails
-  videoOnFailure: true,
-
   // Node.js task handlers callable from tests via node.task()
   tasks: {
     readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
@@ -693,15 +687,32 @@ Close this tab and emit the `close` event. If other tabs are open the most recen
 
 #### Screenshot
 
-Captures the current iframe as a PNG and returns a data URL. Pass `path` to also save the file to `test-artifacts/` on the server.
+Captures the current iframe as a PNG and returns a data URL. Pass `path` to also save the file relative to the working directory.
 
 ```ts
 // Capture and use in-memory
 const dataUrl = await page.screenshot();
 
 // Capture and persist to disk
-await page.screenshot({ path: 'my-screenshot' }); // saved as test-artifacts/my-screenshot.png
+await page.screenshot({ path: 'my-screenshot' }); // saved as my-screenshot.png
 ```
+
+#### Snapshot
+
+Captures the current page as a **self-contained HTML file** — external stylesheets, images, and web fonts are all inlined as data URLs so the file is fully standalone and opens correctly without a server.
+
+```ts
+// Capture in-memory (returns the HTML string)
+const html = await page.snapshot();
+
+// Capture and save to disk
+await page.snapshot({ path: 'snapshots/checkout' }); // saved as snapshots/checkout.html
+
+// Attach to the test result so the HTML reporter can display it
+attach('checkout snapshot', await page.snapshot(), 'text/html');
+```
+
+The HTML reporter renders `text/html` attachments in an embedded `<iframe>` and adds an **↗** button that opens the snapshot in a new browser tab for full-page inspection.
 
 ---
 
@@ -1279,6 +1290,9 @@ test('checkout', async ({ page, log, attach }) => {
 
   // Attach a screenshot inline
   attach('page state', await page.screenshot(), 'image/png');
+
+  // Attach an HTML snapshot (rendered as an iframe in the HTML reporter)
+  attach('page snapshot', await page.snapshot(), 'text/html');
 });
 ```
 
@@ -1922,7 +1936,7 @@ Assert.less(actual, threshold, message?)
 
 - Runs in a single browser window. The browser is spawned directly by the process and killed on `stop()`.
 - Cross-origin sub-frames inside the target site are not accessible (sandboxed by the browser).
-- No built-in screenshot/PDF capture — snapshotting is DOM-based (computed styles, no rasterization).
+- No PDF capture. `page.screenshot()` captures a rasterized PNG; `page.snapshot()` produces a self-contained HTML file with all CSS, images, and fonts inlined.
 - Hammerhead proxies HTTP/HTTPS; WebSocket traffic passes through but is not interceptable at the network level.
 
 ## License
