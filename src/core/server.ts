@@ -23,6 +23,8 @@ export interface TestServerConfig {
   expectTimeout?: number;
   testTimeout?: number;
   retries?: number;
+  onGetCookieJar?: () => string;
+  onSetCookieJar?: (jar: string | null) => void;
 }
 
 export class TestServer {
@@ -46,6 +48,8 @@ export class TestServer {
   private _donePromise: Promise<{ passed: number; failed: number }>;
   private _wss: WebSocketServer | null = null;
   private _wsClients = new Set<WebSocket>();
+  private _onGetCookieJar: (() => string) | undefined;
+  private _onSetCookieJar: ((jar: string | null) => void) | undefined;
 
   constructor(config: TestServerConfig = {}) {
     this.port = config.port ?? 11339;
@@ -66,6 +70,8 @@ export class TestServer {
     this.expectTimeout = config.expectTimeout;
     this.testTimeout = config.testTimeout;
     this.retries = config.retries;
+    this._onGetCookieJar = config.onGetCookieJar;
+    this._onSetCookieJar = config.onSetCookieJar;
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 
@@ -293,6 +299,54 @@ export class TestServer {
         }).catch((err: any) => {
           ws.send(JSON.stringify({ type: 'test-source', id, error: `Bundle error: ${err.message}` }));
         });
+        break;
+      }
+
+      case 'get-cookie-jar': {
+        const { id } = msg as { id: string };
+        try {
+          const jar = this._onGetCookieJar ? JSON.parse(this._onGetCookieJar()) : {};
+          ws.send(JSON.stringify({ type: 'cookie-jar', id, jar }));
+        } catch (err: any) {
+          ws.send(JSON.stringify({ type: 'cookie-jar', id, error: (err as any).message ?? String(err) }));
+        }
+        break;
+      }
+
+      case 'set-cookie-jar': {
+        const { id, jar } = msg as { id: string; jar: object };
+        try {
+          const serialized = jar && Array.isArray((jar as any).cookies) ? JSON.stringify(jar) : null;
+          this._onSetCookieJar?.(serialized);
+          ws.send(JSON.stringify({ type: 'cookie-jar-set', id }));
+        } catch (err: any) {
+          ws.send(JSON.stringify({ type: 'cookie-jar-set', id, error: (err as any).message ?? String(err) }));
+        }
+        break;
+      }
+
+      case 'save-storage-state': {
+        const { id, filePath: ssPath, data } = msg as { id: string; filePath: string; data: string };
+        try {
+          const resolved = path.resolve(process.cwd(), ssPath);
+          fs.mkdirSync(path.dirname(resolved), { recursive: true });
+          fs.writeFileSync(resolved, data, 'utf8');
+          ws.send(JSON.stringify({ type: 'storage-state-saved', id }));
+        } catch (err: any) {
+          ws.send(JSON.stringify({ type: 'storage-state-saved', id, error: err.message ?? String(err) }));
+        }
+        break;
+      }
+
+      case 'load-storage-state': {
+        const { id, filePath: ssPath } = msg as { id: string; filePath: string };
+        try {
+          const resolved = path.resolve(process.cwd(), ssPath);
+          const data = fs.readFileSync(resolved, 'utf8');
+          ws.send(JSON.stringify({ type: 'storage-state-loaded', id, data }));
+        } catch (err: any) {
+          ws.send(JSON.stringify({ type: 'storage-state-loaded', id, error: err.message ?? String(err) }));
+        }
         break;
       }
     }

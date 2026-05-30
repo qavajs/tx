@@ -2065,6 +2065,16 @@ async function captureFullSnapshot(): Promise<string> {
   return html;
 }
 
+// ── StorageState types ────────────────────────────────────────────────────────
+
+export interface StorageState {
+  cookieJar: object;
+  origins: Array<{
+    origin: string;
+    localStorage: Array<{ name: string; value: string }>;
+  }>;
+}
+
 export const page = {
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -3184,5 +3194,63 @@ export const browser = {
       setActiveTab(tab.id);
       log(tab.title ?? tab.url ?? tab.id, { cmd: 'switchTab' });
     }
-  }
+  },
+
+  async storageState(opts?: { path?: string }): Promise<StorageState> {
+    return _withCommand(opts?.path ?? '', 'storageState', async () => {
+      const { jar } = await wsRequest<{ jar: object }>('get-cookie-jar');
+
+      const win = iframeWin() as any;
+      const rawOrigin = (() => { try { return win?.location?.origin ?? ''; } catch { return ''; } })();
+      const origin = rawOrigin === 'null' ? '' : rawOrigin;
+
+      const localStorageItems: Array<{ name: string; value: string }> = [];
+      if (win?.localStorage) {
+        try {
+          for (let i = 0; i < win.localStorage.length; i++) {
+            const key = win.localStorage.key(i);
+            if (key !== null) localStorageItems.push({ name: key, value: win.localStorage.getItem(key) ?? '' });
+          }
+        } catch { /* cross-origin */ }
+      }
+
+      const state: StorageState = {
+        cookieJar: jar,
+        origins: localStorageItems.length ? [{ origin, localStorage: localStorageItems }] : [],
+      };
+
+      if (opts?.path) {
+        await wsRequest('save-storage-state', { filePath: opts.path, data: JSON.stringify(state, null, 2) });
+      }
+
+      return state;
+    });
+  },
+
+  async loadStorageState(state: StorageState | string): Promise<void> {
+    return _withCommand(typeof state === 'string' ? state : '', 'loadStorageState', async () => {
+      let resolved: StorageState;
+      if (typeof state === 'string') {
+        const { data } = await wsRequest<{ data: string }>('load-storage-state', { filePath: state });
+        resolved = JSON.parse(data) as StorageState;
+      } else {
+        resolved = state;
+      }
+
+      await wsRequest('set-cookie-jar', { jar: resolved.cookieJar ?? {} });
+
+      const win = iframeWin() as any;
+      if (win?.localStorage && resolved.origins?.length) {
+        const rawOrigin = (() => { try { return win.location.origin ?? ''; } catch { return ''; } })();
+        for (const entry of resolved.origins) {
+          if (entry.origin && rawOrigin && entry.origin !== rawOrigin) continue;
+          try {
+            for (const { name, value } of entry.localStorage ?? []) {
+              win.localStorage.setItem(name, value);
+            }
+          } catch { /* cross-origin */ }
+        }
+      }
+    });
+  },
 };

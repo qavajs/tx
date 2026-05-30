@@ -57,6 +57,17 @@ interface TxLocatorMatchers {}
 interface TxPageMatchers {}
 interface TxValueMatchers {}
 
+// ── StorageState ──────────────────────────────────────────────────────────────
+
+interface TxStorageState {
+  /** Serialized tough-cookie jar from the hammerhead proxy session. Treat as opaque. */
+  cookieJar: object;
+  origins: Array<{
+    origin: string;
+    localStorage: Array<{ name: string; value: string }>;
+  }>;
+}
+
 // ── Shared option types ───────────────────────────────────────────────────────
 
 interface TxTimeoutOptions { timeout?: number; }
@@ -549,6 +560,26 @@ interface Browser {
    * browser.switchTab(t => t.title === 'My App');
    */
   switchTab(predicate: (tab: TxTabInfo) => boolean): void;
+
+  /**
+   * Capture the current storage state — cookies visible to the page and localStorage
+   * for the current origin — in a Playwright-compatible format.
+   *
+   * Pass `path` to also write the state to a JSON file (relative to the working directory).
+   *
+   * @example
+   * await page.goto('https://example.com/login');
+   * // ... authenticate ...
+   * await browser.storageState({ path: 'auth.json' });
+   */
+  storageState(opts?: { path?: string }): Promise<TxStorageState>;
+
+  /**
+   * Restore a previously captured storage state. Cookies are written via `document.cookie`
+   * (hammerhead syncs them into the proxy session) and localStorage is restored for the
+   * matching origin. Pass a file path to load from a JSON file saved by {@link Browser.storageState}.
+   */
+  loadStorageState(state: TxStorageState | string): Promise<void>;
 }
 
 // ── NodeContext ───────────────────────────────────────────────────────────────
@@ -699,6 +730,7 @@ declare module '@qavajs/tx' {
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxTabInfo };
+  export { TxStorageState };
   export { NodeContext };
   export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle, TxGroupHandle, TxStepFn };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions, TxDescribeOptions };
