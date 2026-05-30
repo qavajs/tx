@@ -4,6 +4,15 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- `browser.storageState(opts?)` — captures the current cookie jar and `localStorage` items for the active origin; pass `{ path }` to also write the state to a JSON file; returns a `TxStorageState` object that can be passed directly to `browser.loadStorageState()`
+- `browser.loadStorageState(state)` — restores cookies and `localStorage` from a `TxStorageState` object or a file path written by `browser.storageState({ path })`; cookies are applied to the proxy session immediately; `localStorage` items are written for the current page's origin; accepts an inline state object to seed specific cookies or storage values without navigating
+
+### Fixed
+- `browser.storageState()` now correctly captures cookies set during page navigation — the cookie jar was previously read from the wrong Hammerhead proxy session (the main session rather than the control-panel session that actually handles iframe navigation requests), so the returned `cookieJar` was always empty
+
 ## [0.0.7]
 
 ### Added

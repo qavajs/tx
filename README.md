@@ -1060,6 +1060,75 @@ browser.switchTab(predicate: (tab: TxTabInfo) => boolean): void
 ```
 Switch the active tab to the first tab where `predicate` returns `true`. Works for both iframe-based tabs and popup windows. Use `page` to interact with it afterwards.
 
+#### Storage state
+
+Capture and restore browser state (cookies + `localStorage`) across tests or test runs. Useful for seeding an authenticated session without repeating the login flow.
+
+```ts
+await browser.storageState(opts?: { path?: string }): Promise<TxStorageState>
+```
+
+Capture the current cookie jar and `localStorage` items for the active origin. Pass `{ path }` to also write the state to a JSON file.
+
+```ts
+await browser.loadStorageState(state: TxStorageState | string): Promise<void>
+```
+
+Restore a previously captured state. Pass either a `TxStorageState` object or a file path (string) to a JSON file saved by `storageState({ path })`. Cookies are applied immediately to the proxy session; `localStorage` items are written for the current page's origin.
+
+```ts
+// Capture after login
+await page.goto('https://app.example.com/login');
+await page.getByTestId('username').fill('alice');
+await page.getByTestId('password').fill('s3cret');
+await page.getByTestId('submit').click();
+await page.waitForURL(/dashboard/);
+await browser.storageState({ path: 'auth.json' });
+
+// Restore in a later test (skip the login flow entirely)
+await browser.loadStorageState('auth.json');
+await page.goto('https://app.example.com/dashboard');
+await expect(page.locator('h1')).toHaveText('Dashboard');
+```
+
+You can also construct a state object inline to seed specific cookies or `localStorage` values without navigating:
+
+```ts
+await browser.loadStorageState({
+  cookieJar: {
+    version: 'tough-cookie@4.1.3',
+    storeType: 'MemoryCookieStore',
+    rejectPublicSuffixes: true,
+    enableLooseMode: false,
+    allowSpecialUseDomain: true,
+    prefixSecurity: 'silent',
+    cookies: [
+      { key: 'session', value: 'abc123', domain: 'app.example.com', path: '/', hostOnly: true },
+    ],
+  },
+  origins: [
+    {
+      origin: 'https://app.example.com',
+      localStorage: [{ name: 'theme', value: 'dark' }],
+    },
+  ],
+});
+```
+
+**`TxStorageState`**
+
+```ts
+interface TxStorageState {
+  cookieJar: object;  // serialized tough-cookie jar — treat as opaque; pass back to loadStorageState as-is
+  origins: Array<{
+    origin: string;
+    localStorage: Array<{ name: string; value: string }>;
+  }>;
+}
+```
+
+---
+
 ```ts
 // Multi-tab flow
 test('multi-tab', async ({ page, browser }) => {
