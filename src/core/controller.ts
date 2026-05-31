@@ -91,6 +91,7 @@ function setTestItemStatus(filename: string, fullName: string, state: 'running'|
     }
   }
   refreshSuiteBadge(filename, item.dataset.suite ?? '');
+  if (state === 'pass' || state === 'fail') refreshRunnerStatus();
 }
 
 function resetTestItems(filename: string) {
@@ -147,6 +148,7 @@ async function loadTestList() {
     container.innerHTML = files.length
       ? files.map(renderTestFileCard).join('')
       : '<div class="tx-empty">No .js files in examples/</div>';
+    refreshRunnerStatus();
   } catch (e: any) {
     container.innerHTML = `<div class="tx-empty" style="color:var(--fail)">Failed to load specs<br>${e.message}</div>`;
   }
@@ -255,6 +257,18 @@ function notifyRunEnd(passed: number, failed: number, total: number, duration: n
   wsSend('run-end', { passed, failed, total, duration });
 }
 
+function refreshRunnerStatus() {
+  const status = document.getElementById('testRunnerStatus');
+  if (!status) return;
+  const total = document.querySelectorAll('.tx-test-item').length;
+  const passed = document.querySelectorAll('.tx-test-item.pass').length;
+  const failed = document.querySelectorAll('.tx-test-item.fail').length;
+  status.innerHTML =
+    `<span class="tx-runner-total">${total}</span>` +
+    (passed > 0 ? `<span class="tx-runner-pass">&#10003;&nbsp;${passed}</span>` : '') +
+    (failed > 0 ? `<span class="tx-runner-fail">&#10007;&nbsp;${failed}</span>` : '');
+}
+
 function renderTestResults(results: TestResult[], filename?: string) {
   let passed = 0;
   let failed = 0;
@@ -262,12 +276,7 @@ function renderTestResults(results: TestResult[], filename?: string) {
     if (t.passed) passed++
     else failed++;
   });
-  const status = document.getElementById('testRunnerStatus');
-  if (status) {
-    status.innerHTML =
-      `<span class="tx-runner-pass">&#10003;&nbsp;${passed} passed</span>` +
-      (failed > 0 ? `<span class="tx-runner-fail">&#10007;&nbsp;${failed} failed</span>` : '');
-  }
+  refreshRunnerStatus();
   if (filename) updateCardStatus(filename, passed, failed);
 }
 
