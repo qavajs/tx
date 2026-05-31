@@ -461,8 +461,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
 
         .tx-test-item {
             padding: 3px 10px 3px 24px;
-            font-size: 11px;
-            color: var(--text-muted);
+            color: var(--text-dim);
             display: flex;
             align-items: center;
             gap: 6px;
@@ -494,18 +493,18 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         }
 
         #testRunnerStatus {
-            flex-shrink: 0;
-            border-top: 1px solid var(--border);
-            padding: 7px 14px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
             font-size: 11px;
             font-variant-numeric: tabular-nums;
-            min-height: 32px;
+            font-weight: 500;
+            letter-spacing: 0;
+            text-transform: none;
         }
-        .tx-runner-pass { color: var(--pass); }
-        .tx-runner-fail { color: var(--fail); }
+        .tx-runner-total { color: var(--text-muted); }
+        .tx-runner-pass  { color: var(--pass); }
+        .tx-runner-fail  { color: var(--fail); }
 
         /* ══ Resize handles ══════════════════════════════════════════════ */
 
@@ -556,7 +555,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd.info { border-left-color: transparent; }
 
         .tx-cmd-icon {
-            font-size: 9px;
             width: 13px;
             text-align: center;
             flex-shrink: 0;
@@ -1423,7 +1421,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd-group-hdr:hover { background: var(--bg-card); }
 
         .tx-cmd-group-chevron {
-            font-size: 9px;
             width: 13px;
             text-align: center;
             flex-shrink: 0;
@@ -1433,7 +1430,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd-group.open .tx-cmd-group-chevron { transform: rotate(90deg); }
 
         .tx-cmd-group-cmd {
-            font-size: 9.5px;
             font-weight: 700;
             letter-spacing: 0.3px;
             flex-shrink: 0;
@@ -1480,7 +1476,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
 
         <!-- ── Specs ──────────────────────────────────────────────── -->
         <nav class="tx-specs">
-            <div class="tx-panel-hdr">Specs</div>
+            <div class="tx-panel-hdr">Specs<div id="testRunnerStatus"></div></div>
             <div class="tx-filter-bar">
                 <input type="text" id="testFilter" class="tx-filter-input" placeholder="Filter tests…" oninput="window.applyFilter && window.applyFilter(this.value)" autocomplete="off" spellcheck="false">
                 <button class="tx-filter-run-btn tx-hidden" id="filterRunBtn" onclick="window.runFiltered && window.runFiltered()" title="Run filtered tests" aria-label="Run filtered tests">&#9654;</button>
@@ -1488,7 +1484,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             <div class="tx-specs-scroll" id="testList">
                 <div class="tx-loading">Loading specs</div>
             </div>
-            <div id="testRunnerStatus"></div>
         </nav>
 
         <div class="tx-resize-handle" id="specsResizer"></div>
