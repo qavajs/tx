@@ -12,7 +12,7 @@ test.describe('getByText', () => {
 
     test('exact string clicks correct button', async ({ page }) => {
         await page.getByText('Click', { exact: true }).click();
-        await expect(page.locator('#mouseResult')).toHaveText('Clicked1');
+        await expect(page.locator('#mouseResult')).toHaveText('Clicked');
     });
 
     test('regex finds element', async ({ page }) => {

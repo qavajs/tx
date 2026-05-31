@@ -265,8 +265,8 @@ function refreshRunnerStatus() {
   const failed = document.querySelectorAll('.tx-test-item.fail').length;
   status.innerHTML =
     `<span class="tx-runner-total">${total}</span>` +
-    (passed > 0 ? `<span class="tx-runner-pass">&#10003;&nbsp;${passed}</span>` : '') +
-    (failed > 0 ? `<span class="tx-runner-fail">&#10007;&nbsp;${failed}</span>` : '');
+    `<span class="tx-runner-pass">&#10003;&nbsp;${passed}</span>` +
+    `<span class="tx-runner-fail">&#10007;&nbsp;${failed}</span>`;
 }
 
 function renderTestResults(results: TestResult[], filename?: string) {
