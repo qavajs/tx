@@ -62,6 +62,18 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
     let finalLogs: ReturnType<typeof stopCollectingLogs> = [];
     while (attempt <= maxRetries && !passed && !opts?.isStopRequested?.()) {
       opts?.onAttemptBegin?.(t.name, attempt);
+      const titlePath = t.name.split(' > ');
+      const cfg = (window as any).__CONFIG__ ?? {};
+      (window as any).__CURRENT_TEST_INFO__ = {
+        title: titlePath[titlePath.length - 1],
+        titlePath,
+        retry: attempt,
+        tags: t.tags,
+        timeout: cfg.testTimeout ?? 30000,
+        retries: cfg.retries ?? 0,
+        actionTimeout: cfg.actionTimeout ?? 5000,
+        expectTimeout: cfg.expectTimeout ?? 5000,
+      };
       const t0 = Date.now();
       let _timeoutId: ReturnType<typeof setTimeout> | undefined;
       startCollectingLogs();

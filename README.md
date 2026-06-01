@@ -279,6 +279,7 @@ test.describe('Login', () => {
 | `log.group`  | `(message, cmd?, fn?) => TxGroupHandle \| Promise` — group log entries into a collapsible section (see [log.group](#loggroup)) |
 | `attach`     | `(label, body, contentType?) => void` — attach data to the test result |
 | `step`       | `(title, fn) => T \| Promise<T>` — run `fn` inside a named collapsible group in the log panel (see [step](#step)) |
+| `testInfo`   | Metadata about the currently running test — title, full title path, retry count, and tags (see [testInfo](#testinfo)) |
 
 ### Tags
 
@@ -1453,6 +1454,74 @@ test('checkout flow', async ({ page, step }) => {
     await page.locator('#submit-order').click();
     await expect(page.locator('.confirmation')).toBeVisible();
   });
+});
+```
+
+---
+
+### `testInfo`
+
+Metadata about the currently running test, injected as the `testInfo` fixture. Available in test bodies, `beforeEach`, and `afterEach` hooks.
+
+| Property | Type | Description |
+|---|---|---|
+| `title` | `string` | The leaf test title — everything after the last `>` in the full name |
+| `titlePath` | `string[]` | All title segments from outermost suite to test name |
+| `retry` | `number` | Zero-based retry attempt index (`0` on the first run, `1` on the first retry, …) |
+| `tags` | `string[]` | Tags applied to this test via `{ tag: [...] }` |
+| `timeout` | `number` | Test timeout in ms (mirrors `testTimeout` config, default `30000`) |
+| `retries` | `number` | Max retry attempts configured (mirrors `retries` config, default `0`) |
+| `actionTimeout` | `number` | Default locator action timeout in ms (mirrors `actionTimeout` config, default `5000`) |
+| `expectTimeout` | `number` | Default `expect()` assertion timeout in ms (mirrors `expectTimeout` config, default `5000`) |
+
+```ts
+test.describe('Checkout', () => {
+  test('places an order', { tag: ['@smoke'] }, async ({ testInfo }) => {
+    console.log(testInfo.title);         // 'places an order'
+    console.log(testInfo.titlePath);     // ['Checkout', 'places an order']
+    console.log(testInfo.retry);         // 0 (1 on first retry)
+    console.log(testInfo.tags);          // ['@smoke']
+    console.log(testInfo.timeout);       // 30000 (or whatever testTimeout is set to)
+    console.log(testInfo.retries);       // 2 (or whatever retries is set to)
+    console.log(testInfo.actionTimeout); // 5000
+    console.log(testInfo.expectTimeout); // 5000
+  });
+});
+```
+
+**Use `retry` to skip expensive setup on retries:**
+
+```ts
+test('syncs data', async ({ page, testInfo }) => {
+  if (testInfo.retry === 0) {
+    await page.evaluate(() => localStorage.clear());
+  }
+  // …
+});
+```
+
+**Attach a screenshot with a retry-aware name:**
+
+```ts
+test('checkout', async ({ page, attach, testInfo }) => {
+  // …
+  attach(
+    `screenshot-attempt-${testInfo.retry}`,
+    await page.screenshot(),
+    'image/png',
+  );
+});
+```
+
+**Access `testInfo` from a custom fixture:**
+
+```ts
+const myTest = test.extend({
+  dbRecord: async ({ testInfo }, use) => {
+    const record = await db.insert({ testName: testInfo.title });
+    await use(record);
+    await db.delete(record.id);
+  },
 });
 ```
 

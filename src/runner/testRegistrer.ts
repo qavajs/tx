@@ -30,6 +30,7 @@ export const defaultFixtureDefs: FixtureDefs = {
   request: async (_f, use) => { await use((window as any).tx.request); },
   log:     async (_f, use) => { await use((window as any).tx.log); },
   attach:  async (_f, use) => { await use((window as any).tx.attach); },
+  testInfo: async (_f, use) => { await use((window as any).__CURRENT_TEST_INFO__); },
   step:    async (_f, use) => {
     await use((title: string, fn: () => any): any => {
       const g = (window as any).tx.log.group(title, 'step');
