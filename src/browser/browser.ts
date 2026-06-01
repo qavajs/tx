@@ -48,7 +48,24 @@ let viewportObserver: ResizeObserver | null = null;
 export function reapplyViewport() {
   const container = document.getElementById('iframe-container');
   const tag = document.getElementById('viewportTag');
-  const iframe = _activeTab()?.iframe ?? null;
+  const tab = _activeTab();
+  const iframe = tab?.iframe ?? null;
+
+  if (tab?.popup) {
+    const popup = tab.popup;
+    if (!viewportW || !viewportH) {
+      try { if (tag) tag.textContent = `${popup.innerWidth} × ${popup.innerHeight}`; } catch {}
+      return;
+    }
+    try {
+      const chromeW = popup.outerWidth - popup.innerWidth;
+      const chromeH = popup.outerHeight - popup.innerHeight;
+      popup.resizeTo(viewportW + chromeW, viewportH + chromeH);
+      if (tag) tag.textContent = `${viewportW} × ${viewportH}`;
+    } catch { /* cross-origin or sandboxed */ }
+    return;
+  }
+
   if (!container || !iframe) return;
 
   if (!viewportW || !viewportH) {
@@ -89,7 +106,7 @@ export function applyViewport(w: number | null, h: number | null) {
 
 // ── Tab state ─────────────────────────────────────────────────────────────────
 
-interface TabEntry { id: string; iframe: HTMLIFrameElement; title: string; url: string; }
+interface TabEntry { id: string; iframe?: HTMLIFrameElement; popup?: Window; title: string; url: string; }
 let _tabs: TabEntry[] = [];
 let _activeTabId: string | null = null;
 let _tabCounter = 0;
@@ -285,10 +302,18 @@ function removeTrailingSlash(url: string): string {
 // ── iframe helpers ────────────────────────────────────────────────────────────
 
 export function iframeDoc(): Document | null {
-  try { return _activeTab()?.iframe.contentDocument ?? null; } catch { return null; }
+  try {
+    const tab = _activeTab();
+    if (tab?.popup) return tab.popup.document;
+    return tab?.iframe?.contentDocument ?? null;
+  } catch { return null; }
 }
 export function iframeWin(): Window & typeof globalThis | null {
-  try { return _activeTab()?.iframe.contentWindow as any ?? null; } catch { return null; }
+  try {
+    const tab = _activeTab();
+    if (tab?.popup) return tab.popup as any;
+    return tab?.iframe?.contentWindow as any ?? null;
+  } catch { return null; }
 }
 
 // ── Tab lifecycle ─────────────────────────────────────────────────────────────
@@ -301,10 +326,11 @@ export function getTabsSnapshot() {
 }
 
 export function setActiveTab(tabId: string) {
-  for (const t of _tabs) t.iframe.style.display = 'none';
+  for (const t of _tabs) if (t.iframe) t.iframe.style.display = 'none';
   const tab = _tabs.find(t => t.id === tabId);
   if (!tab) return;
-  tab.iframe.style.display = 'block';
+  if (tab.iframe) tab.iframe.style.display = 'block';
+  if (tab.popup) tab.popup.focus();
   _activeTabId = tabId;
   const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
   if (navInput) navInput.value = tab.url;
@@ -360,7 +386,8 @@ export function createTab(url?: string) {
 export function closeTab(tabId: string) {
   const tab = _tabs.find(t => t.id === tabId);
   if (!tab) return;
-  tab.iframe.remove();
+  if (tab.iframe) tab.iframe.remove();
+  if (tab.popup) tab.popup.close();
   _tabs = _tabs.filter(t => t.id !== tabId);
   if (_activeTabId === tabId) {
     if (_tabs.length > 0) {
@@ -397,6 +424,7 @@ export interface LogEntry {
   state: 'pass' | 'fail' | 'info';
   duration?: number;
   attachment?: { body: string; contentType: string };
+  children?: LogEntry[];
 }
 
 let _collectedLogs: LogEntry[] | null = null;
@@ -481,6 +509,11 @@ export interface TxCommandHandle {
   fail(error?: string): void;
 }
 
+export interface TxGroupHandle {
+  /** Close the group and finalize its pass/fail state based on child entries. */
+  end(): void;
+}
+
 /**
  * Open a pending command entry in the test log and return a handle to resolve it.
  *
@@ -533,7 +566,88 @@ function logCommand(message: string, cmd: string): TxCommandHandle {
   };
 }
 
-export const log = Object.assign(_log, { open: logCommand });
+function logGroup(message: string, cmd?: string): TxGroupHandle;
+function logGroup<T>(message: string, fn: () => T | Promise<T>): Promise<T>;
+function logGroup<T>(message: string, cmd: string, fn: () => T | Promise<T>): Promise<T>;
+function logGroup(message: string, cmdOrFn?: string | (() => any), fn?: () => any): TxGroupHandle | Promise<any> {
+  const resolvedCmd = typeof cmdOrFn === 'string' ? cmdOrFn : 'group';
+  const resolvedFn  = typeof cmdOrFn === 'function' ? cmdOrFn : fn;
+
+  const container = _logContainer ?? document.getElementById('console');
+
+  let groupEl: HTMLElement | null = null;
+  let bodyEl: HTMLElement | null = null;
+
+  if (container) {
+    groupEl = document.createElement('div');
+    groupEl.className = 'tx-cmd-group open';
+
+    const hdrEl = document.createElement('div');
+    hdrEl.className = 'tx-cmd-group-hdr';
+    hdrEl.onclick = () => groupEl!.classList.toggle('open');
+
+    const chevronEl = document.createElement('span');
+    chevronEl.className = 'tx-cmd-group-chevron';
+    chevronEl.textContent = '▶';
+
+    const cmdLabelEl = document.createElement('span');
+    cmdLabelEl.className = 'tx-cmd-group-cmd';
+    cmdLabelEl.textContent = resolvedCmd;
+
+    const msgEl = document.createElement('span');
+    msgEl.className = 'tx-cmd-group-msg';
+    msgEl.textContent = message;
+
+    hdrEl.appendChild(chevronEl);
+    hdrEl.appendChild(cmdLabelEl);
+    hdrEl.appendChild(msgEl);
+
+    bodyEl = document.createElement('div');
+    bodyEl.className = 'tx-cmd-group-body';
+
+    groupEl.appendChild(hdrEl);
+    groupEl.appendChild(bodyEl);
+    container.appendChild(groupEl);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  const savedContainer = _logContainer;
+  const savedCollected = _collectedLogs;
+  _logContainer = bodyEl;
+
+  const children: LogEntry[] = [];
+  const groupEntry: LogEntry = { cmd: resolvedCmd, message, state: 'info', children };
+  if (savedCollected !== null) savedCollected.push(groupEntry);
+  _collectedLogs = savedCollected !== null ? children : null;
+
+  const end = () => {
+    _logContainer = savedContainer;
+    _collectedLogs = savedCollected;
+    const hasFail = children.some(c => c.state === 'fail');
+    const hasPass = children.some(c => c.state === 'pass');
+    groupEntry.state = hasFail ? 'fail' : 'info';
+    if (groupEl) {
+      groupEl.classList.toggle('fail', hasFail);
+      groupEl.classList.toggle('pass', !hasFail && hasPass);
+    }
+    if (savedContainer) savedContainer.scrollTop = savedContainer.scrollHeight;
+  };
+
+  if (resolvedFn === undefined) return { end };
+
+  return (async () => {
+    try {
+      const result = await resolvedFn();
+      end();
+      return result;
+    } catch (e) {
+      end();
+      throw e;
+    }
+  })();
+}
+
+export const log = Object.assign(_log, { open: logCommand, group: logGroup });
 
 // ── Command helper ────────────────────────────────────────────────────────────
 
@@ -1795,14 +1909,170 @@ async function captureScreenshot(): Promise<string> {
   const doc = iframeDoc();
   if (!doc) throw new Error('no active tab');
   const tab = _activeTab()!;
-  const w = viewportW ?? (tab.iframe.offsetWidth || 1280);
-  const h = viewportH ?? (tab.iframe.offsetHeight || 720);
+  const w = viewportW ?? (tab.iframe?.offsetWidth || 1280);
+  const h = viewportH ?? (tab.iframe?.offsetHeight || 720);
   return domToPng(doc.documentElement, { width: w, height: h });
 }
 
-function saveArtifact(name: string, data: string): void {
-  const base64 = data.startsWith('data:') ? data.split(',')[1] : data;
-  wsSend('artifact', { name, ext: 'png', data: base64 });
+function saveArtifact(name: string, data: string, ext = 'png'): void {
+  let base64: string;
+  if (data.startsWith('data:')) {
+    base64 = data.split(',')[1];
+  } else {
+    const bytes = new TextEncoder().encode(data);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    base64 = btoa(bin);
+  }
+  wsSend('artifact', { name, ext, data: base64 });
+}
+
+// ── Full-page snapshot capture ─────────────────────────────────────────────────
+
+async function _fetchText(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    return res.ok ? await res.text() : null;
+  } catch { return null; }
+}
+
+async function _fetchDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
+// url() pattern covering single-quoted, double-quoted, and bare URLs
+const _cssUrlRe = /url\(\s*(?:'([^']*)'|"([^"]*)"|([^'")\s]*))\s*\)/g;
+
+async function _inlineCSSResources(css: string): Promise<string> {
+  // Fetch all @import rules in parallel (each imported sheet is itself inlined recursively)
+  const importRe = /@import\s+(?:url\(\s*['"]?([^'")\s]+)['"]?\s*\)|['"]([^'"]+)['"])[^;]*;/g;
+  const imports: { match: string; url: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = importRe.exec(css)) !== null) imports.push({ match: m[0], url: m[1] || m[2] });
+  if (imports.length > 0) {
+    const inlined = await Promise.all(imports.map(async ({ url }) => {
+      if (url.startsWith('data:')) return null;
+      const imported = await _fetchText(url);
+      return imported != null ? _inlineCSSResources(imported) : null;
+    }));
+    for (let i = 0; i < imports.length; i++) {
+      if (inlined[i] != null) css = css.replace(imports[i].match, inlined[i]!);
+    }
+  }
+
+  // Collect unique url() values then fetch all in parallel
+  const urlMap = new Map<string, string>();
+  _cssUrlRe.lastIndex = 0;
+  while ((m = _cssUrlRe.exec(css)) !== null) {
+    const u = m[1] ?? m[2] ?? m[3];
+    if (u && !u.startsWith('data:')) urlMap.set(u, '');
+  }
+  await Promise.all(Array.from(urlMap.keys()).map(async url => {
+    const d = await _fetchDataUrl(url);
+    if (d) urlMap.set(url, d);
+  }));
+  _cssUrlRe.lastIndex = 0;
+  return css.replace(_cssUrlRe, (_match, u1, u2, u3) => {
+    const url = u1 ?? u2 ?? u3;
+    const d = urlMap.get(url);
+    return d ? `url('${d}')` : _match;
+  });
+}
+
+async function captureFullSnapshot(): Promise<string> {
+  const doc = iframeDoc();
+  if (!doc) throw new Error('no active tab');
+  const pageUrl = page.url();
+
+  const clone = doc.documentElement.cloneNode(true) as HTMLElement;
+  for (const el of Array.from(clone.querySelectorAll('script'))) el.remove();
+
+  // Sync live form state into clone (cloneNode copies attributes, not JS properties)
+  const liveInputs = Array.from(doc.querySelectorAll<HTMLInputElement>('input'));
+  const cloneInputs = Array.from(clone.querySelectorAll<HTMLInputElement>('input'));
+  for (let i = 0; i < liveInputs.length; i++) {
+    if (!cloneInputs[i]) continue;
+    const type = liveInputs[i].type.toLowerCase();
+    if (type === 'checkbox' || type === 'radio') {
+      if (liveInputs[i].checked) cloneInputs[i].setAttribute('checked', '');
+      else cloneInputs[i].removeAttribute('checked');
+    } else {
+      cloneInputs[i].setAttribute('value', liveInputs[i].value);
+    }
+  }
+  const liveTextareas = Array.from(doc.querySelectorAll<HTMLTextAreaElement>('textarea'));
+  const cloneTextareas = Array.from(clone.querySelectorAll<HTMLTextAreaElement>('textarea'));
+  for (let i = 0; i < liveTextareas.length; i++) {
+    if (cloneTextareas[i]) cloneTextareas[i].textContent = liveTextareas[i].value;
+  }
+  const liveSelects = Array.from(doc.querySelectorAll<HTMLSelectElement>('select'));
+  const cloneSelects = Array.from(clone.querySelectorAll<HTMLSelectElement>('select'));
+  for (let i = 0; i < liveSelects.length; i++) {
+    if (!cloneSelects[i]) continue;
+    const liveOpts = Array.from(liveSelects[i].options);
+    const cloneOpts = Array.from(cloneSelects[i].querySelectorAll<HTMLOptionElement>('option'));
+    for (let j = 0; j < liveOpts.length; j++) {
+      if (!cloneOpts[j]) continue;
+      if (liveOpts[j].selected) cloneOpts[j].setAttribute('selected', '');
+      else cloneOpts[j].removeAttribute('selected');
+    }
+  }
+
+  const links = Array.from(clone.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]'))
+    .filter(l => !l.getAttribute('href')!.startsWith('data:'));
+  const styleEls = Array.from(clone.querySelectorAll<HTMLStyleElement>('style'));
+  const imgs = Array.from(clone.querySelectorAll<HTMLImageElement>('img[src]'))
+    .filter(img => !img.getAttribute('src')!.startsWith('data:'));
+
+  // Fetch and process all resources in parallel
+  const [linkCSS, styleCSS, imgDataUrls] = await Promise.all([
+    Promise.all(links.map(async l => {
+      const css = await _fetchText(l.getAttribute('href')!);
+      return css != null ? _inlineCSSResources(css) : null;
+    })),
+    Promise.all(styleEls.map(el => el.textContent ? _inlineCSSResources(el.textContent) : Promise.resolve(null))),
+    Promise.all(imgs.map(img => _fetchDataUrl(img.getAttribute('src')!))),
+  ]);
+
+  for (let i = 0; i < links.length; i++) {
+    if (linkCSS[i] != null) {
+      const style = doc.createElement('style');
+      style.textContent = linkCSS[i]!;
+      links[i].replaceWith(style);
+    }
+  }
+  for (let i = 0; i < styleEls.length; i++) {
+    if (styleCSS[i] != null) styleEls[i].textContent = styleCSS[i];
+  }
+  for (let i = 0; i < imgs.length; i++) {
+    if (imgDataUrls[i]) imgs[i].setAttribute('src', imgDataUrls[i]!);
+  }
+
+  let html = '<!DOCTYPE html>' + clone.outerHTML;
+  if (!/<base\b/i.test(html)) {
+    html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${pageUrl}">`);
+  }
+  return html;
+}
+
+// ── StorageState types ────────────────────────────────────────────────────────
+
+export interface StorageState {
+  cookieJar: object;
+  origins: Array<{
+    origin: string;
+    localStorage: Array<{ name: string; value: string }>;
+  }>;
 }
 
 export const page = {
@@ -1815,8 +2085,34 @@ export const page = {
       const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
       if (navInput) navInput.value = url;
       const timer = setTimeout(() => reject(new Error(`goto("${url}") timed out`)), 30_000);
-      tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-      tab.iframe.src = toProxiedUrl(url);
+      if (tab.iframe) {
+        tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+        tab.iframe.src = toProxiedUrl(url);
+      } else if (tab.popup) {
+        const popup = tab.popup;
+        const cleanup = () => {
+          clearTimeout(timer);
+          clearInterval(poll);
+        };
+        const poll = setInterval(() => {
+          try {
+            if (popup.closed) { cleanup(); reject(new Error('Window closed')); return; }
+            if (popup.document.readyState === 'complete') {
+              try {
+                const href = popup.location.href;
+                tab.url = (_proxyPrefix && href.startsWith(_proxyPrefix)) ? href.slice(_proxyPrefix.length) : href;
+              } catch { /* ignore cross-origin */ }
+              cleanup();
+              reapplyViewport();
+              resolve();
+            }
+          } catch {
+            // Cross-origin access failure typically means we are between pages
+            // Just wait for the next poll
+          }
+        }, 200);
+        popup.location.href = toProxiedUrl(url);
+      }
     }));
   },
 
@@ -1825,7 +2121,21 @@ export const page = {
       const win = iframeWin();
       const tab = _activeTab();
       if (!win || !tab) { reject(new Error('no active tab')); return; }
-      tab.iframe.addEventListener('load', () => resolve(), { once: true });
+      if (tab.iframe) {
+        tab.iframe.addEventListener('load', () => resolve(), { once: true });
+      } else if (tab.popup) {
+        const popup = tab.popup;
+        const poll = setInterval(() => {
+          try {
+            if (popup.closed) { clearInterval(poll); reject(new Error('Window closed')); return; }
+            if (popup.document.readyState === 'complete') {
+              clearInterval(poll);
+              reapplyViewport();
+              resolve();
+            }
+          } catch { /* ignore cross-origin */ }
+        }, 100);
+      }
       win.location.reload();
     }));
   },
@@ -2296,12 +2606,27 @@ export const page = {
         }
       } catch { /* ignore */ }
 
+      closeExtraTabs();
+
+      if (_tabs.length === 0) {
+        createTab();
+        return;
+      }
+
       const tab = _activeTab();
       if (!tab) return;
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('resetSession: blank page load timed out')), 10_000);
-        tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-        tab.iframe.src = API_BASE + '/about-blank';
+        if (tab.iframe) {
+          tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+          tab.iframe.src = API_BASE + '/about-blank';
+        } else if (tab.popup) {
+          tab.popup.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+          tab.popup.location.href = API_BASE + '/about-blank';
+        } else {
+          clearTimeout(timer);
+          resolve();
+        }
       });
     });
   },
@@ -2341,6 +2666,14 @@ export const page = {
       return dataUrl;
     });
   },
+
+  async snapshot(opts?: { path?: string }): Promise<string> {
+    return _withCommand(opts?.path ?? '', 'snapshot', async () => {
+      const html = await captureFullSnapshot();
+      if (opts?.path) saveArtifact(opts.path, html, 'html');
+      return html;
+    });
+  },
 };
 
 // ── Playwright-style expect ───────────────────────────────────────────────────
@@ -2374,8 +2707,8 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
     catch (e: any) { entry.fail(e?.message ?? String(e)); throw e; }
   };
 
-  const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number) =>
-    la(pfx + cmd, locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
+  const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number, expected?: string) =>
+    la(pfx + cmd, expected !== undefined ? `${locDesc}  ${expected}` : locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
 
   const assertions: Record<string, any> = {
     get not() { return _makeExpect(target, !negated, localMatchers); },
@@ -2434,7 +2767,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
           throw new Error(negated
             ? `Expected text NOT to match ${JSON.stringify(text)}, got ${JSON.stringify(got)}`
             : `Expected text to ${exact ? 'equal' : 'include'} ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(text instanceof RegExp ? text : JSON.stringify(text)));
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toContainText', async l => {
@@ -2444,7 +2777,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
           throw new Error(negated
             ? `Expected NOT to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`
             : `Expected text to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(text instanceof RegExp ? text : JSON.stringify(text)));
     },
     async toHaveValue(value: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveValue', async l => {
@@ -2452,7 +2785,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
         const matches = value instanceof RegExp ? value.test(got) : got === value;
         if (negated ? matches : !matches)
           throw new Error(`Expected value ${negated ? 'NOT ' : ''}${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(value instanceof RegExp ? value : JSON.stringify(value)));
     },
     async toHaveAttribute(name: string, value: string | RegExp = '', opts?: { timeout?: number }) {
       await locAssert('toHaveAttr', async l => {
@@ -2460,14 +2793,14 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
         const matches = value instanceof RegExp ? value.test(got ?? '') : got === value;
         if (negated ? matches : !matches)
           throw new Error(`Expected [${name}]${negated ? ' NOT' : ''}=${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, `[${name}]=${value instanceof RegExp ? value : JSON.stringify(value)}`);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
       await locAssert('toHaveCount', async l => {
         const got = l._els().length;
         if (negated ? got === count : got !== count)
           throw new Error(`Expected ${negated ? 'NOT ' : ''}${count} elements, got ${got}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(count));
     },
     async toHaveClass(cls: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveClass', async l => {
@@ -2475,7 +2808,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
         const matches = cls instanceof RegExp ? cls.test(got) : got.split(/\s+/).includes(cls as string);
         if (negated ? matches : !matches)
           throw new Error(`Expected class ${negated ? 'NOT ' : ''}${JSON.stringify(cls)}, got ${JSON.stringify(got)}`);
-      }, opts?.timeout);
+      }, opts?.timeout, String(cls instanceof RegExp ? cls : JSON.stringify(cls)));
     },
 
     // ── Page-level assertions ──────────────────────────────────────────────────
@@ -2516,25 +2849,25 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
       });
     },
     toBeTruthy() {
-      ls(pfx + 'toBeTruthy', '', () => {
+      ls(pfx + 'toBeTruthy', JSON.stringify(target), () => {
         if (negated ? !!target : !target)
           throw new Error(negated ? `Expected falsy, got ${JSON.stringify(target)}` : `Expected truthy, got ${JSON.stringify(target)}`);
       });
     },
     toBeFalsy() {
-      ls(pfx + 'toBeFalsy', '', () => {
+      ls(pfx + 'toBeFalsy', JSON.stringify(target), () => {
         if (negated ? !target : !!target)
           throw new Error(negated ? `Expected truthy, got ${JSON.stringify(target)}` : `Expected falsy, got ${JSON.stringify(target)}`);
       });
     },
     toBeNull() {
-      ls(pfx + 'toBeNull', '', () => {
+      ls(pfx + 'toBeNull', JSON.stringify(target), () => {
         if (negated ? target === null : target !== null)
           throw new Error(negated ? 'Expected NOT null' : `Expected null, got ${JSON.stringify(target)}`);
       });
     },
     toBeUndefined() {
-      ls(pfx + 'toBeUndef', '', () => {
+      ls(pfx + 'toBeUndef', JSON.stringify(target), () => {
         if (negated ? target === undefined : target !== undefined)
           throw new Error(negated ? 'Expected NOT undefined' : `Expected undefined, got ${JSON.stringify(target)}`);
       });
@@ -2606,7 +2939,7 @@ export const testApi = {
   visit(url: string) {
     const tab = _activeTab();
     if (!tab) { log('iframe not ready', { type: 'error' }); return; }
-    tab.iframe.src = toProxiedUrl(url);
+    tab.iframe!.src = toProxiedUrl(url);
     const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
     if (navInput) navInput.value = url;
     log(url, { cmd: 'visit' });
@@ -2826,6 +3159,73 @@ export const node = {
   },
 };
 
+export function createWindow(url?: string) {
+  const tabId = 'tab-' + (++_tabCounter);
+  const targetUrl = url ? toProxiedUrl(url) : API_BASE + '/about-blank';
+  const winW = viewportW ?? 1280;
+  const winH = viewportH ?? 720;
+  const winFeatures = `width=${winW},height=${winH}`;
+
+  let popupWin: Window | null = null;
+  try {
+    // @ts-ignore
+    popupWin = window['%hammerhead%'].nativeMethods.windowOpen.call(window, targetUrl, tabId, winFeatures);
+  } catch (_) {}
+
+  if (!popupWin) {
+    popupWin = window.open(targetUrl, tabId, winFeatures);
+  }
+
+  if (!popupWin) throw new Error('Popup blocked or failed to open');
+  const tab: TabEntry = { id: tabId, popup: popupWin, title: 'New Window', url: url ?? '' };
+
+  let initialized = false;
+  const onInit = () => {
+    if (initialized || popupWin!.closed) return;
+    try {
+      // Check if we can access the document (same-origin check)
+      if (popupWin!.document.readyState !== 'complete' && popupWin!.document.readyState !== 'interactive') return;
+      initialized = true;
+
+      try { tab.title = popupWin!.document.title || 'New Window'; } catch {}
+      try {
+        const href = popupWin!.location.href ?? '';
+        tab.url = (_proxyPrefix && href.startsWith(_proxyPrefix)) ? href.slice(_proxyPrefix.length) : href;
+      } catch {}
+      if (_activeTabId === tabId) {
+        const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
+        if (navInput) navInput.value = tab.url;
+      }
+      _runInitScripts();
+      _installEventBridges();
+      reapplyViewport();
+      _emitPage('domcontentloaded');
+      _emitPage('load');
+      if (window.__CONFIG__.snapshot) _captureSnapshot('load');
+      _emitPage('framenavigated', { url: () => page.url(), name: () => '', isMainFrame: () => true });
+      _onTabsChanged?.();
+    } catch (_) {
+      // Cross-origin access failure typically means we are between pages
+    }
+  };
+
+  popupWin.addEventListener('load', onInit);
+  // Polling fallback
+  const timer = setInterval(() => {
+    if (initialized || popupWin!.closed) {
+      clearInterval(timer);
+      return;
+    }
+    onInit();
+  }, 200);
+
+  _tabs.push(tab);
+  setActiveTab(tabId);
+  log('new window');
+  _onTabsChanged?.();
+  return page;
+}
+
 // ── Browser object ────────────────────────────────────────────────────────────
 
 export const browser = {
@@ -2833,6 +3233,12 @@ export const browser = {
   async newPage(): Promise<void> {
     createTab();
     log('new tab', { cmd: 'newPage' });
+  },
+
+  /** Open a new window, make it active, and return the global page object */
+  async newWindow(url?: string): Promise<void> {
+    createWindow(url);
+    log(url ?? '', { cmd: 'newWindow' });
   },
 
   /** Return a snapshot of all open tabs. */
@@ -2847,5 +3253,63 @@ export const browser = {
       setActiveTab(tab.id);
       log(tab.title ?? tab.url ?? tab.id, { cmd: 'switchTab' });
     }
-  }
+  },
+
+  async storageState(opts?: { path?: string }): Promise<StorageState> {
+    return _withCommand(opts?.path ?? '', 'storageState', async () => {
+      const { jar } = await wsRequest<{ jar: object }>('get-cookie-jar');
+
+      const win = iframeWin() as any;
+      const rawOrigin = (() => { try { return win?.location?.origin ?? ''; } catch { return ''; } })();
+      const origin = rawOrigin === 'null' ? '' : rawOrigin;
+
+      const localStorageItems: Array<{ name: string; value: string }> = [];
+      if (win?.localStorage) {
+        try {
+          for (let i = 0; i < win.localStorage.length; i++) {
+            const key = win.localStorage.key(i);
+            if (key !== null) localStorageItems.push({ name: key, value: win.localStorage.getItem(key) ?? '' });
+          }
+        } catch { /* cross-origin */ }
+      }
+
+      const state: StorageState = {
+        cookieJar: jar,
+        origins: localStorageItems.length ? [{ origin, localStorage: localStorageItems }] : [],
+      };
+
+      if (opts?.path) {
+        await wsRequest('save-storage-state', { filePath: opts.path, data: JSON.stringify(state, null, 2) });
+      }
+
+      return state;
+    });
+  },
+
+  async loadStorageState(state: StorageState | string): Promise<void> {
+    return _withCommand(typeof state === 'string' ? state : '', 'loadStorageState', async () => {
+      let resolved: StorageState;
+      if (typeof state === 'string') {
+        const { data } = await wsRequest<{ data: string }>('load-storage-state', { filePath: state });
+        resolved = JSON.parse(data) as StorageState;
+      } else {
+        resolved = state;
+      }
+
+      await wsRequest('set-cookie-jar', { jar: resolved.cookieJar ?? {} });
+
+      const win = iframeWin() as any;
+      if (win?.localStorage && resolved.origins?.length) {
+        const rawOrigin = (() => { try { return win.location.origin ?? ''; } catch { return ''; } })();
+        for (const entry of resolved.origins) {
+          if (entry.origin && rawOrigin && entry.origin !== rawOrigin) continue;
+          try {
+            for (const { name, value } of entry.localStorage ?? []) {
+              win.localStorage.setItem(name, value);
+            }
+          } catch { /* cross-origin */ }
+        }
+      }
+    });
+  },
 };

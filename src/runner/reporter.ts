@@ -23,6 +23,7 @@ export interface LogEntry {
   state: 'pass' | 'fail' | 'info';
   duration?: number;
   attachment?: Attachment;
+  children?: LogEntry[];
 }
 
 export interface TestResult {

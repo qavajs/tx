@@ -54,9 +54,33 @@ test.describe('Utilities', () => {
     attach('payload', '{ "answer": 42 }', 'application/json');
   });
 
-  test('log command', async ({ log }) => {
-    const command = log.open('this is async command', 'step');
-    await new Promise(r => setTimeout(() => r(0), 2000));
-    command.success();
+  test('log.group functional API', async ({ log }) => {
+    await log.group('setup', async () => {
+      log('connect to database', { type: 'success' });
+      log('seed test data', { type: 'success' });
+    });
+    await log.group('assertions', async () => {
+      log('record count is 3', { type: 'success' });
+      log('status is active', { type: 'success' });
+    });
   });
+
+  test('log.group with custom cmd', async ({ log }) => {
+    await log.group('user logs in', 'step', async () => {
+      log('fill email', { type: 'success' });
+      log('fill password', { type: 'success' });
+      log('click submit', { type: 'success' });
+    });
+    await log.group('verify dashboard', 'step', async () => {
+      log('header visible', { type: 'success' });
+    });
+  });
+
+  test('log.group imperative API', async ({ log }) => {
+    const g = log.group('preparation', 'setup');
+    log('step one', { type: 'success' });
+    log('step two', { type: 'success' });
+    g.end();
+  });
+
 });

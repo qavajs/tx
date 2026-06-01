@@ -8,6 +8,7 @@ The API is modelled after Playwright (`page`, `expect`, `browser`, `request`, fi
 
 - **No browser driver** — runs in any browser (including Safari) via a proxy iframe; no WebDriver or CDP required
 - **Playwright-compatible API** — `page`, `locator`, `expect`, `browser`, `request`, hooks, `test.extend()` fixtures
+- **Multi-window / popup support** — open and control native browser popup windows via `browser.newWindow()` or intercept `window.open()` / `target="_blank"` links via the `popup` event
 - **Interactive control panel** — live browser view, network inspector, console panel, and CSS selector playground in one UI
 - **Node.js bridge** — call file-system, database, or any Node.js task from browser-side test code via `node.task()`
 - **TypeScript first** — spec files written in TypeScript, compiled on the fly with esbuild
@@ -110,12 +111,6 @@ module.exports = {
     ['./ConsoleReporter.ts', {}],
     ['./HtmlReporter.ts', { outputPath: 'report/report.html' }],
   ],
-
-  // Save a PNG screenshot to test-artifacts/ when a test fails
-  screenshotOnFailure: true,
-
-  // Record a WebM video to test-artifacts/ when a test fails
-  videoOnFailure: true,
 
   // Node.js task handlers callable from tests via node.task()
   tasks: {
@@ -281,7 +276,10 @@ test.describe('Login', () => {
 | `request`    | HTTP request context (see [request](#request)) |
 | `log`        | `(message, opts?) => void` — write to the panel console; `opts`: `{ type?: 'info'\|'success'\|'error', cmd?: string, duration?: number }` |
 | `log.open`   | `(message, cmd) => TxCommandHandle` — open a pending entry; resolve with `.success()` / `.fail()` |
+| `log.group`  | `(message, cmd?, fn?) => TxGroupHandle \| Promise` — group log entries into a collapsible section (see [log.group](#loggroup)) |
 | `attach`     | `(label, body, contentType?) => void` — attach data to the test result |
+| `step`       | `(title, fn) => T \| Promise<T>` — run `fn` inside a named collapsible group in the log panel (see [step](#step)) |
+| `testInfo`   | Metadata about the currently running test — title, full title path, retry count, and tags (see [testInfo](#testinfo)) |
 
 ### Tags
 
@@ -748,15 +746,32 @@ Close this tab and emit the `close` event. If other tabs are open the most recen
 
 #### Screenshot
 
-Captures the current iframe as a PNG and returns a data URL. Pass `path` to also save the file to `test-artifacts/` on the server.
+Captures the current iframe as a PNG and returns a data URL. Pass `path` to also save the file relative to the working directory.
 
 ```ts
 // Capture and use in-memory
 const dataUrl = await page.screenshot();
 
 // Capture and persist to disk
-await page.screenshot({ path: 'my-screenshot' }); // saved as test-artifacts/my-screenshot.png
+await page.screenshot({ path: 'my-screenshot' }); // saved as my-screenshot.png
 ```
+
+#### Snapshot
+
+Captures the current page as a **self-contained HTML file** — external stylesheets, images, and web fonts are all inlined as data URLs so the file is fully standalone and opens correctly without a server.
+
+```ts
+// Capture in-memory (returns the HTML string)
+const html = await page.snapshot();
+
+// Capture and save to disk
+await page.snapshot({ path: 'snapshots/checkout' }); // saved as snapshots/checkout.html
+
+// Attach to the test result so the HTML reporter can display it
+attach('checkout snapshot', await page.snapshot(), 'text/html');
+```
+
+The HTML reporter renders `text/html` attachments in an embedded `<iframe>` and adds an **↗** button that opens the snapshot in a new browser tab for full-page inspection.
 
 ---
 
@@ -1090,14 +1105,88 @@ await browser.newPage(): Promise<void>
 Open a new blank tab and make it the active tab. After the call, interact with it via the global `page` fixture.
 
 ```ts
+await browser.newWindow(url?: string): Promise<void>
+```
+Open a new native browser window, navigate it to `url` if provided, and make it the active page. After the call, interact with it via the global `page` fixture. Use `browser.switchTab()` to move between open tabs and windows.
+
+```ts
 browser.tabs(): TxTabInfo[]
 ```
-Return a snapshot array of all open tabs. Each entry has `id`, `title`, `url`, and `active` fields.
+Return a snapshot array of all open tabs and windows. Each entry has `id`, `title`, `url`, and `active` fields.
 
 ```ts
 browser.switchTab(predicate: (tab: TxTabInfo) => boolean): void
 ```
-Switch the active tab to the first tab where `predicate` returns `true`. Use `page` to interact with it afterwards.
+Switch the active tab to the first tab where `predicate` returns `true`. Works for both iframe-based tabs and popup windows. Use `page` to interact with it afterwards.
+
+#### Storage state
+
+Capture and restore browser state (cookies + `localStorage`) across tests or test runs. Useful for seeding an authenticated session without repeating the login flow.
+
+```ts
+await browser.storageState(opts?: { path?: string }): Promise<TxStorageState>
+```
+
+Capture the current cookie jar and `localStorage` items for the active origin. Pass `{ path }` to also write the state to a JSON file.
+
+```ts
+await browser.loadStorageState(state: TxStorageState | string): Promise<void>
+```
+
+Restore a previously captured state. Pass either a `TxStorageState` object or a file path (string) to a JSON file saved by `storageState({ path })`. Cookies are applied immediately to the proxy session; `localStorage` items are written for the current page's origin.
+
+```ts
+// Capture after login
+await page.goto('https://app.example.com/login');
+await page.getByTestId('username').fill('alice');
+await page.getByTestId('password').fill('s3cret');
+await page.getByTestId('submit').click();
+await page.waitForURL(/dashboard/);
+await browser.storageState({ path: 'auth.json' });
+
+// Restore in a later test (skip the login flow entirely)
+await browser.loadStorageState('auth.json');
+await page.goto('https://app.example.com/dashboard');
+await expect(page.locator('h1')).toHaveText('Dashboard');
+```
+
+You can also construct a state object inline to seed specific cookies or `localStorage` values without navigating:
+
+```ts
+await browser.loadStorageState({
+  cookieJar: {
+    version: 'tough-cookie@4.1.3',
+    storeType: 'MemoryCookieStore',
+    rejectPublicSuffixes: true,
+    enableLooseMode: false,
+    allowSpecialUseDomain: true,
+    prefixSecurity: 'silent',
+    cookies: [
+      { key: 'session', value: 'abc123', domain: 'app.example.com', path: '/', hostOnly: true },
+    ],
+  },
+  origins: [
+    {
+      origin: 'https://app.example.com',
+      localStorage: [{ name: 'theme', value: 'dark' }],
+    },
+  ],
+});
+```
+
+**`TxStorageState`**
+
+```ts
+interface TxStorageState {
+  cookieJar: object;  // serialized tough-cookie jar — treat as opaque; pass back to loadStorageState as-is
+  origins: Array<{
+    origin: string;
+    localStorage: Array<{ name: string; value: string }>;
+  }>;
+}
+```
+
+---
 
 ```ts
 // Multi-tab flow
@@ -1115,8 +1204,21 @@ test('multi-tab', async ({ page, browser }) => {
   await page.close();  // close the active tab
 });
 
+// Open a popup window programmatically
+test('popup via newWindow', async ({ browser, page }) => {
+  await browser.newWindow('https://example.com/popup');
+
+  // page now controls the popup window
+  await expect(page.locator('h1')).toHaveText('Popup');
+  await page.locator('#submit').click();
+
+  // switch back to the original tab
+  browser.switchTab(t => t.url.includes('main'));
+  await expect(page).toHaveURL(/main/);
+});
+
 // Handle window.open / target="_blank"
-test('popup', async ({ page }) => {
+test('popup intercepted', async ({ page }) => {
   page.on('popup', async popup => {
     await popup.waitForURL(/popup-page/);
     console.log(await popup.title());
@@ -1125,6 +1227,91 @@ test('popup', async ({ page }) => {
   await page.locator('a[target="_blank"]').click();
 });
 ```
+
+---
+
+### Popup Windows
+
+Popup windows are native browser windows (not iframe tabs) opened either by test code or by the page under test. All standard `page` APIs work identically in popup windows.
+
+#### Opening a popup from a test
+
+Use `browser.newWindow(url?)` to open a window programmatically. The new window immediately becomes the active page:
+
+```ts
+test('controls a popup window', async ({ browser, page }) => {
+  await page.goto('https://example.com');
+
+  await browser.newWindow('https://example.com/admin');
+
+  // page now refers to the popup window
+  await expect(page.locator('h1')).toHaveText('Admin');
+  await page.locator('#save').click();
+
+  // switch focus back to the original tab
+  browser.switchTab(t => t.url.includes('example.com') && !t.url.includes('admin'));
+  await expect(page).toHaveURL(/example\.com/);
+
+  // close the popup
+  browser.switchTab(t => t.url.includes('admin'));
+  await page.close();
+});
+```
+
+#### Intercepting windows opened by the page
+
+When the page calls `window.open()` or the user clicks a `target="_blank"` link, a `popup` event fires on the current page. Use `page.on('popup', …)` to handle it asynchronously, or `page.waitForEvent('popup')` to await the next popup synchronously:
+
+```ts
+// Async handler — fires whenever the page opens a window
+test('intercepts window.open', async ({ page }) => {
+  page.on('popup', async popup => {
+    await popup.waitForURL(/new-window/);
+    await expect(popup.locator('h1')).toHaveText('New Window');
+    await popup.close();
+  });
+
+  await page.locator('#open-window-btn').click();
+});
+
+// Await the next popup in-line
+test('awaits target=_blank click', async ({ page }) => {
+  const [, popup] = await Promise.all([
+    page.locator('a[target="_blank"]').click(),
+    page.waitForEvent('popup'),
+  ]);
+
+  await popup.waitForURL(/target-page/);
+  await expect(popup.locator('.content')).toBeVisible();
+  await popup.close();
+});
+```
+
+#### Tab management with popup windows
+
+`browser.tabs()` returns all open tabs and popup windows in the same list. Use `browser.switchTab()` to move focus between them — it works identically for both:
+
+```ts
+test('manages multiple windows', async ({ browser, page }) => {
+  await page.goto('https://example.com/page-a');
+  await browser.newWindow('https://example.com/page-b');
+
+  console.log(browser.tabs().length); // 2
+
+  browser.switchTab(t => t.url.includes('page-a'));
+  await expect(page).toHaveURL(/page-a/);
+
+  browser.switchTab(t => t.url.includes('page-b'));
+  await expect(page).toHaveURL(/page-b/);
+});
+```
+
+#### Notes
+
+- Popup windows are real browser windows — they are not sandboxed like iframes and are not subject to iframe CSP restrictions.
+- `page.goto()` and `page.reload()` work in popup windows using polling instead of iframe load events.
+- `page.close()` closes the popup window and returns focus to the most recently used tab.
+- Popup blocking must be disabled in the browser for `window.open()` interception to work. The framework does this automatically via launch arguments (`--disable-popup-blocking` on Chrome/Firefox).
 
 ---
 
@@ -1231,10 +1418,170 @@ test('checkout', async ({ page, log, attach }) => {
 
   // Attach a screenshot inline
   attach('page state', await page.screenshot(), 'image/png');
+
+  // Attach an HTML snapshot (rendered as an iframe in the HTML reporter)
+  attach('page snapshot', await page.snapshot(), 'text/html');
 });
 ```
 
 The HTML reporter renders image attachments inline and text/JSON attachments in a code block, grouped under the test row they belong to.
+
+---
+
+### `log.group`
+
+Groups log entries into a collapsible section in the command panel. Groups can be nested. The group header turns red if any child entry fails, green if any pass.
+
+**Functional form** — all log entries produced inside the callback are nested automatically; the group closes when the callback resolves or throws:
+
+```ts
+test('checkout', async ({ page, log }) => {
+  await log.group('add item to cart', async () => {
+    await page.click('#add-to-cart');
+    log('item added', { type: 'success' });
+  });
+
+  // Custom cmd label (replaces the default "group" label)
+  await log.group('place order', 'step', async () => {
+    await page.click('#checkout');
+    await page.fill('#email', 'user@example.com');
+  });
+});
+```
+
+**Imperative form** — open the group manually and call `.end()` when done:
+
+```ts
+test('setup', async ({ log }) => {
+  const g = log.group('prepare fixtures');        // cmd defaults to "group"
+  const g = log.group('prepare fixtures', 'step'); // custom cmd label
+  log('seed database', { type: 'success' });
+  log('clear cache',   { type: 'success' });
+  g.end();
+});
+```
+
+**Signatures:**
+
+```ts
+log.group(message: string, cmd?: string): TxGroupHandle
+log.group<T>(message: string, fn: () => T | Promise<T>): Promise<T>
+log.group<T>(message: string, cmd: string, fn: () => T | Promise<T>): Promise<T>
+```
+
+---
+
+### `step`
+
+Groups all commands executed inside the callback into a named collapsible section in the command panel. The group header reflects the pass/fail state of its children. Supports both async and sync callbacks and passes the return value through.
+
+```ts
+// Async
+await step('Log in', async () => {
+  await page.goto('https://example.com/login');
+  await page.getByTestId('username').fill('alice');
+  await page.getByTestId('password').fill('s3cret');
+  await page.getByTestId('submit').click();
+});
+
+// Sync — returns T directly (no await needed)
+const label = step('Read page title', () => page.url());
+```
+
+**Signatures:**
+
+```ts
+step<T>(title: string, fn: () => Promise<T>): Promise<T>
+step<T>(title: string, fn: () => T): T
+```
+
+The step fixture is a thin wrapper over `log.group` with the `cmd` label fixed to `'step'`. Use it to add readable structure to long test flows without affecting execution order:
+
+```ts
+test('checkout flow', async ({ page, step }) => {
+  await step('Add item to cart', async () => {
+    await page.locator('#add-to-cart').click();
+  });
+
+  await step('Fill shipping address', async () => {
+    await page.getByLabel('Street').fill('Main St 1');
+    await page.getByLabel('City').fill('Springfield');
+  });
+
+  await step('Place order', async () => {
+    await page.locator('#submit-order').click();
+    await expect(page.locator('.confirmation')).toBeVisible();
+  });
+});
+```
+
+---
+
+### `testInfo`
+
+Metadata about the currently running test, injected as the `testInfo` fixture. Available in test bodies, `beforeEach`, and `afterEach` hooks.
+
+| Property | Type | Description |
+|---|---|---|
+| `title` | `string` | The leaf test title — everything after the last `>` in the full name |
+| `titlePath` | `string[]` | All title segments from outermost suite to test name |
+| `retry` | `number` | Zero-based retry attempt index (`0` on the first run, `1` on the first retry, …) |
+| `tags` | `string[]` | Tags applied to this test via `{ tag: [...] }` |
+| `timeout` | `number` | Test timeout in ms (mirrors `testTimeout` config, default `30000`) |
+| `retries` | `number` | Max retry attempts configured (mirrors `retries` config, default `0`) |
+| `actionTimeout` | `number` | Default locator action timeout in ms (mirrors `actionTimeout` config, default `5000`) |
+| `expectTimeout` | `number` | Default `expect()` assertion timeout in ms (mirrors `expectTimeout` config, default `5000`) |
+
+```ts
+test.describe('Checkout', () => {
+  test('places an order', { tag: ['@smoke'] }, async ({ testInfo }) => {
+    console.log(testInfo.title);         // 'places an order'
+    console.log(testInfo.titlePath);     // ['Checkout', 'places an order']
+    console.log(testInfo.retry);         // 0 (1 on first retry)
+    console.log(testInfo.tags);          // ['@smoke']
+    console.log(testInfo.timeout);       // 30000 (or whatever testTimeout is set to)
+    console.log(testInfo.retries);       // 2 (or whatever retries is set to)
+    console.log(testInfo.actionTimeout); // 5000
+    console.log(testInfo.expectTimeout); // 5000
+  });
+});
+```
+
+**Use `retry` to skip expensive setup on retries:**
+
+```ts
+test('syncs data', async ({ page, testInfo }) => {
+  if (testInfo.retry === 0) {
+    await page.evaluate(() => localStorage.clear());
+  }
+  // …
+});
+```
+
+**Attach a screenshot with a retry-aware name:**
+
+```ts
+test('checkout', async ({ page, attach, testInfo }) => {
+  // …
+  attach(
+    `screenshot-attempt-${testInfo.retry}`,
+    await page.screenshot(),
+    'image/png',
+  );
+});
+```
+
+**Access `testInfo` from a custom fixture:**
+
+```ts
+const myTest = test.extend({
+  dbRecord: async ({ testInfo }, use) => {
+    const record = await db.insert({ testName: testInfo.title });
+    await use(record);
+    await db.delete(record.id);
+  },
+});
+```
 
 ---
 
@@ -1785,7 +2132,7 @@ Assert.less(actual, threshold, message?)
 
 - Runs in a single browser window. The browser is spawned directly by the process and killed on `stop()`.
 - Cross-origin sub-frames inside the target site are not accessible (sandboxed by the browser).
-- No built-in screenshot/PDF capture — snapshotting is DOM-based (computed styles, no rasterization).
+- No PDF capture. `page.screenshot()` captures a rasterized PNG; `page.snapshot()` produces a self-contained HTML file with all CSS, images, and fonts inlined.
 - Hammerhead proxies HTTP/HTTPS; WebSocket traffic passes through but is not interceptable at the network level.
 
 ## License

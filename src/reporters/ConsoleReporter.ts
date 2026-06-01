@@ -5,14 +5,8 @@ import type {
   TestCase,
   TestResult,
   FullResult,
+  LogEntry,
 } from '../runner/reporter';
-
-type LogEntry = {
-  state: 'pass' | 'fail' | 'info';
-  cmd: string;
-  message: string;
-  duration?: number;
-};
 
 const ansi = {
   reset: '\x1b[0m',
@@ -69,8 +63,9 @@ export class ConsoleReporter implements Reporter {
     }
   }
 
-  private printLogs(logs?: LogEntry[]) {
+  private printLogs(logs?: LogEntry[], depth = 0) {
     if (!logs?.length) return;
+    const indent = '  '.repeat(depth + 1);
 
     for (const entry of logs) {
       const icon =
@@ -83,7 +78,11 @@ export class ConsoleReporter implements Reporter {
       const duration =
         entry.duration != null ? color(` (${entry.duration}ms)`, 'gray') : '';
 
-      console.log(`  ${icon} ${entry.cmd} — ${entry.message}${duration}`);
+      console.log(`${indent}${icon} ${entry.cmd} — ${entry.message}${duration}`);
+
+      if (entry.children?.length) {
+        this.printLogs(entry.children, depth + 1);
+      }
     }
   }
 

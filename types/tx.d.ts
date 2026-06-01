@@ -57,6 +57,17 @@ interface TxLocatorMatchers {}
 interface TxPageMatchers {}
 interface TxValueMatchers {}
 
+// ── StorageState ──────────────────────────────────────────────────────────────
+
+interface TxStorageState {
+  /** Serialized tough-cookie jar from the hammerhead proxy session. Treat as opaque. */
+  cookieJar: object;
+  origins: Array<{
+    origin: string;
+    localStorage: Array<{ name: string; value: string }>;
+  }>;
+}
+
 // ── Shared option types ───────────────────────────────────────────────────────
 
 interface TxTimeoutOptions { timeout?: number; }
@@ -341,9 +352,15 @@ interface Page {
   // ── Screenshot ────────────────────────────────────────────────────────────────
   /**
    * Capture the current iframe as a PNG and return a data URL.
-   * Pass `path` to also save the file to `test-artifacts/<path>.png` on the server.
+   * Pass `path` to also save the file to `<path>.png` relative to the working directory.
    */
   screenshot(opts?: { path?: string }): Promise<string>;
+
+  /**
+   * Capture the current page as a self-contained HTML string with all CSS, images, and fonts
+   * inlined as data URLs. Pass `path` to also save to `<path>.html` relative to the working directory.
+   */
+  snapshot(opts?: { path?: string }): Promise<string>;
 
   // ── Script evaluation ─────────────────────────────────────────────────────────
   /**
@@ -553,6 +570,12 @@ interface Browser {
    */
   newPage(): Promise<void>;
 
+  /**
+   * Open a new window (popup), make it active, and return the global `page` object.
+   * Interact with the new window immediately via `page` — no need to use the return value.
+   */
+  newWindow(url?: string): Promise<void>;
+
   /** Return a snapshot of all open tabs. */
   tabs(): TxTabInfo[];
 
@@ -564,6 +587,26 @@ interface Browser {
    * browser.switchTab(t => t.title === 'My App');
    */
   switchTab(predicate: (tab: TxTabInfo) => boolean): void;
+
+  /**
+   * Capture the current storage state — cookies visible to the page and localStorage
+   * for the current origin — in a Playwright-compatible format.
+   *
+   * Pass `path` to also write the state to a JSON file (relative to the working directory).
+   *
+   * @example
+   * await page.goto('https://example.com/login');
+   * // ... authenticate ...
+   * await browser.storageState({ path: 'auth.json' });
+   */
+  storageState(opts?: { path?: string }): Promise<TxStorageState>;
+
+  /**
+   * Restore a previously captured storage state. Cookies are written via `document.cookie`
+   * (hammerhead syncs them into the proxy session) and localStorage is restored for the
+   * matching origin. Pass a file path to load from a JSON file saved by {@link Browser.storageState}.
+   */
+  loadStorageState(state: TxStorageState | string): Promise<void>;
 }
 
 // ── NodeContext ───────────────────────────────────────────────────────────────
@@ -591,15 +634,66 @@ type TxUseCallback<T> = (value: T) => Promise<void>;
 type TxFixtureFn<T, F extends Record<string, any>> = (fixtures: F, use: TxUseCallback<T>) => Promise<void>;
 type TxFixtureDefs<NewF extends Record<string, any>, AllF extends Record<string, any> = NewF> = { [K in keyof NewF]: TxFixtureFn<NewF[K], AllF> };
 
+/** Handle returned by `log.group()`. Call `end()` to close the group and finalize its state. */
+interface TxGroupHandle {
+  end(): void;
+}
+
 /** Writes a message to the command log panel during a test. */
 interface TxLogFn {
   (message: string, opts?: { type?: 'info' | 'success' | 'error'; cmd?: string }): void;
   /** Open a pending command entry in the test log and return a handle to resolve it. */
   open: TxLogCommandFn;
+  /**
+   * Open a collapsible group in the test log.
+   *
+   * **Imperative form** — open a group manually and close it by calling `handle.end()`:
+   * ```ts
+   * const g = log.group('My group');
+   * const g = log.group('My group', 'step');   // custom cmd label
+   * // ... log entries here are nested inside the group ...
+   * g.end();
+   * ```
+   *
+   * **Functional form** — all log entries produced inside `fn` are grouped automatically:
+   * ```ts
+   * await log.group('My group', async () => { ... });
+   * await log.group('My group', 'step', async () => { ... });   // custom cmd label
+   * ```
+   */
+  group(message: string, cmd?: string): TxGroupHandle;
+  group<T>(message: string, fn: () => T | Promise<T>): Promise<T>;
+  group<T>(message: string, cmd: string, fn: () => T | Promise<T>): Promise<T>;
 }
 
 /** Attaches named data to the test result for reporters to display. */
 type TxAttachFn = (label: string, body: string, contentType?: string) => void;
+
+/** Metadata about the currently running test, available via the `testInfo` fixture. */
+interface TestInfo {
+  /** The leaf test title (without suite prefix). */
+  title: string;
+  /** Full title path from outermost suite to test name. */
+  titlePath: string[];
+  /** Zero-based retry attempt index (0 on the first run). */
+  retry: number;
+  /** Tags applied to this test. */
+  tags: string[];
+  /** Maximum time this test may run in ms (from `testTimeout` config, default 30000). */
+  timeout: number;
+  /** Maximum number of retry attempts configured (from `retries` config, default 0). */
+  retries: number;
+  /** Default timeout for locator actions in ms (from `actionTimeout` config, default 5000). */
+  actionTimeout: number;
+  /** Default timeout for `expect()` assertion retry loops in ms (from `expectTimeout` config, default 5000). */
+  expectTimeout: number;
+}
+
+/** Groups commands in the log panel under a named collapsible step, and returns the callback's result. */
+interface TxStepFn {
+  <T>(title: string, fn: () => Promise<T>): Promise<T>;
+  <T>(title: string, fn: () => T): T;
+}
 
 /** Handle returned by `logCommand`. Must be resolved by calling `success` or `fail`. */
 interface TxCommandHandle {
@@ -648,6 +742,8 @@ interface TxBaseFixtures {
   request: APIRequestContext;
   log: TxLogFn;
   attach: TxAttachFn;
+  step: TxStepFn;
+  testInfo: TestInfo;
 }
 
 interface TxTestOptions {
@@ -682,8 +778,10 @@ declare module '@qavajs/tx' {
   export { TxDialog, TxDownload, TxFileChooser, TxFrame, TxRequest, TxResponse, TxConsoleMessage };
   export { TxScriptHandle, TxLocatorHandlerOptions, TxFilePayload };
   export { TxTabInfo };
+  export { TxStorageState };
   export { NodeContext };
-  export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle };
+  export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle, TxGroupHandle, TxStepFn };
+  export { TestInfo };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions, TxDescribeOptions };
   export { CustomMatcherResult, CustomMatcherFn };
   export { TxLocatorMatchers, TxPageMatchers, TxValueMatchers };

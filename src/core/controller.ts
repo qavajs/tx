@@ -1,8 +1,8 @@
-import { log, attach, setLogContainer, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, closeExtraTabs, browser, node, getSnapshots, clearSnapshots, setTestAbort, startCollectingLogs, stopCollectingLogs, wsConnect, wsSend, wsRequest, wsOnMessage } from '../browser/browser';
+import { log, attach, setLogContainer, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsRequest, wsOnMessage } from '../browser/browser';
 import { escHtml, escAttr, jsq } from '../utils/htmlUtils';
-import { type TestResult, runWithFixtures, buildTestQueue } from '../runner/executor';
+import { type TestResult } from '../runner/executor';
+import { executeTests } from '../runner/testRunner';
 import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
-import { SourceMapConsumer } from 'source-map-js';
 
 declare global {
   interface Window {
@@ -91,6 +91,7 @@ function setTestItemStatus(filename: string, fullName: string, state: 'running'|
     }
   }
   refreshSuiteBadge(filename, item.dataset.suite ?? '');
+  if (state === 'pass' || state === 'fail') refreshRunnerStatus();
 }
 
 function resetTestItems(filename: string) {
@@ -147,6 +148,7 @@ async function loadTestList() {
     container.innerHTML = files.length
       ? files.map(renderTestFileCard).join('')
       : '<div class="tx-empty">No .js files in examples/</div>';
+    refreshRunnerStatus();
   } catch (e: any) {
     container.innerHTML = `<div class="tx-empty" style="color:var(--fail)">Failed to load specs<br>${e.message}</div>`;
   }
@@ -242,143 +244,7 @@ window.toggleSuite = (filename: string, suiteName: string) => {
   });
 };
 
-// ── Source-map remapping ──────────────────────────────────────────────────────
-
-function _makeRemapper(code: string): ((s: string) => string) | null {
-  const m = code.match(/\/\/# sourceMappingURL=data:application\/json[^,]*,([^\s]+)/);
-  if (!m) return null;
-  try {
-    const consumer = new SourceMapConsumer(JSON.parse(atob(m[1])));
-    return (stack: string) => {
-      const kept: string[] = [];
-      for (const line of stack.split('\n')) {
-        if (!/^\s+at\s/.test(line)) { kept.push(line); continue; }
-        const anon = /<anonymous>:(\d+):(\d+)/.exec(line);
-        if (!anon) continue;
-        const ln = +anon[1] - 2; // Function() wrapper prepends 2 lines before the body
-        const col = +anon[2];
-        // source-map-js expects 1-based line, 0-based column
-        let pos = consumer.originalPositionFor({ line: ln, column: col - 1 });
-        if (pos.source == null || pos.line == null) continue;
-        const loc = `${pos.source}:${pos.line}:${(pos.column ?? 0) + 1}`;
-        const fn = /at\s+([\w$.<>[\] ]+?)\s+\(/.exec(line)?.[1];
-        kept.push(fn && fn !== 'eval' && !/^eval /.test(fn) ? `    at ${fn} (${loc})` : `    at ${loc}`);
-      }
-      return kept.join('\n');
-    };
-  } catch (err) {
-    console.error('[tx] source map init failed:', err);
-    return null;
-  }
-}
-
 // ── Test execution ────────────────────────────────────────────────────────────
-
-async function executeTests(
-  code: string,
-  opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string; onTestEnd?: (result: TestResult) => void }
-): Promise<TestResult[]> {
-  const filename = opts?.filename;
-  const remap = _makeRemapper(code);
-  const queue = buildTestQueue(code, opts ?? {});
-
-  if ('parseError' in queue) {
-    const err = remap ? remap(queue.parseError) : queue.parseError;
-    return [{ name: '(parse/compile error)', passed: false, error: err, duration: 0, logs: [] }];
-  }
-
-  const results: TestResult[] = [];
-  const maxRetries = (window as any).__CONFIG__?.retries ?? 0;
-  for (const t of queue) {
-    if (_stopRequested) break;
-    let attempt = 0;
-    let lastError: any;
-    let passed = false;
-    let duration = 0;
-    let finalLogs: ReturnType<typeof stopCollectingLogs> = [];
-    while (attempt <= maxRetries && !passed && !_stopRequested) {
-      if (filename) {
-        if (attempt > 0) {
-          const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
-          if (logEl) { logEl.innerHTML = ''; logEl.classList.add('open'); }
-        }
-        setTestItemStatus(filename, t.name, 'running');
-        activateTestLog(filename, t.name);
-      }
-      const t0 = Date.now();
-      let _timeoutId: ReturnType<typeof setTimeout> | undefined;
-      startCollectingLogs();
-      try {
-        closeExtraTabs();
-        await page.resetSession();
-        for (const hook of t.setupBeforeAlls) await Promise.resolve(hook());
-        for (const hook of t.beforeEachs) {
-          await runWithFixtures(hook.fixtureDefs, hook.fn);
-        }
-        const runTestFn = t.expectsFixtures
-          ? () => runWithFixtures(t.fixtureDefs, t.fn)
-          : () => Promise.resolve(t.fn());
-        const testTimeout = (window as any).__CONFIG__?.testTimeout ?? 30000;
-        const _stopPromise = new Promise<never>((_, reject) => {
-          _currentTestCancel = (err: Error) => { setTestAbort(err); reject(err); };
-        });
-        await Promise.race([
-          runTestFn(),
-          new Promise<never>((_, reject) => {
-            _timeoutId = setTimeout(() => {
-              const err = new Error(`Test timed out after ${testTimeout}ms`);
-              setTestAbort(err);
-              reject(err);
-            }, testTimeout);
-          }),
-          _stopPromise,
-        ]);
-        for (const hook of t.afterEachs) {
-          await runWithFixtures(hook.fixtureDefs, hook.fn);
-        }
-        for (const hook of t.teardownAfterAlls) await Promise.resolve(hook());
-        duration = Date.now() - t0;
-        finalLogs = stopCollectingLogs();
-        passed = true;
-      } catch (e: any) {
-        duration = Date.now() - t0;
-        finalLogs = stopCollectingLogs();
-        lastError = e;
-        const errStr = e.stack || e.message || String(e);
-        const remapped = remap ? remap(errStr) : errStr;
-        if (attempt < maxRetries && !_stopRequested) {
-          appendErrorToLog(`Attempt ${attempt + 1} failed — retrying…\n` + remapped);
-        } else {
-          appendErrorToLog(remapped);
-        }
-      } finally {
-        clearTimeout(_timeoutId);
-        setTestAbort(null);
-        _currentTestCancel = null;
-        if (filename) {
-          const logEl = document.getElementById('tlog-' + escAttr(filename + '\x01' + t.name));
-          if (!passed || attempt < maxRetries) logEl?.classList.remove('open');
-        }
-        setLogContainer(null);
-        _activeTestLog = null;
-      }
-      attempt++;
-    }
-    if (passed) {
-      const r: TestResult = { name: t.name, passed: true, duration, logs: finalLogs };
-      results.push(r);
-      opts?.onTestEnd?.(r);
-      if (filename) setTestItemStatus(filename, t.name, 'pass', duration);
-    } else {
-      const rawErr = lastError?.stack || lastError?.message || String(lastError);
-      const r: TestResult = { name: t.name, passed: false, error: remap ? remap(rawErr) : rawErr, duration, logs: finalLogs };
-      results.push(r);
-      opts?.onTestEnd?.(r);
-      if (filename) setTestItemStatus(filename, t.name, 'fail', duration);
-    }
-  }
-  return results;
-}
 
 // ── Server communication ──────────────────────────────────────────────────────
 
@@ -391,6 +257,18 @@ function notifyRunEnd(passed: number, failed: number, total: number, duration: n
   wsSend('run-end', { passed, failed, total, duration });
 }
 
+function refreshRunnerStatus() {
+  const status = document.getElementById('testRunnerStatus');
+  if (!status) return;
+  const total = document.querySelectorAll('.tx-test-item').length;
+  const passed = document.querySelectorAll('.tx-test-item.pass').length;
+  const failed = document.querySelectorAll('.tx-test-item.fail').length;
+  status.innerHTML =
+    `<span class="tx-runner-total">${total}</span>` +
+    `<span class="tx-runner-pass">&#10003;&nbsp;${passed}</span>` +
+    `<span class="tx-runner-fail">&#10007;&nbsp;${failed}</span>`;
+}
+
 function renderTestResults(results: TestResult[], filename?: string) {
   let passed = 0;
   let failed = 0;
@@ -398,12 +276,7 @@ function renderTestResults(results: TestResult[], filename?: string) {
     if (t.passed) passed++
     else failed++;
   });
-  const status = document.getElementById('testRunnerStatus');
-  if (status) {
-    status.innerHTML =
-      `<span class="tx-runner-pass">&#10003;&nbsp;${passed} passed</span>` +
-      (failed > 0 ? `<span class="tx-runner-fail">&#10007;&nbsp;${failed} failed</span>` : '');
-  }
+  refreshRunnerStatus();
   if (filename) updateCardStatus(filename, passed, failed);
 }
 
@@ -448,13 +321,32 @@ function countResults(results: TestResult[]): { passed: number; failed: number; 
 
 async function fetchAndRun(
   filename: string,
-  opts?: Parameters<typeof executeTests>[1]
+  opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string }
 ): Promise<TestResult[]> {
   const msg = await wsRequest<{ data?: string; error?: string }>('get-test-source', { file: filename });
   if (msg.error || !msg.data) throw new Error(msg.error ?? 'Failed to load test source');
   const results = await executeTests(msg.data, {
     ...opts,
-    onTestEnd: (r) => wsSend('report', { filename, tests: [r] } as Record<string, unknown>),
+    isStopRequested: () => _stopRequested,
+    setCancelFn: (fn) => { _currentTestCancel = fn; },
+    onAttemptBegin: opts?.filename ? (testName, attempt) => {
+      if (attempt > 0) {
+        const logEl = document.getElementById('tlog-' + escAttr(opts.filename! + '\x01' + testName));
+        if (logEl) { logEl.innerHTML = ''; logEl.classList.add('open'); }
+      }
+      setTestItemStatus(opts.filename!, testName, 'running');
+      activateTestLog(opts.filename!, testName);
+    } : undefined,
+    onAttemptError: opts?.filename ? appendErrorToLog : undefined,
+    onAttemptFinally: opts?.filename ? (testName, passed, attemptsLeft) => {
+      const logEl = document.getElementById('tlog-' + escAttr(opts.filename! + '\x01' + testName));
+      if (!passed || attemptsLeft > 0) logEl?.classList.remove('open');
+      _activeTestLog = null;
+    } : undefined,
+    onTestEnd: (r) => {
+      wsSend('report', { filename, tests: [r] } as Record<string, unknown>);
+      if (opts?.filename) setTestItemStatus(opts.filename, r.name, r.passed ? 'pass' : 'fail', r.duration);
+    },
   });
   renderTestResults(results, filename);
   return results;

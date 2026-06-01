@@ -7,6 +7,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `browser.storageState(opts?)` — captures the current cookie jar and `localStorage` items for the active origin; pass `{ path }` to also write the state to a JSON file; returns a `TxStorageState` object that can be passed directly to `browser.loadStorageState()`
+- `browser.loadStorageState(state)` — restores cookies and `localStorage` from a `TxStorageState` object or a file path written by `browser.storageState({ path })`; cookies are applied to the proxy session immediately; `localStorage` items are written for the current page's origin; accepts an inline state object to seed specific cookies or storage values without navigating
+
+### Fixed
+- `browser.storageState()` now correctly captures cookies set during page navigation — the cookie jar was previously read from the wrong Hammerhead proxy session (the main session rather than the control-panel session that actually handles iframe navigation requests), so the returned `cookieJar` was always empty
+
+## [0.0.7]
+
+### Added
+- `page.snapshot(opts?)` — captures the current page as a self-contained HTML string; all external stylesheets, images, and web fonts are fetched and inlined as data URLs so the file opens correctly without a server; `@import` rules and `url()` references inside CSS are inlined recursively; live form state (checkbox, radio, text inputs, selects, textareas) is synced into the clone before serialisation; pass `{ path }` to also save the file to `<path>.html` relative to the working directory; returns the HTML string in all cases
+- `step` fixture — groups commands in the log panel under a named collapsible step; supports both async (`await step('label', async () => { … })`) and sync (`step('label', () => value)`) callbacks; returns the callback's result so values can flow through; the group border reflects child state (red on any failure, green on all pass)
+- `log.group(message, cmd?, fn?)` — groups log entries into a collapsible section in the command panel; supports functional form (`await log.group('label', async () => { … })`) and imperative form (`const g = log.group('label'); …; g.end()`); optional `cmd` argument sets the short label shown in the left column (defaults to `'group'`); groups can be nested; the group border reflects child state (red on any failure, green on all pass)
+
+### Changed
+- `HtmlReporter` now renders `text/html` attachments in an embedded `<iframe>` (full-width, 400 px tall) with an **↗** button in the attachment header that opens the snapshot in a new browser tab as a Blob URL; the complete HTML body is stored without truncation (the 4 000-character limit previously applied only to text attachments)
+- Artifact files are now saved at a path relative to the working directory instead of always inside `test-artifacts/`; parent directories are created automatically if they do not exist
+- `page.screenshot({ path })` now saves `<path>.png` relative to the working directory (previously forced into `test-artifacts/`)
+- Matcher log messages now include the expected value: `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, and `toHaveClass` append the expected value to the locator description in the log entry
+- `toBeTruthy`, `toBeFalsy`, `toBeNull`, and `toBeUndefined` now log the actual target value instead of an empty message
+
+## [0.0.6]
+
+### Added
+- `browser.newWindow(url?)` — opens a native browser popup window, navigates it to `url` if provided, and makes it the active page; interact with it via the global `page` fixture immediately after the call
+- Popup window support: all `page` APIs (`goto`, `reload`, `locator`, `click`, `fill`, `evaluate`, `route`, events, etc.) work identically in popup windows as in iframe-based tabs
+- `browser.switchTab()` and `browser.tabs()` now include popup windows alongside iframe-based tabs in the same list
+- `page.on('popup')` and `page.waitForEvent('popup')` intercept windows opened by the page via `window.open()` or `target="_blank"` links
+- Popup blocking automatically disabled at browser launch (`--disable-popup-blocking`) on Chrome and Firefox so `window.open()` calls are never suppressed
 - `expect` is now a top-level named export from `'@qavajs/tx'` — import it directly alongside `test` instead of receiving it as a fixture
 - `expect.extend(matchers)` — returns a new scoped `expect` function with the given custom matchers merged in; pure and side-effect-free, the original `expect` is unmodified
 - `expect(value).toPass(opts?)` — async polling assertion that retries an arbitrary callback until it stops throwing, with configurable timeout
@@ -14,6 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `TxLocatorMatchers`, `TxPageMatchers`, `TxValueMatchers` — empty ambient interfaces for augmenting built-in assertion types via declaration merging
 
 ### Changed
+- Matcher log messages now include the expected value: `toHaveText`, `toContainText`, `toHaveValue`, `toHaveAttribute`, `toHaveCount`, and `toHaveClass` append the expected value to the locator description in the log entry
+- `toBeTruthy`, `toBeFalsy`, `toBeNull`, and `toBeUndefined` now log the actual target value instead of an empty message
 - `expect` removed from `TxBaseFixtures` — it is no longer injected as a test fixture; update destructuring patterns to use the module import instead
 - `not` is no longer a separate object with duplicated matcher definitions; the unified `_makeExpect(target, negated, localMatchers)` factory threads a `negated` flag through all matchers, halving the internal implementation size
 - Custom matchers registered via `expect.extend` are scoped to the returned function and do not mutate any shared state

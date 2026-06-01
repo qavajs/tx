@@ -3,16 +3,16 @@
  */
 
 export interface ControlPanelConfig {
-  proxyUrl: string;
-  controlPanelPort?: number;
-  viewport?: { width: number; height: number };
-  testMode?: boolean;
-  snapshot?: boolean;
-  grep?: RegExp;
-  actionTimeout?: number;
-  expectTimeout?: number;
-  testTimeout?: number;
-  retries?: number;
+    proxyUrl: string;
+    controlPanelPort?: number;
+    viewport?: { width: number; height: number };
+    testMode?: boolean;
+    snapshot?: boolean;
+    grep?: RegExp;
+    actionTimeout?: number;
+    expectTimeout?: number;
+    testTimeout?: number;
+    retries?: number;
 }
 
 export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, viewport, testMode, snapshot, grep, actionTimeout, expectTimeout, testTimeout, retries }: ControlPanelConfig): string {
@@ -26,11 +26,11 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            --jade:        #00d084;
-            --jade-bg:     rgba(0, 208, 132, 0.10);
-            --jade-glow:   rgba(0, 208, 132, 0.25);
-            --pass:        #22c55e;
-            --pass-bg:     rgba(34, 197, 94, 0.10);
+            --jade:        #34a870;
+            --jade-bg:     rgba(52, 168, 112, 0.10);
+            --jade-glow:   rgba(52, 168, 112, 0.22);
+            --pass:        #4ead7a;
+            --pass-bg:     rgba(78, 173, 122, 0.10);
             --fail:        #ef4444;
             --fail-bg:     rgba(239, 68, 68, 0.10);
             --warn:        #f59e0b;
@@ -125,8 +125,8 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             letter-spacing: 0.1px;
         }
 
-        .tx-run-all-btn:hover  { background: #00c07a; box-shadow: 0 0 12px var(--jade-glow); }
-        .tx-run-all-btn:active { background: #00a96c; }
+        .tx-run-all-btn:hover  { background: #2d9963; box-shadow: 0 0 12px var(--jade-glow); }
+        .tx-run-all-btn:active { background: #268557; }
         .tx-run-all-btn:disabled {
             background: var(--bg-card);
             color: var(--text-muted);
@@ -208,7 +208,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         /* ══ Specs panel ══════════════════════════════════════════════════ */
 
         .tx-specs {
-            width: 400px;
+            width: 500px;
             min-width: 180px;
             flex-shrink: 0;
             background: var(--bg-panel);
@@ -461,8 +461,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
 
         .tx-test-item {
             padding: 3px 10px 3px 24px;
-            font-size: 12px;
-            color: var(--text-muted);
+            color: var(--text-dim);
             display: flex;
             align-items: center;
             gap: 6px;
@@ -494,18 +493,18 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         }
 
         #testRunnerStatus {
-            flex-shrink: 0;
-            border-top: 1px solid var(--border);
-            padding: 7px 14px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
             font-size: 11px;
             font-variant-numeric: tabular-nums;
-            min-height: 32px;
+            font-weight: 500;
+            letter-spacing: 0;
+            text-transform: none;
         }
-        .tx-runner-pass { color: var(--pass); }
-        .tx-runner-fail { color: var(--fail); }
+        .tx-runner-total { color: var(--text-muted); }
+        .tx-runner-pass  { color: var(--pass); }
+        .tx-runner-fail  { color: var(--fail); }
 
         /* ══ Resize handles ══════════════════════════════════════════════ */
 
@@ -556,7 +555,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd.info { border-left-color: transparent; }
 
         .tx-cmd-icon {
-            font-size: 9px;
             width: 13px;
             text-align: center;
             flex-shrink: 0;
@@ -567,7 +565,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd-icon.info { color: var(--text-muted); }
 
         .tx-cmd-label {
-            font-size: 9.5px;
             font-weight: 700;
             letter-spacing: 0.3px;
             flex-shrink: 0;
@@ -1400,6 +1397,57 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-selector-match-id   { color: #a78bfa; }
         .tx-selector-match-cls  { color: #60a5fa; }
         .tx-selector-match-text { color: var(--text-dim); margin-left: 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* ══ Log groups ══════════════════════════════════════════════ */
+
+        .tx-cmd-group {
+            border-left: 2px solid var(--border-s);
+            margin: 1px 0;
+        }
+        .tx-cmd-group.pass { border-left-color: var(--pass); }
+        .tx-cmd-group.fail { border-left-color: var(--fail); }
+
+        .tx-cmd-group-hdr {
+            display: flex;
+            align-items: baseline;
+            padding: 3px 14px 3px 10px;
+            gap: 6px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            line-height: 1.55;
+            cursor: pointer;
+            user-select: none;
+        }
+        .tx-cmd-group-hdr:hover { background: var(--bg-card); }
+
+        .tx-cmd-group-chevron {
+            width: 13px;
+            text-align: center;
+            flex-shrink: 0;
+            color: var(--text-muted);
+            transition: transform 0.14s;
+        }
+        .tx-cmd-group.open .tx-cmd-group-chevron { transform: rotate(90deg); }
+
+        .tx-cmd-group-cmd {
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            flex-shrink: 0;
+            min-width: 68px;
+            color: var(--text-muted);
+        }
+
+        .tx-cmd-group-msg {
+            flex: 1;
+            color: var(--text);
+            word-break: break-word;
+        }
+
+        .tx-cmd-group-body {
+            display: none;
+            margin-left: 10px;
+        }
+        .tx-cmd-group.open .tx-cmd-group-body { display: block; }
     </style>
 </head>
 <body>
@@ -1428,7 +1476,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
 
         <!-- ── Specs ──────────────────────────────────────────────── -->
         <nav class="tx-specs">
-            <div class="tx-panel-hdr">Specs</div>
+            <div class="tx-panel-hdr">Specs<div id="testRunnerStatus"></div></div>
             <div class="tx-filter-bar">
                 <input type="text" id="testFilter" class="tx-filter-input" placeholder="Filter tests…" oninput="window.applyFilter && window.applyFilter(this.value)" autocomplete="off" spellcheck="false">
                 <button class="tx-filter-run-btn tx-hidden" id="filterRunBtn" onclick="window.runFiltered && window.runFiltered()" title="Run filtered tests" aria-label="Run filtered tests">&#9654;</button>
@@ -1436,7 +1484,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             <div class="tx-specs-scroll" id="testList">
                 <div class="tx-loading">Loading specs</div>
             </div>
-            <div id="testRunnerStatus"></div>
         </nav>
 
         <div class="tx-resize-handle" id="specsResizer"></div>

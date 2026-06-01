@@ -254,6 +254,7 @@ export class TxWrapper {
       this.testApi = new TestApi(this.injector);
 
       // Start control panel server (on localhost:11339)
+      const cpSession = this.controlPanelSession;
       this.server = new TestServer({
         port:          this.config.controlPanelPort,
         testFiles:     this.config.testFiles,
@@ -265,7 +266,9 @@ export class TxWrapper {
         actionTimeout: this.config.actionTimeout,
         expectTimeout: this.config.expectTimeout,
         testTimeout:   this.config.testTimeout,
-        retries:       this.config.retries,
+        retries:         this.config.retries,
+        onGetCookieJar:  () => cpSession.cookies.serializeJar(),
+        onSetCookieJar:  (jar) => cpSession.cookies.setJar(jar),
       });
       await this.server.start(this.proxyUrl, this.config.viewport);
       this._collector?.attach();
@@ -327,6 +330,7 @@ export class TxWrapper {
           args = [
             '--no-remote',
             '--new-instance',
+            '--disable-popup-blocking',
             ...(this.config.headless ? ['--headless'] : []),
             this.controlPanelProxyUrl,
           ];
@@ -340,6 +344,7 @@ export class TxWrapper {
             '--no-first-run',
             '--no-default-browser-check',
             '--enable-automation',
+            '--disable-popup-blocking',
             ...(this.config.headless ? headlessArgs(exePath) : []),
             this.controlPanelProxyUrl,
           ];
