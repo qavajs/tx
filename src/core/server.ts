@@ -279,7 +279,7 @@ export class TestServer {
 
       case 'get-test-source': {
         const { id, file } = msg as { id: string; file: string };
-        if (!file || file.includes('/') || file.includes('\\') || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
+        if (!file || file.includes('/') || file.includes('\\') || (!file.endsWith('.js') && !file.endsWith('.ts') && !file.endsWith('.tsx') && !file.endsWith('.jsx'))) {
           ws.send(JSON.stringify({ type: 'test-source', id, error: 'Invalid filename' }));
           break;
         }

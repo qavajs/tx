@@ -1,8 +1,15 @@
+const { vuePlugin } = require('../dist/index.js');
+
 module.exports = {
+  esbuildPlugins: [vuePlugin()],
   proxyHost: 'localhost',
   retries: 0,
   headless: false,
-  testFiles: ['./specs/**/*.spec.ts'],
+  testFiles: [
+    './specs/**/*.spec.ts',
+    './specs/**/*.spec.tsx',
+    './specs/**/*.spec.jsx'
+  ],
   //grep: 'login',
   viewport: { width: 1600, height: 900 },
   //snapshot: true,

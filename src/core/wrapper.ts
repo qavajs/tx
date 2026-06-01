@@ -139,7 +139,7 @@ function headlessArgs(exePath: string): string[] {
 import { TestApi } from '../runner/api';
 import { TestServer } from './server';
 import { startWatcher } from '../runner/watcher';
-import { setPreprocessor } from '../runner/runner';
+import { setPreprocessor, setEsbuildPlugins } from '../runner/runner';
 import { ProxyCollector } from '../proxy/collector';
 import type { Reporter } from '../runner/reporter';
 import type { TaskHandler, Preprocessor } from '../types';
@@ -173,6 +173,7 @@ export class TxWrapper {
       reporters?: Reporter[];
       tasks?: Record<string, TaskHandler>;
       preprocessor?: Preprocessor;
+      esbuildPlugins?: import('esbuild').Plugin[];
       testMode?: boolean;
       snapshot?: boolean;
       grep?: RegExp;
@@ -278,6 +279,7 @@ export class TxWrapper {
       console.log(`📦 Proxy URL: ${this.proxyUrl}`);
 
       setPreprocessor(this.config.preprocessor);
+      setEsbuildPlugins(this.config.esbuildPlugins);
 
       if (this.config.testFiles?.length) {
         // In test mode, await initial bundling so all sources are ready before the browser opens

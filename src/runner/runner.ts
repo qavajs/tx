@@ -1,13 +1,54 @@
 import * as vm from 'vm';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'node:crypto';
 import * as esbuild from 'esbuild';
 import type { Preprocessor } from '../types';
 
+export function vuePlugin(): esbuild.Plugin {
+  return {
+    name: 'vue',
+    setup(build) {
+      build.onLoad({ filter: /\.vue$/ }, (args) => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { parse, compileScript, compileTemplate, rewriteDefault } = require('@vue/compiler-sfc');
+          const source = fs.readFileSync(args.path, 'utf-8');
+          const id = crypto.createHash('sha256').update(args.path).digest('hex').slice(0, 8);
+          const { descriptor, errors } = parse(source, { filename: args.path });
+          if (errors.length) {
+            return { errors: errors.map((e: any) => ({ text: String(e.message ?? e) })) };
+          }
+          const parts: string[] = [];
+          if (descriptor.script || descriptor.scriptSetup) {
+            const script = compileScript(descriptor, { id, inlineTemplate: true });
+            parts.push(rewriteDefault(script.content, '__sfc__'));
+          } else if (descriptor.template) {
+            const { code } = compileTemplate({ source: descriptor.template.content, filename: args.path, id });
+            parts.push(code);
+            parts.push('const __sfc__ = { render }');
+          } else {
+            parts.push('const __sfc__ = {}');
+          }
+          parts.push('export default __sfc__');
+          return { contents: parts.join('\n'), loader: 'js' };
+        } catch (err: any) {
+          return { errors: [{ text: err.message }] };
+        }
+      });
+    },
+  };
+}
+
 let _preprocessor: Preprocessor | null = null;
+let _esbuildPlugins: esbuild.Plugin[] = [];
 
 export function setPreprocessor(fn: Preprocessor | null | undefined): void {
   _preprocessor = fn ?? null;
+}
+
+export function setEsbuildPlugins(plugins: esbuild.Plugin[] | undefined): void {
+  _esbuildPlugins = plugins ?? [];
 }
 
 export interface ParsedTest { suite: string; name: string; tags?: string[]; }
@@ -84,7 +125,7 @@ export async function bundleTestFile(filePath: string): Promise<string> {
   const raw = fs.readFileSync(filePath, 'utf-8');
   const contents = _preprocessor ? _preprocessor(raw, filePath) : raw;
   const result = await esbuild.build({
-    stdin: { contents, resolveDir: path.dirname(filePath), sourcefile: filePath, loader: 'ts' },
+    stdin: { contents, resolveDir: path.dirname(filePath), sourcefile: filePath, loader: filePath.endsWith('.tsx') || filePath.endsWith('.jsx') ? 'tsx' : 'ts' },
     bundle: true,
     platform: 'browser',
     format: 'iife',
@@ -92,6 +133,13 @@ export async function bundleTestFile(filePath: string): Promise<string> {
     logLevel: 'silent',
     external: ['@qavajs/tx'],
     sourcemap: 'inline',
+    plugins: _esbuildPlugins,
+    loader: {
+      '.js': 'jsx',
+      '.ts': 'tsx',
+      '.jsx': 'jsx',
+      '.tsx': 'tsx',
+    },
   });
   return result.outputFiles[0].text;
 }
@@ -102,9 +150,9 @@ export function parseTestFile(filePath: string): ParsedFile {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const source = _preprocessor ? _preprocessor(raw, filePath) : raw;
     const { code } = esbuild.transformSync(source, {
-      loader: 'ts',
+      loader: filePath.endsWith('.tsx') || filePath.endsWith('.jsx') ? 'tsx' : 'ts',
       target: 'node22',
-      format: 'cjs',
+      format: 'iife',
       sourcefile: filePath,
     });
     return { filename, tests: parseTestCode(code) };

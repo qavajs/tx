@@ -8,12 +8,15 @@
     "skipLibCheck": true,
     "allowJs": true,
     "checkJs": false,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "react"
   },
   "include": [
     "../types/tx.d.ts",
+    "./shims-vue.d.ts",
     "./specs/**/*.ts",
+    "./specs/**/*.tsx",
     "./specs/**/*.js",
-    "./pages/**/*.ts",
+    "./pages/**/*.ts"
   ]
 }
