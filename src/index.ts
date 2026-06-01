@@ -109,15 +109,20 @@ async function loadConfigFile(filePath: string): Promise<Partial<TxConfig>> {
   if (ext === '.json') {
     return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Partial<TxConfig>;
   }
+  if (ext === '.ts') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(path.resolve(filePath)) as { default?: Partial<TxConfig> } & Partial<TxConfig>;
+    return (mod.default ?? mod) as Partial<TxConfig>;
+  }
   if (ext === '.js' || ext === '.mjs') {
     const mod = await import(pathToFileURL(path.resolve(filePath)).href) as { default?: Partial<TxConfig> } & Partial<TxConfig>;
     return (mod.default ?? mod) as Partial<TxConfig>;
   }
-  throw new Error(`Unsupported config file extension: ${ext} (use .json, .js, or .mjs)`);
+  throw new Error(`Unsupported config file extension: ${ext} (use .json, .js, .mjs, or .ts)`);
 }
 
 function findDefaultConfigFile(): string | undefined {
-  for (const name of ['tx.config.json', 'tx.config.js', 'tx.config.mjs']) {
+  for (const name of ['tx.config.json', 'tx.config.js', 'tx.config.mjs', 'tx.config.ts']) {
     const p = path.join(process.cwd(), name);
     if (fs.existsSync(p)) return p;
   }
@@ -156,15 +161,16 @@ function isGlobPattern(s: string): boolean {
 }
 
 function resolveTestFiles(config: Pick<TxConfig, 'testFiles'>, configDir: string): string[] | undefined {
+  const seen = new Set<string>();
   const files: string[] = [];
 
   const addGlobMatches = (pattern: string) => {
-    // Strip leading ./ so matchGlob works against relative paths
     const normalized = pattern.startsWith('./') ? pattern.slice(2) : pattern;
     const allFiles = scanDir(configDir);
     for (const f of allFiles) {
       const rel = path.relative(configDir, f).replace(/\\/g, '/');
-      if (matchGlob(normalized, rel) && !files.includes(f)) {
+      if (matchGlob(normalized, rel) && !seen.has(f)) {
+        seen.add(f);
         files.push(f);
       }
     }
@@ -176,7 +182,7 @@ function resolveTestFiles(config: Pick<TxConfig, 'testFiles'>, configDir: string
         addGlobMatches(f);
       } else {
         const abs = path.resolve(configDir, f);
-        if (!files.includes(abs)) files.push(abs);
+        if (!seen.has(abs)) { seen.add(abs); files.push(abs); }
       }
     }
   }

@@ -5,6 +5,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as net from 'node:net';
 import { execSync, spawn, ChildProcess } from 'node:child_process';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -142,7 +143,31 @@ import { startWatcher } from '../runner/watcher';
 import { setPreprocessor } from '../runner/runner';
 import { ProxyCollector } from '../proxy/collector';
 import type { Reporter } from '../runner/reporter';
-import type { TaskHandler, Preprocessor } from '../types';
+import type { TxConfig } from '../types';
+
+type TxWrapperConfig = Omit<TxConfig, 'reporters' | 'profiles' | 'shard' | 'grep' | 'testFiles'> & {
+  reporters?: Reporter[];
+  testFiles?: string[];
+  testPatterns?: string[];
+  watchBaseDir?: string;
+  grep?: RegExp;
+};
+
+function waitForPort(port: number, host: string, timeoutMs = 5000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+    const attempt = () => {
+      const sock = net.createConnection({ port, host });
+      sock.once('connect', () => { sock.destroy(); resolve(); });
+      sock.once('error', () => {
+        sock.destroy();
+        if (Date.now() < deadline) setTimeout(attempt, 100);
+        else reject(new Error(`Proxy did not become ready on ${host}:${port} within ${timeoutMs}ms`));
+      });
+    };
+    attempt();
+  });
+}
 
 export class TxWrapper {
   private proxy: any;
@@ -158,30 +183,7 @@ export class TxWrapper {
   private _isSafariBrowser = false;
   private _tempUserDataDir: string | null = null;
 
-  constructor(
-    private config: {
-      proxyHost?: string;
-      port1?: number;
-      port2?: number;
-      controlPanelPort?: number;
-      headless?: boolean;
-      browser?: string;
-      testFiles?: string[];
-      testPatterns?: string[];
-      watchBaseDir?: string;
-      viewport?: { width: number; height: number };
-      reporters?: Reporter[];
-      tasks?: Record<string, TaskHandler>;
-      preprocessor?: Preprocessor;
-      testMode?: boolean;
-      snapshot?: boolean;
-      grep?: RegExp;
-      actionTimeout?: number;
-      expectTimeout?: number;
-      testTimeout?: number;
-      retries?: number;
-    } = {}
-  ) {
+  constructor(private config: TxWrapperConfig = {}) {
     config.proxyHost = config.proxyHost || 'localhost';
     config.port1 = config.port1 || 11337;
     config.port2 = config.port2 || 11338;
@@ -242,8 +244,7 @@ export class TxWrapper {
       this.initializeProxy();
       console.log(`✅ Proxy initialized at ${this.proxyUrl}`);
 
-      // Wait a moment for proxy to stabilize
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await waitForPort(this.config.port1!, this.config.proxyHost ?? 'localhost');
 
       // Create iframe injector (for compatibility, though browser handles it)
       this.injector = new IframeInjector({
@@ -258,6 +259,7 @@ export class TxWrapper {
       this.server = new TestServer({
         port:          this.config.controlPanelPort,
         testFiles:     this.config.testFiles,
+        watchBaseDir:  this.config.watchBaseDir,
         reporters:     this.config.reporters,
         testMode:      this.config.testMode,
         snapshot:      this.config.snapshot,
