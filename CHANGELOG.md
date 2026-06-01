@@ -10,9 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `testInfo` fixture — provides read-only metadata about the currently running test; exposes `title` (leaf test name), `titlePath` (full suite-to-test name array), `retry` (zero-based attempt index), `tags` (test-level tags), `timeout`, `retries`, `actionTimeout`, and `expectTimeout` sourced from the active config; the `TestInfo` interface is exported from `'@qavajs/tx'` for use in type annotations
 - `browser.storageState(opts?)` — captures the current cookie jar and `localStorage` items for the active origin; pass `{ path }` to also write the state to a JSON file; returns a `TxStorageState` object that can be passed directly to `browser.loadStorageState()`
 - `browser.loadStorageState(state)` — restores cookies and `localStorage` from a `TxStorageState` object or a file path written by `browser.storageState({ path })`; cookies are applied to the proxy session immediately; `localStorage` items are written for the current page's origin; accepts an inline state object to seed specific cookies or storage values without navigating
+- `page.mouse` — low-level mouse API for dispatching pointer and mouse events directly; exposes `mouse.move(x, y, opts?)`, `mouse.down(opts?)`, `mouse.up(opts?)`, `mouse.click(x, y, opts?)`, `mouse.dblclick(x, y, opts?)`, and `mouse.wheel(deltaX, deltaY)`; boundary events (`mouseenter`, `mouseleave`, `pointerenter`, `pointerleave`) are emitted correctly as the cursor crosses element boundaries; `steps` option on `move` interpolates the path for smooth drag simulation
+- `:passed` / `:failed` filter tokens in the Specs panel filter bar — typing `:passed` or `:failed` narrows the test list to tests that have already run and match that outcome; tokens compose with free-text filters (e.g. `login :failed` shows only failed tests whose name contains "login"); the run button re-runs only the visible (filtered) tests
+- Pass/fail/total counters in the Specs panel header — live totals update as tests complete, showing the count of all tests, passed tests (✓), and failed tests (✗)
 
 ### Fixed
 - `browser.storageState()` now correctly captures cookies set during page navigation — the cookie jar was previously read from the wrong Hammerhead proxy session (the main session rather than the control-panel session that actually handles iframe navigation requests), so the returned `cookieJar` was always empty
+- TypeScript configuration files (`.ts` extension) are now supported for `tx.config.ts` — the config loader now includes `.ts` files in its search and loads them via the TypeScript pipeline
+- Test file resolution no longer produces duplicate entries when the same path is matched by multiple glob patterns
+
+### Changed
+- `src/browser/browser.ts` refactored — `Mouse`, `Keyboard`, and `Locator` implementations extracted into dedicated `src/browser/mouse.ts`, `src/browser/keyboard.ts`, and `src/browser/locator.ts` modules for maintainability
+- Watcher now tracks files using paths relative to the watch base directory, fixing edge cases where absolute-path comparisons failed to match on reload
 
 ## [0.0.7]
 
