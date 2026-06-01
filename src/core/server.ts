@@ -2,9 +2,9 @@
  * HTTP Server - Serves control panel HTML; WebSocket for all API communication
  */
 
-import * as http from 'http';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { generateControlPanelHTML, type ControlPanelConfig } from '../panel/controlPanel';
 import { parseTestFile, bundleTestFile, ParsedFile } from '../runner/runner';
@@ -14,6 +14,7 @@ import type { TaskHandler } from '../types';
 export interface TestServerConfig {
   port?: number;
   testFiles?: string[];
+  watchBaseDir?: string;
   reporters?: Reporter[];
   testMode?: boolean;
   snapshot?: boolean;
@@ -48,8 +49,8 @@ export class TestServer {
   private _donePromise: Promise<{ passed: number; failed: number }>;
   private _wss: WebSocketServer | null = null;
   private _wsClients = new Set<WebSocket>();
-  private _onGetCookieJar: (() => string) | undefined;
-  private _onSetCookieJar: ((jar: string | null) => void) | undefined;
+  private _getCookieJarCb: (() => string) | undefined;
+  private _setCookieJarCb: ((jar: string | null) => void) | undefined;
 
   constructor(config: TestServerConfig = {}) {
     this.port = config.port ?? 11339;
@@ -59,7 +60,10 @@ export class TestServer {
     this.testFileMap = new Map();
     if (config.testFiles) {
       for (const f of config.testFiles) {
-        this.testFileMap.set(path.basename(f), f);
+        const fileKey = config.watchBaseDir
+          ? path.relative(config.watchBaseDir, f).replace(/\\/g, '/')
+          : path.basename(f);
+        this.testFileMap.set(fileKey, f);
       }
     }
     this.testMode = config.testMode ?? false;
@@ -70,8 +74,8 @@ export class TestServer {
     this.expectTimeout = config.expectTimeout;
     this.testTimeout = config.testTimeout;
     this.retries = config.retries;
-    this._onGetCookieJar = config.onGetCookieJar;
-    this._onSetCookieJar = config.onSetCookieJar;
+    this._getCookieJarCb = config.onGetCookieJar;
+    this._setCookieJarCb = config.onSetCookieJar;
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 
@@ -158,197 +162,205 @@ export class TestServer {
   }
 
   private _handleWsMessage(ws: WebSocket, msg: any): void {
-    switch (msg.type) {
-      case 'run-begin': {
-        try {
-          const specs = msg.specs as Array<{ file: string; tests: string[] | null }>;
-          const allTestCases = specs.flatMap(({ file, tests }) => {
-            const parsed = this.parsedCache.get(file);
-            if (!parsed) return [];
-            const cases = parsed.tests.map(t => ({
-              title: t.name,
-              fullTitle: t.suite ? `${t.suite} > ${t.name}` : t.name,
-            }));
-            return tests === null ? cases : cases.filter(c => tests.includes(c.fullTitle));
-          });
-          const suite: Suite = { title: '', tests: allTestCases, allTests() { return this.tests; } };
-          this.emitter.emitBegin({ testFiles: specs.map(s => s.file) }, suite);
-        } catch { /* ignore */ }
-        break;
-      }
+    type H = (ws: WebSocket, msg: any) => void | Promise<void>;
+    const dispatch: Record<string, H> = {
+      'run-begin':          (ws, msg) => this._onRunBegin(ws, msg),
+      'run-end':            (ws, msg) => this._onRunEnd(ws, msg),
+      'report':             (ws, msg) => this._onReport(ws, msg),
+      'task':               (ws, msg) => this._onTask(ws, msg),
+      'done':               (ws, msg) => this._onDone(ws, msg),
+      'artifact':           (ws, msg) => this._onArtifact(ws, msg),
+      'save-download':      (ws, msg) => this._onSaveDownload(ws, msg),
+      'get-tests':          (ws, msg) => this._onGetTests(ws, msg),
+      'get-test-source':    (ws, msg) => this._onGetTestSource(ws, msg),
+      'get-cookie-jar':     (ws, msg) => this._onGetCookieJar(ws, msg),
+      'set-cookie-jar':     (ws, msg) => this._onSetCookieJar(ws, msg),
+      'save-storage-state': (ws, msg) => this._onSaveStorageState(ws, msg),
+      'load-storage-state': (ws, msg) => this._onLoadStorageState(ws, msg),
+    };
+    const h = dispatch[msg.type];
+    if (h) Promise.resolve(h(ws, msg)).catch(/* ignore */ () => {});
+  }
 
-      case 'run-end': {
-        const { passed, failed, total, duration } = msg as { passed: number; failed: number; total: number; duration: number };
-        this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
-        break;
-      }
+  private _onRunBegin(_ws: WebSocket, msg: any): void {
+    try {
+      const specs = msg.specs as Array<{ file: string; tests: string[] | null }>;
+      const allTestCases = specs.flatMap(({ file, tests }) => {
+        const parsed = this.parsedCache.get(file);
+        if (!parsed) return [];
+        const cases = parsed.tests.map(t => ({
+          title: t.name,
+          fullTitle: t.suite ? `${t.suite} > ${t.name}` : t.name,
+        }));
+        return tests === null ? cases : cases.filter(c => tests.includes(c.fullTitle));
+      });
+      const suite: Suite = { title: '', tests: allTestCases, allTests() { return this.tests; } };
+      this.emitter.emitBegin({ testFiles: specs.map(s => s.file) }, suite);
+    } catch { /* ignore */ }
+  }
 
-      case 'report': {
-        try {
-          const tests = msg.tests as Array<{ name: string; passed: boolean; error?: string; duration: number; logs?: LogEntry[] }>;
-          for (const t of tests) {
-            const testCase = { title: t.name, fullTitle: t.name, file: msg.filename as string | undefined };
-            const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs };
-            this.emitter.emitTestBegin(testCase, result);
-            this.emitter.emitTestEnd(testCase, result);
-          }
-        } catch { /* ignore */ }
-        break;
-      }
+  private _onRunEnd(_ws: WebSocket, msg: any): void {
+    const { passed, failed, total, duration } = msg as { passed: number; failed: number; total: number; duration: number };
+    this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
+  }
 
-      case 'task': {
-        const { id, name, payload } = msg as { id: string; name: string; payload?: unknown };
-        const handler = this.tasks[name];
-        if (!handler) {
-          ws.send(JSON.stringify({ type: 'task-result', id, error: `Task not found: "${name}"` }));
-          break;
-        }
-        Promise.resolve(handler(payload)).then(result => {
-          ws.send(JSON.stringify({ type: 'task-result', id, result: result ?? null }));
-        }).catch((err: any) => {
-          ws.send(JSON.stringify({ type: 'task-result', id, error: err.message ?? String(err) }));
+  private _onReport(_ws: WebSocket, msg: any): void {
+    try {
+      const tests = msg.tests as Array<{ name: string; passed: boolean; error?: string; duration: number; logs?: LogEntry[] }>;
+      for (const t of tests) {
+        const testCase = { title: t.name, fullTitle: t.name, file: msg.filename as string | undefined };
+        const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs };
+        this.emitter.emitTestBegin(testCase, result);
+        this.emitter.emitTestEnd(testCase, result);
+      }
+    } catch { /* ignore */ }
+  }
+
+  private _onTask(ws: WebSocket, msg: any): void | Promise<void> {
+    const { id, name, payload } = msg as { id: string; name: string; payload?: unknown };
+    const handler = this.tasks[name];
+    if (!handler) {
+      ws.send(JSON.stringify({ type: 'task-result', id, error: `Task not found: "${name}"` }));
+      return;
+    }
+    return Promise.resolve(handler(payload)).then(result => {
+      ws.send(JSON.stringify({ type: 'task-result', id, result: result ?? null }));
+    }).catch((err: any) => {
+      ws.send(JSON.stringify({ type: 'task-result', id, error: err.message ?? String(err) }));
+    });
+  }
+
+  private _onDone(_ws: WebSocket, msg: any): void {
+    try {
+      const { passed, failed } = msg as { passed: number; failed: number };
+      this._doneResolve?.({ passed, failed });
+    } catch { this._doneResolve?.({ passed: 0, failed: 1 }); }
+  }
+
+  private _onArtifact(_ws: WebSocket, msg: any): void {
+    try {
+      const { name, ext, data } = msg as { name: string; ext: string; data: string };
+      const filename = `${name}.${ext ?? 'png'}`;
+      const filePath = path.resolve(process.cwd(), filename);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
+      console.log(`💾 Artifact saved: ${filePath}`);
+    } catch { /* ignore */ }
+  }
+
+  private _onSaveDownload(ws: WebSocket, msg: any): void {
+    const { id, path: filePath, data } = msg as { id: string; path: string; data: string };
+    try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
+      ws.send(JSON.stringify({ id }));
+    } catch (err: any) {
+      ws.send(JSON.stringify({ id, error: err.message ?? String(err) }));
+    }
+  }
+
+  private _onGetTests(ws: WebSocket, msg: any): void {
+    const { id } = msg as { id: string };
+    try {
+      let parsedFiles: ParsedFile[];
+      if (this.testFileMap.size > 0) {
+        parsedFiles = Array.from(this.testFileMap.entries()).map(([fileKey, absPath]) => {
+          const cached = this.parsedCache.get(fileKey);
+          if (cached) return cached;
+          const parsed = parseTestFile(absPath);
+          parsed.filename = fileKey;
+          return parsed;
         });
-        break;
+      } else if (this.parsedCache.size > 0) {
+        parsedFiles = Array.from(this.parsedCache.values());
+      } else {
+        const examplesDir = path.join(__dirname, 'examples');
+        parsedFiles = fs.readdirSync(examplesDir)
+          .filter(f => f.endsWith('.js'))
+          .sort()
+          .map(f => parseTestFile(path.join(examplesDir, f)));
       }
+      if (this.grep) {
+        const grep = this.grep;
+        parsedFiles = parsedFiles
+          .map(f => ({ ...f, tests: f.tests.filter(t => {
+            const fullName = t.suite ? `${t.suite} > ${t.name}` : t.name;
+            return grep.test(fullName) || grep.test(t.name) || (t.tags ?? []).some(tag => grep.test(tag));
+          }) }))
+          .filter(f => f.tests.length > 0);
+      }
+      ws.send(JSON.stringify({ type: 'tests', id, data: parsedFiles }));
+    } catch (err: any) {
+      ws.send(JSON.stringify({ type: 'tests', id, error: err.message }));
+    }
+  }
 
-      case 'done': {
-        try {
-          const { passed, failed } = msg as { passed: number; failed: number };
-          this._doneResolve?.({ passed, failed });
-        } catch { this._doneResolve?.({ passed: 0, failed: 1 }); }
-        break;
-      }
+  private _onGetTestSource(ws: WebSocket, msg: any): void | Promise<void> {
+    const { id, file } = msg as { id: string; file: string };
+    const isAbsolutePath = (f: string) => f.startsWith('/') || f.startsWith('\\') || /^[A-Za-z]:/.test(f);
+    if (!file || file.includes('..') || file.includes('\\') || isAbsolutePath(file) || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
+      ws.send(JSON.stringify({ type: 'test-source', id, error: 'Invalid filename' }));
+      return;
+    }
+    const bundled = this.bundledCodeMap.get(file);
+    if (bundled) {
+      ws.send(JSON.stringify({ type: 'test-source', id, data: bundled }));
+      return;
+    }
+    const filePath = this.testFileMap.get(file) ?? path.join(__dirname, 'examples', path.basename(file));
+    if (!fs.existsSync(filePath)) {
+      ws.send(JSON.stringify({ type: 'test-source', id, error: 'Not found' }));
+      return;
+    }
+    return bundleTestFile(filePath).then(code => {
+      this.bundledCodeMap.set(file, code);
+      ws.send(JSON.stringify({ type: 'test-source', id, data: code }));
+    }).catch((err: any) => {
+      ws.send(JSON.stringify({ type: 'test-source', id, error: `Bundle error: ${err.message}` }));
+    });
+  }
 
-      case 'artifact': {
-        try {
-          const { name, ext, data } = msg as { name: string; ext: string; data: string };
-          const filename = `${name}.${ext ?? 'png'}`;
-          const filePath = path.resolve(process.cwd(), filename);
-          fs.mkdirSync(path.dirname(filePath), { recursive: true });
-          fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
-          console.log(`💾 Artifact saved: ${filePath}`);
-        } catch { /* ignore */ }
-        break;
-      }
+  private _onGetCookieJar(ws: WebSocket, msg: any): void {
+    const { id } = msg as { id: string };
+    try {
+      const jar = this._getCookieJarCb ? JSON.parse(this._getCookieJarCb()) : {};
+      ws.send(JSON.stringify({ type: 'cookie-jar', id, jar }));
+    } catch (err: any) {
+      ws.send(JSON.stringify({ type: 'cookie-jar', id, error: err.message ?? String(err) }));
+    }
+  }
 
-      case 'save-download': {
-        const { id, path: filePath, data } = msg as { id: string; path: string; data: string };
-        try {
-          fs.mkdirSync(path.dirname(filePath), { recursive: true });
-          fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
-          ws.send(JSON.stringify({ id }));
-        } catch (err: any) {
-          ws.send(JSON.stringify({ id, error: err.message ?? String(err) }));
-        }
-        break;
-      }
+  private _onSetCookieJar(ws: WebSocket, msg: any): void {
+    const { id, jar } = msg as { id: string; jar: object };
+    try {
+      const serialized = jar && Array.isArray((jar as any).cookies) ? JSON.stringify(jar) : null;
+      this._setCookieJarCb?.(serialized);
+      ws.send(JSON.stringify({ type: 'cookie-jar-set', id }));
+    } catch (err: any) {
+      ws.send(JSON.stringify({ type: 'cookie-jar-set', id, error: err.message ?? String(err) }));
+    }
+  }
 
-      case 'get-tests': {
-        const { id } = msg as { id: string };
-        try {
-          let parsedFiles: ParsedFile[];
-          if (this.testFileMap.size > 0) {
-            parsedFiles = Array.from(this.testFileMap.values()).map(absPath => {
-              const base = path.basename(absPath);
-              return this.parsedCache.get(base) ?? parseTestFile(absPath);
-            });
-          } else if (this.parsedCache.size > 0) {
-            parsedFiles = Array.from(this.parsedCache.values());
-          } else {
-            const examplesDir = path.join(__dirname, 'examples');
-            parsedFiles = fs.readdirSync(examplesDir)
-              .filter(f => f.endsWith('.js'))
-              .sort()
-              .map(f => parseTestFile(path.join(examplesDir, f)));
-          }
-          if (this.grep) {
-            const grep = this.grep;
-            parsedFiles = parsedFiles
-              .map(f => ({ ...f, tests: f.tests.filter(t => {
-                const fullName = t.suite ? `${t.suite} > ${t.name}` : t.name;
-                return grep.test(fullName) || grep.test(t.name) || (t.tags ?? []).some(tag => grep.test(tag));
-              }) }))
-              .filter(f => f.tests.length > 0);
-          }
-          ws.send(JSON.stringify({ type: 'tests', id, data: parsedFiles }));
-        } catch (err: any) {
-          ws.send(JSON.stringify({ type: 'tests', id, error: err.message }));
-        }
-        break;
-      }
+  private _onSaveStorageState(ws: WebSocket, msg: any): void {
+    const { id, filePath: ssPath, data } = msg as { id: string; filePath: string; data: string };
+    try {
+      const resolved = path.resolve(process.cwd(), ssPath);
+      fs.mkdirSync(path.dirname(resolved), { recursive: true });
+      fs.writeFileSync(resolved, data, 'utf8');
+      ws.send(JSON.stringify({ type: 'storage-state-saved', id }));
+    } catch (err: any) {
+      ws.send(JSON.stringify({ type: 'storage-state-saved', id, error: err.message ?? String(err) }));
+    }
+  }
 
-      case 'get-test-source': {
-        const { id, file } = msg as { id: string; file: string };
-        if (!file || file.includes('/') || file.includes('\\') || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
-          ws.send(JSON.stringify({ type: 'test-source', id, error: 'Invalid filename' }));
-          break;
-        }
-        const bundled = this.bundledCodeMap.get(file);
-        if (bundled) {
-          ws.send(JSON.stringify({ type: 'test-source', id, data: bundled }));
-          break;
-        }
-        const filePath = this.testFileMap.get(file) ?? path.join(__dirname, 'examples', file);
-        if (!fs.existsSync(filePath)) {
-          ws.send(JSON.stringify({ type: 'test-source', id, error: 'Not found' }));
-          break;
-        }
-        bundleTestFile(filePath).then(code => {
-          this.bundledCodeMap.set(file, code);
-          ws.send(JSON.stringify({ type: 'test-source', id, data: code }));
-        }).catch((err: any) => {
-          ws.send(JSON.stringify({ type: 'test-source', id, error: `Bundle error: ${err.message}` }));
-        });
-        break;
-      }
-
-      case 'get-cookie-jar': {
-        const { id } = msg as { id: string };
-        try {
-          const jar = this._onGetCookieJar ? JSON.parse(this._onGetCookieJar()) : {};
-          ws.send(JSON.stringify({ type: 'cookie-jar', id, jar }));
-        } catch (err: any) {
-          ws.send(JSON.stringify({ type: 'cookie-jar', id, error: (err as any).message ?? String(err) }));
-        }
-        break;
-      }
-
-      case 'set-cookie-jar': {
-        const { id, jar } = msg as { id: string; jar: object };
-        try {
-          const serialized = jar && Array.isArray((jar as any).cookies) ? JSON.stringify(jar) : null;
-          this._onSetCookieJar?.(serialized);
-          ws.send(JSON.stringify({ type: 'cookie-jar-set', id }));
-        } catch (err: any) {
-          ws.send(JSON.stringify({ type: 'cookie-jar-set', id, error: (err as any).message ?? String(err) }));
-        }
-        break;
-      }
-
-      case 'save-storage-state': {
-        const { id, filePath: ssPath, data } = msg as { id: string; filePath: string; data: string };
-        try {
-          const resolved = path.resolve(process.cwd(), ssPath);
-          fs.mkdirSync(path.dirname(resolved), { recursive: true });
-          fs.writeFileSync(resolved, data, 'utf8');
-          ws.send(JSON.stringify({ type: 'storage-state-saved', id }));
-        } catch (err: any) {
-          ws.send(JSON.stringify({ type: 'storage-state-saved', id, error: err.message ?? String(err) }));
-        }
-        break;
-      }
-
-      case 'load-storage-state': {
-        const { id, filePath: ssPath } = msg as { id: string; filePath: string };
-        try {
-          const resolved = path.resolve(process.cwd(), ssPath);
-          const data = fs.readFileSync(resolved, 'utf8');
-          ws.send(JSON.stringify({ type: 'storage-state-loaded', id, data }));
-        } catch (err: any) {
-          ws.send(JSON.stringify({ type: 'storage-state-loaded', id, error: err.message ?? String(err) }));
-        }
-        break;
-      }
+  private _onLoadStorageState(ws: WebSocket, msg: any): void {
+    const { id, filePath: ssPath } = msg as { id: string; filePath: string };
+    try {
+      const resolved = path.resolve(process.cwd(), ssPath);
+      const data = fs.readFileSync(resolved, 'utf8');
+      ws.send(JSON.stringify({ type: 'storage-state-loaded', id, data }));
+    } catch (err: any) {
+      ws.send(JSON.stringify({ type: 'storage-state-loaded', id, error: err.message ?? String(err) }));
     }
   }
 

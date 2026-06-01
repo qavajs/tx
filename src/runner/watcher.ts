@@ -11,14 +11,16 @@ import { matchGlob } from '../utils/glob';
 async function processFile(filePath: string, server: TestServer, baseDir?: string): Promise<void> {
   const basename = path.basename(filePath);
   const relPath = baseDir ? path.relative(baseDir, filePath).replace(/\\/g, '/') : undefined;
+  const fileKey = relPath ?? basename;
   try {
     const code = await bundleTestFile(filePath);
     const parsed = parseTestFile(filePath);
+    parsed.filename = fileKey;
     parsed.relPath = relPath;
-    server.updateFile(basename, code, parsed);
-    console.log(`📦 Bundled: ${basename}`);
+    server.updateFile(fileKey, code, parsed);
+    console.log(`📦 Bundled: ${fileKey}`);
   } catch (err: any) {
-    console.error(`❌ Bundle error [${basename}]: ${err.message}`);
+    console.error(`❌ Bundle error [${fileKey}]: ${err.message}`);
   }
 }
 
@@ -69,9 +71,9 @@ export async function startWatcher(
           if (fs.existsSync(fullPath)) {
             processFile(fullPath, server, baseDir);
           } else {
-            const basename = path.basename(fullPath);
-            server.removeFile(basename);
-            console.log(`🗑️  Removed: ${basename}`);
+            const fileKey = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+            server.removeFile(fileKey);
+            console.log(`🗑️  Removed: ${fileKey}`);
           }
         }, 300));
       });

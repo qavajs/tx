@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `testInfo` fixture — provides read-only metadata about the currently running test; exposes `title` (leaf test name), `titlePath` (full suite-to-test name array), `retry` (zero-based attempt index), `tags` (test-level tags), `timeout`, `retries`, `actionTimeout`, and `expectTimeout` sourced from the active config; the `TestInfo` interface is exported from `'@qavajs/tx'` for use in type annotations
 - `browser.storageState(opts?)` — captures the current cookie jar and `localStorage` items for the active origin; pass `{ path }` to also write the state to a JSON file; returns a `TxStorageState` object that can be passed directly to `browser.loadStorageState()`
 - `browser.loadStorageState(state)` — restores cookies and `localStorage` from a `TxStorageState` object or a file path written by `browser.storageState({ path })`; cookies are applied to the proxy session immediately; `localStorage` items are written for the current page's origin; accepts an inline state object to seed specific cookies or storage values without navigating
 
