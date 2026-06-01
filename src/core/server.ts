@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { generateControlPanelHTML, type ControlPanelConfig } from '../panel/controlPanel';
 import { parseTestFile, bundleTestFile, ParsedFile } from '../runner/runner';
-import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from '../runner/reporter';
+import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from '../runner/reporter';
 import type { TaskHandler } from '../types';
 import type { BrowserMessage, Msg } from '../ws-protocol';
 
@@ -165,17 +165,17 @@ export class TestServer {
   private _handleWsMessage(ws: WebSocket, msg: BrowserMessage): void {
     const run = (fn: () => void | Promise<void>) => Promise.resolve(fn()).catch(() => {});
     switch (msg.type) {
-      case 'run-begin':          run(() => this._onRunBegin(msg)); break;
-      case 'run-end':            run(() => this._onRunEnd(msg)); break;
-      case 'report':             run(() => this._onReport(msg)); break;
-      case 'task':               run(() => this._onTask(ws, msg)); break;
-      case 'done':               run(() => this._onDone(msg)); break;
-      case 'artifact':           run(() => this._onArtifact(msg)); break;
-      case 'save-download':      run(() => this._onSaveDownload(ws, msg)); break;
-      case 'get-tests':          run(() => this._onGetTests(ws, msg)); break;
-      case 'get-test-source':    run(() => this._onGetTestSource(ws, msg)); break;
-      case 'get-cookie-jar':     run(() => this._onGetCookieJar(ws, msg)); break;
-      case 'set-cookie-jar':     run(() => this._onSetCookieJar(ws, msg)); break;
+      case 'run-begin': run(() => this._onRunBegin(msg)); break;
+      case 'run-end': run(() => this._onRunEnd(msg)); break;
+      case 'report': run(() => this._onReport(msg)); break;
+      case 'task': run(() => this._onTask(ws, msg)); break;
+      case 'done': run(() => this._onDone(msg)); break;
+      case 'artifact': run(() => this._onArtifact(msg)); break;
+      case 'save-download': run(() => this._onSaveDownload(ws, msg)); break;
+      case 'get-tests': run(() => this._onGetTests(ws, msg)); break;
+      case 'get-test-source': run(() => this._onGetTestSource(ws, msg)); break;
+      case 'get-cookie-jar': run(() => this._onGetCookieJar(ws, msg)); break;
+      case 'set-cookie-jar': run(() => this._onSetCookieJar(ws, msg)); break;
       case 'save-storage-state': run(() => this._onSaveStorageState(ws, msg)); break;
       case 'load-storage-state': run(() => this._onLoadStorageState(ws, msg)); break;
     }

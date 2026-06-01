@@ -8,7 +8,7 @@ import type { Preprocessor } from '../types';
 let _preprocessor: Preprocessor | null = null;
 
 const _bundleCache = new Map<string, { hash: string; result: string }>();
-const _parseCache  = new Map<string, { hash: string; result: ParsedFile }>();
+const _parseCache = new Map<string, { hash: string; result: ParsedFile }>();
 
 function contentHash(s: string): string {
   return crypto.createHash('md5').update(s).digest('hex');

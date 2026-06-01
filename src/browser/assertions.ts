@@ -36,7 +36,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
     catch (e: unknown) { entry.fail(e instanceof Error ? e.message : String(e)); throw e; }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number, expected?: string) =>
     la(pfx + cmd, expected !== undefined ? `${locDesc}  ${expected}` : locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
 
