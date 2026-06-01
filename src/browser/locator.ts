@@ -1,23 +1,6 @@
 import { _awaitOrAbort, iframeDoc, iframeWin, _withCommand } from './browser';
-
-// ── Text / selector helpers ───────────────────────────────────────────────────
-
-export function textMatches(el: Element, text: string | RegExp, exact = false): boolean {
-  const t = (el.textContent ?? '').trim();
-  return text instanceof RegExp ? text.test(t) : exact ? t === text : t.includes(text);
-}
-
-export function resolveSelector(selector: string): { base: string; hasText: string | null }[] {
-  return selector.split(',').map(s => {
-    s = s.trim();
-    const m = s.match(/:has-text\(["'](.+?)["']\)/);
-    if (m) {
-      const base = s.replace(/:has-text\(["'](.+?)["']\)/, '').trim() || '*';
-      return { base, hasText: m[1] };
-    }
-    return { base: s, hasText: null };
-  });
-}
+export { textMatches, resolveSelector } from './locator-utils';
+import { textMatches, resolveSelector } from './locator-utils';
 
 export const ROLE_SELECTORS: Record<string, string> = {
   button:      'button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]',
@@ -63,8 +46,9 @@ export async function _checkLocatorHandlers(): Promise<void> {
       h.invocations++;
       await h.handler(h.locator);
       if (!h.noWaitAfter) {
+        const waitMs = window.__CONFIG__?.actionTimeout ?? 5000;
         const t0 = Date.now();
-        while (Date.now() - t0 < 5000 && await h.locator.isVisible()) {
+        while (Date.now() - t0 < waitMs && await h.locator.isVisible()) {
           await _awaitOrAbort(50);
         }
       }

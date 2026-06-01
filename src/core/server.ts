@@ -10,6 +10,7 @@ import { generateControlPanelHTML, type ControlPanelConfig } from '../panel/cont
 import { parseTestFile, bundleTestFile, ParsedFile } from '../runner/runner';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult, type LogEntry } from '../runner/reporter';
 import type { TaskHandler } from '../types';
+import type { BrowserMessage, Msg } from '../ws-protocol';
 
 export interface TestServerConfig {
   port?: number;
@@ -148,8 +149,8 @@ export class TestServer {
         ws.on('close', () => this._wsClients.delete(ws));
 
         ws.on('message', (rawData: Buffer) => {
-          let msg: any;
-          try { msg = JSON.parse(rawData.toString()); } catch { return; }
+          let msg: BrowserMessage;
+          try { msg = JSON.parse(rawData.toString()) as BrowserMessage; } catch { return; }
           this._handleWsMessage(ws, msg);
         });
       });
@@ -161,30 +162,28 @@ export class TestServer {
     });
   }
 
-  private _handleWsMessage(ws: WebSocket, msg: any): void {
-    type H = (ws: WebSocket, msg: any) => void | Promise<void>;
-    const dispatch: Record<string, H> = {
-      'run-begin':          (ws, msg) => this._onRunBegin(ws, msg),
-      'run-end':            (ws, msg) => this._onRunEnd(ws, msg),
-      'report':             (ws, msg) => this._onReport(ws, msg),
-      'task':               (ws, msg) => this._onTask(ws, msg),
-      'done':               (ws, msg) => this._onDone(ws, msg),
-      'artifact':           (ws, msg) => this._onArtifact(ws, msg),
-      'save-download':      (ws, msg) => this._onSaveDownload(ws, msg),
-      'get-tests':          (ws, msg) => this._onGetTests(ws, msg),
-      'get-test-source':    (ws, msg) => this._onGetTestSource(ws, msg),
-      'get-cookie-jar':     (ws, msg) => this._onGetCookieJar(ws, msg),
-      'set-cookie-jar':     (ws, msg) => this._onSetCookieJar(ws, msg),
-      'save-storage-state': (ws, msg) => this._onSaveStorageState(ws, msg),
-      'load-storage-state': (ws, msg) => this._onLoadStorageState(ws, msg),
-    };
-    const h = dispatch[msg.type];
-    if (h) Promise.resolve(h(ws, msg)).catch(/* ignore */ () => {});
+  private _handleWsMessage(ws: WebSocket, msg: BrowserMessage): void {
+    const run = (fn: () => void | Promise<void>) => Promise.resolve(fn()).catch(() => {});
+    switch (msg.type) {
+      case 'run-begin':          run(() => this._onRunBegin(msg)); break;
+      case 'run-end':            run(() => this._onRunEnd(msg)); break;
+      case 'report':             run(() => this._onReport(msg)); break;
+      case 'task':               run(() => this._onTask(ws, msg)); break;
+      case 'done':               run(() => this._onDone(msg)); break;
+      case 'artifact':           run(() => this._onArtifact(msg)); break;
+      case 'save-download':      run(() => this._onSaveDownload(ws, msg)); break;
+      case 'get-tests':          run(() => this._onGetTests(ws, msg)); break;
+      case 'get-test-source':    run(() => this._onGetTestSource(ws, msg)); break;
+      case 'get-cookie-jar':     run(() => this._onGetCookieJar(ws, msg)); break;
+      case 'set-cookie-jar':     run(() => this._onSetCookieJar(ws, msg)); break;
+      case 'save-storage-state': run(() => this._onSaveStorageState(ws, msg)); break;
+      case 'load-storage-state': run(() => this._onLoadStorageState(ws, msg)); break;
+    }
   }
 
-  private _onRunBegin(_ws: WebSocket, msg: any): void {
+  private _onRunBegin(msg: Msg<'run-begin'>): void {
     try {
-      const specs = msg.specs as Array<{ file: string; tests: string[] | null }>;
+      const { specs } = msg;
       const allTestCases = specs.flatMap(({ file, tests }) => {
         const parsed = this.parsedCache.get(file);
         if (!parsed) return [];
@@ -199,16 +198,15 @@ export class TestServer {
     } catch { /* ignore */ }
   }
 
-  private _onRunEnd(_ws: WebSocket, msg: any): void {
-    const { passed, failed, total, duration } = msg as { passed: number; failed: number; total: number; duration: number };
+  private _onRunEnd(msg: Msg<'run-end'>): void {
+    const { passed, failed, total, duration } = msg;
     this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
   }
 
-  private _onReport(_ws: WebSocket, msg: any): void {
+  private _onReport(msg: Msg<'report'>): void {
     try {
-      const tests = msg.tests as Array<{ name: string; passed: boolean; error?: string; duration: number; logs?: LogEntry[] }>;
-      for (const t of tests) {
-        const testCase = { title: t.name, fullTitle: t.name, file: msg.filename as string | undefined };
+      for (const t of msg.tests) {
+        const testCase = { title: t.name, fullTitle: t.name, file: msg.filename };
         const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs };
         this.emitter.emitTestBegin(testCase, result);
         this.emitter.emitTestEnd(testCase, result);
@@ -216,8 +214,8 @@ export class TestServer {
     } catch { /* ignore */ }
   }
 
-  private _onTask(ws: WebSocket, msg: any): void | Promise<void> {
-    const { id, name, payload } = msg as { id: string; name: string; payload?: unknown };
+  private _onTask(ws: WebSocket, msg: Msg<'task'>): void | Promise<void> {
+    const { id, name, payload } = msg;
     const handler = this.tasks[name];
     if (!handler) {
       ws.send(JSON.stringify({ type: 'task-result', id, error: `Task not found: "${name}"` }));
@@ -230,16 +228,16 @@ export class TestServer {
     });
   }
 
-  private _onDone(_ws: WebSocket, msg: any): void {
+  private _onDone(msg: Msg<'done'>): void {
     try {
-      const { passed, failed } = msg as { passed: number; failed: number };
+      const { passed, failed } = msg;
       this._doneResolve?.({ passed, failed });
     } catch { this._doneResolve?.({ passed: 0, failed: 1 }); }
   }
 
-  private _onArtifact(_ws: WebSocket, msg: any): void {
+  private _onArtifact(msg: Msg<'artifact'>): void {
     try {
-      const { name, ext, data } = msg as { name: string; ext: string; data: string };
+      const { name, ext, data } = msg;
       const filename = `${name}.${ext ?? 'png'}`;
       const filePath = path.resolve(process.cwd(), filename);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -248,8 +246,8 @@ export class TestServer {
     } catch { /* ignore */ }
   }
 
-  private _onSaveDownload(ws: WebSocket, msg: any): void {
-    const { id, path: filePath, data } = msg as { id: string; path: string; data: string };
+  private _onSaveDownload(ws: WebSocket, msg: Msg<'save-download'>): void {
+    const { id, path: filePath, data } = msg;
     try {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
@@ -259,8 +257,8 @@ export class TestServer {
     }
   }
 
-  private _onGetTests(ws: WebSocket, msg: any): void {
-    const { id } = msg as { id: string };
+  private _onGetTests(ws: WebSocket, msg: Msg<'get-tests'>): void {
+    const { id } = msg;
     try {
       let parsedFiles: ParsedFile[];
       if (this.testFileMap.size > 0) {
@@ -295,8 +293,8 @@ export class TestServer {
     }
   }
 
-  private _onGetTestSource(ws: WebSocket, msg: any): void | Promise<void> {
-    const { id, file } = msg as { id: string; file: string };
+  private _onGetTestSource(ws: WebSocket, msg: Msg<'get-test-source'>): void | Promise<void> {
+    const { id, file } = msg;
     const isAbsolutePath = (f: string) => f.startsWith('/') || f.startsWith('\\') || /^[A-Za-z]:/.test(f);
     if (!file || file.includes('..') || file.includes('\\') || isAbsolutePath(file) || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
       ws.send(JSON.stringify({ type: 'test-source', id, error: 'Invalid filename' }));
@@ -320,8 +318,8 @@ export class TestServer {
     });
   }
 
-  private _onGetCookieJar(ws: WebSocket, msg: any): void {
-    const { id } = msg as { id: string };
+  private _onGetCookieJar(ws: WebSocket, msg: Msg<'get-cookie-jar'>): void {
+    const { id } = msg;
     try {
       const jar = this._getCookieJarCb ? JSON.parse(this._getCookieJarCb()) : {};
       ws.send(JSON.stringify({ type: 'cookie-jar', id, jar }));
@@ -330,8 +328,8 @@ export class TestServer {
     }
   }
 
-  private _onSetCookieJar(ws: WebSocket, msg: any): void {
-    const { id, jar } = msg as { id: string; jar: object };
+  private _onSetCookieJar(ws: WebSocket, msg: Msg<'set-cookie-jar'>): void {
+    const { id, jar } = msg;
     try {
       const serialized = jar && Array.isArray((jar as any).cookies) ? JSON.stringify(jar) : null;
       this._setCookieJarCb?.(serialized);
@@ -341,8 +339,8 @@ export class TestServer {
     }
   }
 
-  private _onSaveStorageState(ws: WebSocket, msg: any): void {
-    const { id, filePath: ssPath, data } = msg as { id: string; filePath: string; data: string };
+  private _onSaveStorageState(ws: WebSocket, msg: Msg<'save-storage-state'>): void {
+    const { id, filePath: ssPath, data } = msg;
     try {
       const resolved = path.resolve(process.cwd(), ssPath);
       fs.mkdirSync(path.dirname(resolved), { recursive: true });
@@ -353,8 +351,8 @@ export class TestServer {
     }
   }
 
-  private _onLoadStorageState(ws: WebSocket, msg: any): void {
-    const { id, filePath: ssPath } = msg as { id: string; filePath: string };
+  private _onLoadStorageState(ws: WebSocket, msg: Msg<'load-storage-state'>): void {
+    const { id, filePath: ssPath } = msg;
     try {
       const resolved = path.resolve(process.cwd(), ssPath);
       const data = fs.readFileSync(resolved, 'utf8');

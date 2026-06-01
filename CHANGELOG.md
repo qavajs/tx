@@ -4,7 +4,27 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.8]
+
+### Added
+- `_resetBrowserState()` exported from `src/browser/browser` — resets all mutable browser state (handlers, listeners, snapshots, log state) between test runs to prevent cross-test pollution
+- `src/browser/ws.ts` — dedicated WebSocket client module extracted from `browser.ts`; exports `wsConnect`, `wsOnMessage`, `wsSend`, `wsRequest`
+- `src/browser/assertions.ts` — `expect()` and all built-in matchers extracted from `browser.ts` into a focused module
+- `src/browser/locator-utils.ts` — pure `textMatches` and `resolveSelector` helpers extracted from `locator.ts`; no browser-global dependencies, safe to import in Node.js tests
+- `src/constants.ts` — shared port constants (`DEFAULT_PROXY_PORT_1`, `DEFAULT_PROXY_PORT_2`, `DEFAULT_CONTROL_PANEL_PORT`)
+- `src/ws-protocol.ts` — typed WebSocket message protocol; `BrowserMessage` and `ServerMessage` discriminated unions with `Msg<T>` narrow helper replace all untyped `msg: any` casts in `server.ts`
+- `.github/workflows/ci.yml` — CI pipeline that runs `typecheck`, `eslint`, and `test:unit` on every push and pull request
+- Unit tests for `textMatches` / `resolveSelector` (`test/unit/locator.test.ts`, 13 tests) and `runWithFixtures` (`test/unit/executor.test.ts`, 5 tests); total unit test count: 47
+
+### Fixed
+- `runWithFixtures` now guarantees fixture teardown runs even when the test throws — errors from inner fixtures/tests are caught, teardown code after `await use(value)` executes, then the error is re-thrown; matches Playwright's fixture lifecycle guarantee
+- `_checkLocatorHandlers` no longer uses a hardcoded 5 000 ms post-handler wait; now reads `window.__CONFIG__?.actionTimeout ?? 5000` so it respects the configured `actionTimeout`
+- `_withCommand` and `request.fetch` catch blocks narrowed from `catch (e: any)` to `catch (e: unknown)` with explicit `instanceof Error` checks
+- `buildTestQueue` catch block narrowed from `catch (e: any)` to `catch (e: unknown)`
+
+### Changed
+- `browser.ts` reduced from ~2 058 to ~1 740 lines by extracting the WebSocket client and `expect` assertions into dedicated modules; public exports are unchanged
+- `server.ts` `_handleWsMessage` refactored from an untyped string-keyed dispatch table to a `switch` statement over `BrowserMessage['type']`; each handler now receives a fully-typed, narrowed message instead of casting `msg as { … }`
 
 ### Added
 - `testInfo` fixture — provides read-only metadata about the currently running test; exposes `title` (leaf test name), `titlePath` (full suite-to-test name array), `retry` (zero-based attempt index), `tags` (test-level tags), `timeout`, `retries`, `actionTimeout`, and `expectTimeout` sourced from the active config; the `TestInfo` interface is exported from `'@qavajs/tx'` for use in type annotations

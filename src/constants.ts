@@ -1,0 +1,3 @@
+export const DEFAULT_PROXY_PORT_1 = 11337;
+export const DEFAULT_PROXY_PORT_2 = 11338;
+export const DEFAULT_CONTROL_PANEL_PORT = 11339;
