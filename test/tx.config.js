@@ -1,4 +1,7 @@
+const { vuePlugin } = require('../dist/index.js');
+
 module.exports = {
+  esbuildPlugins: [vuePlugin()],
   proxyHost: 'localhost',
   retries: 0,
   headless: false,

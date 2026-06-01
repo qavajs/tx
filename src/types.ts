@@ -28,6 +28,14 @@ export interface TxConfig {
    * Useful for code injection, import rewriting, or custom syntax transforms.
    */
   preprocessor?: Preprocessor;
+
+  /**
+   * Additional esbuild plugins applied when bundling spec files for the browser.
+   * Use this to support non-standard file types imported by your tests, e.g.:
+   *   const { vuePlugin } = require('@qavajs/tx');
+   *   module.exports = { esbuildPlugins: [vuePlugin()] };
+   */
+  esbuildPlugins?: import('esbuild').Plugin[];
   /** Proxy hostname (default: localhost) */
   proxyHost?: string;
 

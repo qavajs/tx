@@ -274,6 +274,7 @@ async function main() {
     reporters,
     tasks: fileConfig.tasks,
     preprocessor: fileConfig.preprocessor,
+    esbuildPlugins: fileConfig.esbuildPlugins,
     grep,
   });
 

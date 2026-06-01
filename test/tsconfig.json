@@ -13,6 +13,7 @@
   },
   "include": [
     "../types/tx.d.ts",
+    "./shims-vue.d.ts",
     "./specs/**/*.ts",
     "./specs/**/*.tsx",
     "./specs/**/*.js",

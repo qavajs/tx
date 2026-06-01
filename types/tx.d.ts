@@ -810,4 +810,7 @@ declare module '@qavajs/tx' {
   export function beforeEach(fn: () => void | Promise<void>): void;
   export function afterEach(fn: (fixtures: TxBaseFixtures) => void | Promise<void>): void;
   export function afterEach(fn: () => void | Promise<void>): void;
+
+  /** esbuild plugin that compiles Vue SFCs (.vue files) for use in test specs. */
+  export function vuePlugin(): import('esbuild').Plugin;
 }
