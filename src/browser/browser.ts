@@ -2364,9 +2364,8 @@ export const page = {
 
   async registerMount(mounter: any): Promise<void> {
     return _withCommand('mounter', 'registerMount', async () => {
-      console.log(mounter)
-      // @ts-ignore
-      window['__tx_mount'] = mounter
+      const win = iframeWin() as any;
+      if (win) win['__tx_mount'] = mounter;
     });
   },
 

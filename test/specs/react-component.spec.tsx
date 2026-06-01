@@ -3,20 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { test, expect } from '@qavajs/tx';
 
 function Counter({ initialCount = 0 }) {
-  // const [count, setCount] = useState(initialCount);
-  // return (
-  //   <div>
-  //     <p id="count">Count: {count}</p>
-  //     <button id="inc" onClick={() => setCount(count + 1)}>Increment</button>
-  //     <button id="dec" onClick={() => setCount(count - 1)}>Decrement</button>
-  //   </div>
-  // );
-
-    return (
+  const [count, setCount] = useState(initialCount);
+  return (
     <div>
-      <p id="count">Count: 1</p>
-      <button id="inc" onClick={() => console.log(1)}>Increment</button>
-      <button id="dec" onClick={() => console.log(2)}>Decrement</button>
+      <p id="count">Count: {count}</p>
+      <button id="inc" onClick={() => setCount(count + 1)}>Increment</button>
+      <button id="dec" onClick={() => setCount(count - 1)}>Decrement</button>
     </div>
   );
 }
