@@ -642,6 +642,26 @@ interface TxLogFn {
 /** Attaches named data to the test result for reporters to display. */
 type TxAttachFn = (label: string, body: string, contentType?: string) => void;
 
+/** Metadata about the currently running test, available via the `testInfo` fixture. */
+interface TestInfo {
+  /** The leaf test title (without suite prefix). */
+  title: string;
+  /** Full title path from outermost suite to test name. */
+  titlePath: string[];
+  /** Zero-based retry attempt index (0 on the first run). */
+  retry: number;
+  /** Tags applied to this test. */
+  tags: string[];
+  /** Maximum time this test may run in ms (from `testTimeout` config, default 30000). */
+  timeout: number;
+  /** Maximum number of retry attempts configured (from `retries` config, default 0). */
+  retries: number;
+  /** Default timeout for locator actions in ms (from `actionTimeout` config, default 5000). */
+  actionTimeout: number;
+  /** Default timeout for `expect()` assertion retry loops in ms (from `expectTimeout` config, default 5000). */
+  expectTimeout: number;
+}
+
 /** Groups commands in the log panel under a named collapsible step, and returns the callback's result. */
 interface TxStepFn {
   <T>(title: string, fn: () => Promise<T>): Promise<T>;
@@ -696,6 +716,7 @@ interface TxBaseFixtures {
   log: TxLogFn;
   attach: TxAttachFn;
   step: TxStepFn;
+  testInfo: TestInfo;
 }
 
 interface TxTestOptions {
@@ -733,6 +754,7 @@ declare module '@qavajs/tx' {
   export { TxStorageState };
   export { NodeContext };
   export { TxLogFn, TxAttachFn, TxLogCommandFn, TxCommandHandle, TxGroupHandle, TxStepFn };
+  export { TestInfo };
   export { TxBaseFixtures, TxFixtureFn, TxFixtureDefs, TxUseCallback, TestFactory, TxTestOptions, TxDescribeOptions };
   export { CustomMatcherResult, CustomMatcherFn };
   export { TxLocatorMatchers, TxPageMatchers, TxValueMatchers };
