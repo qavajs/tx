@@ -1,6 +1,8 @@
 import { _awaitOrAbort, iframeDoc, iframeWin, _withCommand } from './browser';
+import { actionTimeout } from './config';
 export { textMatches, resolveSelector } from './locator-utils';
 import { textMatches, resolveSelector } from './locator-utils';
+import { makeLocatorQueries } from './locator-queries';
 
 export const ROLE_SELECTORS: Record<string, string> = {
   button:      'button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]',
@@ -46,7 +48,7 @@ export async function _checkLocatorHandlers(): Promise<void> {
       h.invocations++;
       await h.handler(h.locator);
       if (!h.noWaitAfter) {
-        const waitMs = window.__CONFIG__?.actionTimeout ?? 5000;
+        const waitMs = actionTimeout();
         const t0 = Date.now();
         while (Date.now() - t0 < waitMs && await h.locator.isVisible()) {
           await _awaitOrAbort(50);
@@ -70,7 +72,7 @@ export class Locator {
   _el(): Element | null { return this._els()[0] ?? null; }
 
   async _waitForEl(timeout?: number): Promise<HTMLElement> {
-    const _timeout = timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
+    const _timeout = actionTimeout(timeout);
     const t0 = Date.now();
     while (Date.now() - t0 < _timeout) {
       const el = this._el() as HTMLElement | null;
@@ -115,7 +117,7 @@ export class Locator {
     opts: { timeout?: number; force?: boolean } = {},
     action?: 'click' | 'dblclick' | 'rightClick' | 'check' | 'uncheck' | 'fill' | 'clear' | 'selectOption' | 'hover' | 'type',
   ): Promise<HTMLElement> {
-    const timeout = opts.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
+    const timeout = actionTimeout(opts.timeout);
     const force = !!opts.force;
     const needsStable = action === 'click' || action === 'dblclick' || action === 'rightClick' || action === 'check' || action === 'uncheck' || action === 'hover';
     const needsEditable = action === 'fill' || action === 'clear' || action === 'selectOption' || action === 'type';
@@ -403,17 +405,7 @@ export class Locator {
     return _withCommand(this._desc ? `${this._desc}  "${name}"` : `"${name}"`, 'getAttribute', async () => this._el()?.getAttribute(name) ?? null);
   }
   _checkVisibility(): boolean {
-    const el = this._el() as HTMLElement | null;
-    if (!el) return false;
-    if (typeof (el as any).checkVisibility === 'function') {
-      return (el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
-    }
-    const win = iframeWin();
-    if (!win) return false;
-    const s = win.getComputedStyle(el);
-    if (s.visibility === 'hidden' || s.opacity === '0') return false;
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
+    return this._isVisibleElement(this._el());
   }
   async isVisible(): Promise<boolean> {
     return _withCommand(this._desc, 'isVisible', async () => this._checkVisibility());
@@ -466,7 +458,7 @@ export class Locator {
 
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
     const state = opts?.state ?? 'visible';
-    const timeout = opts?.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
+    const timeout = actionTimeout(opts?.timeout);
     return _withCommand(this._desc ? `${this._desc}  ${state}` : state, 'waitFor', async () => {
       const t0 = Date.now();
       while (Date.now() - t0 < timeout) {
@@ -498,6 +490,10 @@ export class FrameLocator {
     try { return frame.contentDocument; } catch { return null; }
   }
 
+  private _queries() {
+    return makeLocatorQueries(() => this._frameDoc(), `frame(${this._selector})`);
+  }
+
   locator(selector: string): Locator {
     return new Locator(() => {
       const doc = this._frameDoc();
@@ -515,117 +511,12 @@ export class FrameLocator {
     }, `frame(${this._selector}) >> ${selector}`);
   }
 
-  getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator {
-    const exact = opts?.exact ?? false;
-    const desc = `frame(${this._selector}) >> text(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = this._frameDoc();
-      if (!doc) return [];
-      const leafs = Array.from(doc.querySelectorAll('*')).filter(
-        el => el.children.length === 0 && textMatches(el, text, exact)
-      );
-      if (leafs.length) return leafs;
-      return Array.from(doc.querySelectorAll('*')).filter(el => textMatches(el, text, exact));
-    }, desc);
-  }
-
-  getByRole(role: string, opts?: { name?: string | RegExp; exact?: boolean }): Locator {
-    const desc = opts?.name
-      ? `frame(${this._selector}) >> role=${role}[name="${opts.name}"]`
-      : `frame(${this._selector}) >> role=${role}`;
-    return new Locator(() => {
-      const doc = this._frameDoc();
-      if (!doc) return [];
-      const sel = ROLE_SELECTORS[role] ?? `[role="${role}"]`;
-      let els = Array.from(doc.querySelectorAll(sel));
-      if (opts?.name) {
-        const name = opts.name;
-        const exact = opts.exact ?? false;
-        els = els.filter(el => {
-          const labelledById = el.getAttribute('aria-labelledby');
-          const labelled = labelledById ? doc.getElementById(labelledById) : null;
-          const acc = (
-            el.getAttribute('aria-label') ??
-            labelled?.textContent ??
-            (el.tagName === 'INPUT' ? el.getAttribute('value') : null) ??
-            el.textContent ?? ''
-          ).trim();
-          return name instanceof RegExp ? name.test(acc) : exact ? acc === name : acc.includes(name);
-        });
-      }
-      return els;
-    }, desc);
-  }
-
-  getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator {
-    const exact = opts?.exact ?? false;
-    const desc = `frame(${this._selector}) >> label(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = this._frameDoc();
-      if (!doc) return [];
-      const results: Element[] = [];
-      for (const label of Array.from(doc.querySelectorAll<HTMLLabelElement>('label'))) {
-        if (!textMatches(label, text, exact)) continue;
-        const target = label.htmlFor
-          ? doc.getElementById(label.htmlFor)
-          : label.querySelector('input,select,textarea');
-        if (target && !results.includes(target)) results.push(target);
-      }
-      for (const el of Array.from(doc.querySelectorAll('[aria-label]'))) {
-        const lbl = el.getAttribute('aria-label') ?? '';
-        const ok = text instanceof RegExp ? text.test(lbl) : exact ? lbl === text : lbl.includes(text as string);
-        if (ok && !results.includes(el)) results.push(el);
-      }
-      return results;
-    }, desc);
-  }
-
-  getByPlaceholder(text: string | RegExp): Locator {
-    const desc = `frame(${this._selector}) >> placeholder(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = this._frameDoc();
-      if (!doc) return [];
-      return Array.from(doc.querySelectorAll('[placeholder]')).filter(el => {
-        const p = el.getAttribute('placeholder') ?? '';
-        return text instanceof RegExp ? text.test(p) : p.includes(text as string);
-      });
-    }, desc);
-  }
-
-  getByTestId(id: string): Locator {
-    const q = id.replace(/"/g, '\\"');
-    return new Locator(() => {
-      const doc = this._frameDoc();
-      if (!doc) return [];
-      return Array.from(doc.querySelectorAll(`[data-testid="${q}"],[data-test="${q}"]`));
-    }, `frame(${this._selector}) >> [data-testid="${id}"]`);
-  }
-
-  getByAltText(text: string | RegExp): Locator {
-    const desc = `frame(${this._selector}) >> alt(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = this._frameDoc();
-      if (!doc) return [];
-      return Array.from(doc.querySelectorAll('[alt]')).filter(el => {
-        const a = el.getAttribute('alt') ?? '';
-        return text instanceof RegExp ? text.test(a) : a.includes(text as string);
-      });
-    }, desc);
-  }
-
-  getByTitle(text: string | RegExp): Locator {
-    const desc = `frame(${this._selector}) >> title(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = this._frameDoc();
-      if (!doc) return [];
-      return Array.from(doc.querySelectorAll('[title]')).filter(el => {
-        const t = el.getAttribute('title') ?? '';
-        return text instanceof RegExp ? text.test(t) : t.includes(text as string);
-      });
-    }, desc);
-  }
-
-  frameLocator(selector: string): FrameLocator {
-    return new FrameLocator(selector, () => this._frameDoc());
-  }
+  getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator { return this._queries().getByText(text, opts); }
+  getByRole(role: string, opts?: { name?: string | RegExp; exact?: boolean }): Locator { return this._queries().getByRole(role, opts); }
+  getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator { return this._queries().getByLabel(text, opts); }
+  getByPlaceholder(text: string | RegExp): Locator { return this._queries().getByPlaceholder(text); }
+  getByTestId(id: string): Locator { return this._queries().getByTestId(id); }
+  getByAltText(text: string | RegExp): Locator { return this._queries().getByAltText(text); }
+  getByTitle(text: string | RegExp): Locator { return this._queries().getByTitle(text); }
+  frameLocator(selector: string): FrameLocator { return this._queries().frameLocator(selector); }
 }

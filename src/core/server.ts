@@ -88,10 +88,7 @@ export class TestServer {
     this.bundledCodeMap.set(basename, bundledCode);
     this.parsedCache.set(basename, parsed);
     this._version++;
-    const msg = JSON.stringify({ type: 'version', version: this._version });
-    for (const client of this._wsClients) {
-      if (client.readyState === WebSocket.OPEN) client.send(msg);
-    }
+    this.sendToClients({ type: 'version', version: this._version });
   }
 
   removeFile(basename: string): void {
@@ -99,10 +96,7 @@ export class TestServer {
     this.parsedCache.delete(basename);
     this.testFileMap.delete(basename);
     this._version++;
-    const msg = JSON.stringify({ type: 'version', version: this._version });
-    for (const client of this._wsClients) {
-      if (client.readyState === WebSocket.OPEN) client.send(msg);
-    }
+    this.sendToClients({ type: 'version', version: this._version });
   }
 
   start(proxyUrl: string, viewport?: { width: number; height: number }): Promise<void> {
@@ -144,7 +138,7 @@ export class TestServer {
       this._wss = new WebSocketServer({ server: this.server });
       this._wss.on('connection', (ws: WebSocket) => {
         this._wsClients.add(ws);
-        ws.send(JSON.stringify({ type: 'version', version: this._version }));
+        this._send(ws, { type: 'version', version: this._version });
 
         ws.on('close', () => this._wsClients.delete(ws));
 
@@ -163,22 +157,24 @@ export class TestServer {
   }
 
   private _handleWsMessage(ws: WebSocket, msg: BrowserMessage): void {
-    const run = (fn: () => void | Promise<void>) => Promise.resolve(fn()).catch(() => {});
-    switch (msg.type) {
-      case 'run-begin': run(() => this._onRunBegin(msg)); break;
-      case 'run-end': run(() => this._onRunEnd(msg)); break;
-      case 'report': run(() => this._onReport(msg)); break;
-      case 'task': run(() => this._onTask(ws, msg)); break;
-      case 'done': run(() => this._onDone(msg)); break;
-      case 'artifact': run(() => this._onArtifact(msg)); break;
-      case 'save-download': run(() => this._onSaveDownload(ws, msg)); break;
-      case 'get-tests': run(() => this._onGetTests(ws, msg)); break;
-      case 'get-test-source': run(() => this._onGetTestSource(ws, msg)); break;
-      case 'get-cookie-jar': run(() => this._onGetCookieJar(ws, msg)); break;
-      case 'set-cookie-jar': run(() => this._onSetCookieJar(ws, msg)); break;
-      case 'save-storage-state': run(() => this._onSaveStorageState(ws, msg)); break;
-      case 'load-storage-state': run(() => this._onLoadStorageState(ws, msg)); break;
-    }
+    const m = msg as any;
+    const handlers: Partial<Record<BrowserMessage['type'], () => void | Promise<void>>> = {
+      'run-begin':          () => this._onRunBegin(m),
+      'run-end':            () => this._onRunEnd(m),
+      'report':             () => this._onReport(m),
+      'task':               () => this._onTask(ws, m),
+      'done':               () => this._onDone(m),
+      'artifact':           () => this._onArtifact(m),
+      'save-download':      () => this._onSaveDownload(ws, m),
+      'get-tests':          () => this._onGetTests(ws, m),
+      'get-test-source':    () => this._onGetTestSource(ws, m),
+      'get-cookie-jar':     () => this._onGetCookieJar(ws, m),
+      'set-cookie-jar':     () => this._onSetCookieJar(ws, m),
+      'save-storage-state': () => this._onSaveStorageState(ws, m),
+      'load-storage-state': () => this._onLoadStorageState(ws, m),
+    };
+    const handler = handlers[msg.type];
+    if (handler) Promise.resolve(handler()).catch(() => {});
   }
 
   private _onRunBegin(msg: Msg<'run-begin'>): void {
@@ -195,7 +191,7 @@ export class TestServer {
       });
       const suite: Suite = { title: '', tests: allTestCases, allTests() { return this.tests; } };
       this.emitter.emitBegin({ testFiles: specs.map(s => s.file) }, suite);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[tx] run-begin error:', e); }
   }
 
   private _onRunEnd(msg: Msg<'run-end'>): void {
@@ -211,20 +207,20 @@ export class TestServer {
         this.emitter.emitTestBegin(testCase, result);
         this.emitter.emitTestEnd(testCase, result);
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[tx] report error:', e); }
   }
 
   private _onTask(ws: WebSocket, msg: Msg<'task'>): void | Promise<void> {
     const { id, name, payload } = msg;
     const handler = this.tasks[name];
     if (!handler) {
-      ws.send(JSON.stringify({ type: 'task-result', id, error: `Task not found: "${name}"` }));
+      this._send(ws, { type: 'task-result', id, error: `Task not found: "${name}"` });
       return;
     }
     return Promise.resolve(handler(payload)).then(result => {
-      ws.send(JSON.stringify({ type: 'task-result', id, result: result ?? null }));
+      this._send(ws, { type: 'task-result', id, result: result ?? null });
     }).catch((err: any) => {
-      ws.send(JSON.stringify({ type: 'task-result', id, error: err.message ?? String(err) }));
+      this._send(ws, { type: 'task-result', id, error: err.message ?? String(err) });
     });
   }
 
@@ -243,7 +239,7 @@ export class TestServer {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
       console.log(`💾 Artifact saved: ${filePath}`);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[tx] artifact error:', e); }
   }
 
   private _onSaveDownload(ws: WebSocket, msg: Msg<'save-download'>): void {
@@ -251,9 +247,9 @@ export class TestServer {
     try {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
-      ws.send(JSON.stringify({ id }));
+      this._send(ws, { id });
     } catch (err: any) {
-      ws.send(JSON.stringify({ id, error: err.message ?? String(err) }));
+      this._send(ws, { id, error: err.message ?? String(err) });
     }
   }
 
@@ -287,9 +283,9 @@ export class TestServer {
           }) }))
           .filter(f => f.tests.length > 0);
       }
-      ws.send(JSON.stringify({ type: 'tests', id, data: parsedFiles }));
+      this._send(ws, { type: 'tests', id, data: parsedFiles });
     } catch (err: any) {
-      ws.send(JSON.stringify({ type: 'tests', id, error: err.message }));
+      this._send(ws, { type: 'tests', id, error: (err as any).message });
     }
   }
 
@@ -297,24 +293,24 @@ export class TestServer {
     const { id, file } = msg;
     const isAbsolutePath = (f: string) => f.startsWith('/') || f.startsWith('\\') || /^[A-Za-z]:/.test(f);
     if (!file || file.includes('..') || file.includes('\\') || isAbsolutePath(file) || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
-      ws.send(JSON.stringify({ type: 'test-source', id, error: 'Invalid filename' }));
+      this._send(ws, { type: 'test-source', id, error: 'Invalid filename' });
       return;
     }
     const bundled = this.bundledCodeMap.get(file);
     if (bundled) {
-      ws.send(JSON.stringify({ type: 'test-source', id, data: bundled }));
+      this._send(ws, { type: 'test-source', id, data: bundled });
       return;
     }
     const filePath = this.testFileMap.get(file) ?? path.join(__dirname, 'examples', path.basename(file));
     if (!fs.existsSync(filePath)) {
-      ws.send(JSON.stringify({ type: 'test-source', id, error: 'Not found' }));
+      this._send(ws, { type: 'test-source', id, error: 'Not found' });
       return;
     }
     return bundleTestFile(filePath).then(code => {
       this.bundledCodeMap.set(file, code);
-      ws.send(JSON.stringify({ type: 'test-source', id, data: code }));
+      this._send(ws, { type: 'test-source', id, data: code });
     }).catch((err: any) => {
-      ws.send(JSON.stringify({ type: 'test-source', id, error: `Bundle error: ${err.message}` }));
+      this._send(ws, { type: 'test-source', id, error: `Bundle error: ${err.message}` });
     });
   }
 
@@ -322,9 +318,9 @@ export class TestServer {
     const { id } = msg;
     try {
       const jar = this._getCookieJarCb ? JSON.parse(this._getCookieJarCb()) : {};
-      ws.send(JSON.stringify({ type: 'cookie-jar', id, jar }));
+      this._send(ws, { type: 'cookie-jar', id, jar });
     } catch (err: any) {
-      ws.send(JSON.stringify({ type: 'cookie-jar', id, error: err.message ?? String(err) }));
+      this._send(ws, { type: 'cookie-jar', id, error: err.message ?? String(err) });
     }
   }
 
@@ -333,9 +329,9 @@ export class TestServer {
     try {
       const serialized = jar && Array.isArray((jar as any).cookies) ? JSON.stringify(jar) : null;
       this._setCookieJarCb?.(serialized);
-      ws.send(JSON.stringify({ type: 'cookie-jar-set', id }));
+      this._send(ws, { type: 'cookie-jar-set', id });
     } catch (err: any) {
-      ws.send(JSON.stringify({ type: 'cookie-jar-set', id, error: err.message ?? String(err) }));
+      this._send(ws, { type: 'cookie-jar-set', id, error: err.message ?? String(err) });
     }
   }
 
@@ -345,9 +341,9 @@ export class TestServer {
       const resolved = path.resolve(process.cwd(), ssPath);
       fs.mkdirSync(path.dirname(resolved), { recursive: true });
       fs.writeFileSync(resolved, data, 'utf8');
-      ws.send(JSON.stringify({ type: 'storage-state-saved', id }));
+      this._send(ws, { type: 'storage-state-saved', id });
     } catch (err: any) {
-      ws.send(JSON.stringify({ type: 'storage-state-saved', id, error: err.message ?? String(err) }));
+      this._send(ws, { type: 'storage-state-saved', id, error: err.message ?? String(err) });
     }
   }
 
@@ -356,10 +352,14 @@ export class TestServer {
     try {
       const resolved = path.resolve(process.cwd(), ssPath);
       const data = fs.readFileSync(resolved, 'utf8');
-      ws.send(JSON.stringify({ type: 'storage-state-loaded', id, data }));
+      this._send(ws, { type: 'storage-state-loaded', id, data });
     } catch (err: any) {
-      ws.send(JSON.stringify({ type: 'storage-state-loaded', id, error: err.message ?? String(err) }));
+      this._send(ws, { type: 'storage-state-loaded', id, error: err.message ?? String(err) });
     }
+  }
+
+  private _send(ws: WebSocket, msg: object): void {
+    ws.send(JSON.stringify(msg));
   }
 
   sendToClients(msg: object): void {
