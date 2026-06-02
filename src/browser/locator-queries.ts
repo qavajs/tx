@@ -72,29 +72,34 @@ export interface LocatorQueries {
   frameLocator(selector: string): FrameLocator;
 }
 
+function _arg(v: string | RegExp): string {
+  return v instanceof RegExp ? String(v) : JSON.stringify(v);
+}
+
 export function makeLocatorQueries(getDoc: GetDoc, prefix = ''): LocatorQueries {
-  const p = prefix ? `${prefix} >> ` : '';
+  const p = prefix ? `${prefix}.` : '';
 
   return {
     getByText(text, opts) {
       const exact = opts?.exact ?? false;
-      return makeTextLocator(getDoc, text, exact, `${p}text(${text instanceof RegExp ? text : `"${text}"`})`);
+      const optStr = opts?.exact ? ', { exact: true }' : '';
+      return makeTextLocator(getDoc, text, exact, `${p}getByText(${_arg(text)}${optStr})`);
     },
 
     getByRole(role, opts) {
-      const desc = opts?.name
-        ? `${p}role=${role}[name="${opts.name}"]`
-        : `${p}role=${role}`;
-      return makeRoleLocator(getDoc, role, opts, desc);
+      const optStr = opts?.name
+        ? `, { name: ${_arg(opts.name as string | RegExp)} }`
+        : '';
+      return makeRoleLocator(getDoc, role, opts, `${p}getByRole('${role}'${optStr})`);
     },
 
     getByLabel(text, opts) {
       const exact = opts?.exact ?? false;
-      return makeLabelLocator(getDoc, text, exact, `${p}label(${text instanceof RegExp ? text : `"${text}"`})`);
+      const optStr = opts?.exact ? ', { exact: true }' : '';
+      return makeLabelLocator(getDoc, text, exact, `${p}getByLabel(${_arg(text)}${optStr})`);
     },
 
     getByPlaceholder(text) {
-      const desc = `${p}placeholder(${text instanceof RegExp ? text : `"${text}"`})`;
       return new Locator(() => {
         const doc = getDoc();
         if (!doc) return [];
@@ -102,7 +107,7 @@ export function makeLocatorQueries(getDoc: GetDoc, prefix = ''): LocatorQueries 
           const v = el.getAttribute('placeholder') ?? '';
           return text instanceof RegExp ? text.test(v) : v.includes(text as string);
         });
-      }, desc);
+      }, `${p}getByPlaceholder(${_arg(text)})`);
     },
 
     getByTestId(id) {
@@ -111,11 +116,10 @@ export function makeLocatorQueries(getDoc: GetDoc, prefix = ''): LocatorQueries 
         const doc = getDoc();
         if (!doc) return [];
         return Array.from(doc.querySelectorAll(`[data-testid="${q}"],[data-test="${q}"]`));
-      }, `${p}[data-testid="${id}"]`);
+      }, `${p}getByTestId('${id}')`);
     },
 
     getByAltText(text) {
-      const desc = `${p}alt(${text instanceof RegExp ? text : `"${text}"`})`;
       return new Locator(() => {
         const doc = getDoc();
         if (!doc) return [];
@@ -123,11 +127,10 @@ export function makeLocatorQueries(getDoc: GetDoc, prefix = ''): LocatorQueries 
           const a = el.getAttribute('alt') ?? '';
           return text instanceof RegExp ? text.test(a) : a.includes(text as string);
         });
-      }, desc);
+      }, `${p}getByAltText(${_arg(text)})`);
     },
 
     getByTitle(text) {
-      const desc = `${p}title(${text instanceof RegExp ? text : `"${text}"`})`;
       return new Locator(() => {
         const doc = getDoc();
         if (!doc) return [];
@@ -135,7 +138,7 @@ export function makeLocatorQueries(getDoc: GetDoc, prefix = ''): LocatorQueries 
           const t = el.getAttribute('title') ?? '';
           return text instanceof RegExp ? text.test(t) : t.includes(text as string);
         });
-      }, desc);
+      }, `${p}getByTitle(${_arg(text)})`);
     },
 
     frameLocator(selector) {

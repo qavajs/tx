@@ -576,17 +576,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-cmd-icon.pending { color: var(--warn); }
         .tx-cmd-icon.info { color: var(--text-muted); }
 
-        .tx-cmd-label {
-            font-weight: 700;
-            letter-spacing: 0.3px;
-            flex-shrink: 0;
-            min-width: 68px;
-        }
-        .tx-cmd-label.pass { color: var(--pass); }
-        .tx-cmd-label.fail { color: var(--fail); }
-        .tx-cmd-label.pending { color: var(--warn); }
-        .tx-cmd-label.info { color: var(--text-muted); }
-
         .tx-cmd-msg {
             flex: 1;
             color: var(--text);
@@ -1446,14 +1435,6 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             transition: transform 0.14s;
         }
         .tx-cmd-group.open .tx-cmd-group-chevron { transform: rotate(90deg); }
-
-        .tx-cmd-group-cmd {
-            font-weight: 700;
-            letter-spacing: 0.3px;
-            flex-shrink: 0;
-            min-width: 68px;
-            color: var(--text-muted);
-        }
 
         .tx-cmd-group-msg {
             flex: 1;

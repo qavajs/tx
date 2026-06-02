@@ -78,7 +78,7 @@ export class ConsoleReporter implements Reporter {
       const duration =
         entry.duration != null ? color(` (${entry.duration}ms)`, 'gray') : '';
 
-      console.log(`${indent}${icon} ${entry.cmd} — ${entry.message}${duration}`);
+      console.log(`${indent}${icon} ${entry.message}${duration}`);
 
       if (entry.children?.length) {
         this.printLogs(entry.children, depth + 1);
