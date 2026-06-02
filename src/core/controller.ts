@@ -135,6 +135,20 @@ function setTopbarStatus(state: 'ready'|'running'|'passed'|'failed'|'connected'|
   if (span) span.textContent = text;
 }
 
+function showProgress(done: number, total: number) {
+  const el = document.getElementById('runProgress');
+  if (!el) return;
+  el.textContent = `${done} / ${total}`;
+  el.classList.remove('tx-hidden');
+}
+
+function hideProgress() {
+  const el = document.getElementById('runProgress');
+  if (!el) return;
+  el.classList.add('tx-hidden');
+  el.textContent = '';
+}
+
 // ── Spec list ─────────────────────────────────────────────────────────────────
 
 interface ParsedTest { suite: string; name: string; tags?: string[]; }
@@ -293,8 +307,12 @@ async function _singleRun(
   getSpecs: () => Array<{ file: string; tests: string[] | null }>,
   runFn: () => Promise<TestResult[]>,
   onError: (e: any) => void,
+  total = 0,
 ): Promise<void> {
   _stopRequested = false;
+  _runDone = 0;
+  _runTotal = total;
+  if (total > 0) showProgress(0, total);
   setStopBtnVisible(true);
   setupFn();
   notifyRunBegin(getSpecs());
@@ -306,6 +324,7 @@ async function _singleRun(
     onError(e);
     notifyRunEnd(0, 1, 1, 0);
   }
+  hideProgress();
   setStopBtnVisible(false);
 }
 
@@ -346,6 +365,7 @@ async function fetchAndRun(
     onTestEnd: (r) => {
       wsSend('report', { filename, tests: [r] } as Record<string, unknown>);
       if (opts?.filename) setTestItemStatus(opts.filename, r.name, r.passed ? 'pass' : 'fail', r.duration);
+      if (_runTotal > 0) showProgress(++_runDone, _runTotal);
     },
   });
   renderTestResults(results, filename);
@@ -355,11 +375,13 @@ async function fetchAndRun(
 // ── Window actions ────────────────────────────────────────────────────────────
 
 window.runTestByFilename = async (filename: string) => {
+  const total = document.getElementById('card-' + escAttr(filename))?.querySelectorAll('.tx-test-item').length ?? 0;
   await _singleRun(
     () => { openAndResetCard(filename); log(`run  ${filename}`); },
     () => [{ file: filename, tests: null }],
     () => fetchAndRun(filename, { filename }),
     () => updateCardStatus(filename, 0, 1),
+    total,
   );
 };
 
@@ -389,6 +411,7 @@ window.runSuite = async (filename: string, suiteName: string) => {
     () => [{ file: filename, tests: suiteTests.length ? suiteTests : null }],
     () => fetchAndRun(filename, { filterSuite: suiteName, filename }),
     () => updateCardStatus(filename, 0, 1),
+    suiteTests.length,
   );
 };
 
@@ -402,6 +425,7 @@ window.runTest = async (filename: string, fullName: string) => {
     () => [{ file: filename, tests: [fullName] }],
     () => fetchAndRun(filename, { filterTest: fullName, filename }),
     () => setTestItemStatus(filename, fullName, 'fail'),
+    1,
   );
 };
 
@@ -416,6 +440,9 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   _stopRequested = false;
   _isTestRunning = true;
   setStopBtnVisible(true);
+  _runDone = 0;
+  _runTotal = document.querySelectorAll('.tx-test-item').length;
+  showProgress(0, _runTotal);
   setTopbarStatus('running', 'Running…');
   const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'));
   notifyRunBegin(allCards.map(c => ({ file: c.dataset.filename!, tests: null })));
@@ -436,6 +463,7 @@ window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   }
   notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
   _isTestRunning = false;
+  hideProgress();
   setStopBtnVisible(false);
   if (_stopRequested) {
     setTopbarStatus('ready', `Stopped — ${totalPass} passed, ${totalFail} failed`);
@@ -452,6 +480,8 @@ let _watchVersion = -1;
 let _isTestRunning = false;
 let _stopRequested = false;
 let _currentTestCancel: ((err: Error) => void) | null = null;
+let _runTotal = 0;
+let _runDone = 0;
 
 function setStopBtnVisible(visible: boolean) {
   const btn = document.getElementById('stopBtn') as HTMLButtonElement | null;
@@ -648,7 +678,6 @@ window.runFiltered = async () => {
   _stopRequested = false;
   _isTestRunning = true;
   setStopBtnVisible(true);
-  setTopbarStatus('running', 'Running…');
   let totalPass = 0, totalFail = 0, totalDuration = 0;
 
   const byFile = new Map<string, string[]>();
@@ -661,6 +690,10 @@ window.runFiltered = async () => {
     byFile.set(card.dataset.filename, list);
   }
 
+  _runDone = 0;
+  _runTotal = Array.from(byFile.values()).reduce((sum, arr) => sum + arr.length, 0);
+  showProgress(0, _runTotal);
+  setTopbarStatus('running', 'Running…');
   notifyRunBegin(Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests })));
 
   for (const [filename, testNames] of byFile) {
@@ -679,6 +712,7 @@ window.runFiltered = async () => {
 
   notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
   _isTestRunning = false;
+  hideProgress();
   setStopBtnVisible(false);
   if (_stopRequested) {
     setTopbarStatus('ready', `Stopped — ${totalPass} passed, ${totalFail} failed`);
