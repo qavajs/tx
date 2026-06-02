@@ -1,4 +1,8 @@
 import { SourceMapConsumer } from 'source-map-js';
+import { actionTimeout, expectTimeout, testTimeout } from '../browser/config';
+import type { WindowConfig } from '../types';
+
+declare global { interface Window { __CONFIG__: WindowConfig; __CURRENT_TEST_INFO__: unknown; } }
 import { type TestResult, runWithFixtures, buildTestQueue } from './executor';
 import { page, closeExtraTabs, setTestAbort, startCollectingLogs, stopCollectingLogs, setLogContainer } from '../browser/browser';
 
@@ -52,7 +56,7 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
   }
 
   const results: TestResult[] = [];
-  const maxRetries = (window as any).__CONFIG__?.retries ?? 0;
+  const maxRetries = window.__CONFIG__?.retries ?? 0;
   for (const t of queue) {
     if (opts?.isStopRequested?.()) break;
     let attempt = 0;
@@ -63,20 +67,20 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
     while (attempt <= maxRetries && !passed && !opts?.isStopRequested?.()) {
       opts?.onAttemptBegin?.(t.name, attempt);
       const titlePath = t.name.split(' > ');
-      const cfg = (window as any).__CONFIG__ ?? {};
-      (window as any).__CURRENT_TEST_INFO__ = {
+      window.__CURRENT_TEST_INFO__ = {
         title: titlePath[titlePath.length - 1],
         titlePath,
         retry: attempt,
         tags: t.tags,
-        timeout: cfg.testTimeout ?? 30000,
-        retries: cfg.retries ?? 0,
-        actionTimeout: cfg.actionTimeout ?? 5000,
-        expectTimeout: cfg.expectTimeout ?? 5000,
+        timeout: testTimeout(),
+        retries: window.__CONFIG__?.retries ?? 0,
+        actionTimeout: actionTimeout(),
+        expectTimeout: expectTimeout(),
       };
       const t0 = Date.now();
       let _timeoutId: ReturnType<typeof setTimeout> | undefined;
       startCollectingLogs();
+      let testError: unknown = undefined;
       try {
         closeExtraTabs();
         await page.resetSession();
@@ -87,7 +91,7 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
         const runTestFn = t.expectsFixtures
           ? () => runWithFixtures(t.fixtureDefs, t.fn)
           : () => Promise.resolve(t.fn());
-        const testTimeout = (window as any).__CONFIG__?.testTimeout ?? 30000;
+        const _testTimeout = testTimeout();
         const _stopPromise = new Promise<never>((_, reject) => {
           opts?.setCancelFn?.((err: Error) => { setTestAbort(err); reject(err); });
         });
@@ -95,30 +99,39 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
           runTestFn(),
           new Promise<never>((_, reject) => {
             _timeoutId = setTimeout(() => {
-              const err = new Error(`Test timed out after ${testTimeout}ms`);
+              const err = new Error(`Test timed out after ${_testTimeout}ms`);
               setTestAbort(err);
               reject(err);
-            }, testTimeout);
+            }, _testTimeout);
           }),
           _stopPromise,
         ]);
+      } catch (e: unknown) {
+        testError = e;
+      }
+      try {
         for (const hook of t.afterEachs) {
           await runWithFixtures(hook.fixtureDefs, hook.fn);
         }
         for (const hook of t.teardownAfterAlls) await Promise.resolve(hook());
-        duration = Date.now() - t0;
-        finalLogs = stopCollectingLogs();
-        passed = true;
-      } catch (e: any) {
-        duration = Date.now() - t0;
-        finalLogs = stopCollectingLogs();
-        lastError = e;
-        const errStr = e.stack || e.message || String(e);
-        const remapped = remap ? remap(errStr) : errStr;
-        if (attempt < maxRetries && !opts?.isStopRequested?.()) {
-          opts?.onAttemptError?.(`Attempt ${attempt + 1} failed — retrying…\n` + remapped);
+      } catch (hookErr: unknown) {
+        if (testError === undefined) testError = hookErr;
+      }
+      duration = Date.now() - t0;
+      finalLogs = stopCollectingLogs();
+      try {
+        if (testError === undefined) {
+          passed = true;
         } else {
-          opts?.onAttemptError?.(remapped);
+          const e: any = testError;
+          lastError = e;
+          const errStr = e.stack || e.message || String(e);
+          const remapped = remap ? remap(errStr) : errStr;
+          if (attempt < maxRetries && !opts?.isStopRequested?.()) {
+            opts?.onAttemptError?.(`Attempt ${attempt + 1} failed — retrying…\n` + remapped);
+          } else {
+            opts?.onAttemptError?.(remapped);
+          }
         }
       } finally {
         clearTimeout(_timeoutId);

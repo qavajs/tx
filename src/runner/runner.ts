@@ -32,11 +32,11 @@ export function parseTestCode(code: string): ParsedTest[] {
     const mergedTags = tags ? [...inheritedTags, ...tags] : (inheritedTags.length ? inheritedTags : undefined);
     tests.push({ suite: stack.join(' > '), name: String(name), tags: mergedTags });
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const noop: any = () => noop;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const deepNoop: any = new Proxy(noop, { get: (_t, _k) => deepNoop });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const describe = (name: string, optsOrFn: any, maybeFn?: () => void) => {
     const fn = typeof optsOrFn === 'function' ? optsOrFn : maybeFn!;
     const tags = (optsOrFn && typeof optsOrFn === 'object' && Array.isArray(optsOrFn.tag)) ? optsOrFn.tag as string[] : [];
@@ -46,16 +46,16 @@ export function parseTestCode(code: string): ParsedTest[] {
     tagStack.pop();
     stack.pop();
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const makeParserTestFn = (push: (name: string, tags?: string[]) => void): any => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    
     const fn: any = (name: string, optsOrFn?: any, _maybeFn?: any) => {
       const tags = (optsOrFn && typeof optsOrFn === 'object' && Array.isArray(optsOrFn.tag))
         ? optsOrFn.tag as string[]
         : undefined;
       push(name, tags);
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    
     fn.extend = (_defs: any) => makeParserTestFn(push);
     fn.describe = describe;
     fn.beforeEach = noop;
@@ -69,21 +69,21 @@ export function parseTestCode(code: string): ParsedTest[] {
   // __toESM helper sets a .default, otherwise `import foo from 'lib'` produces
   // import_lib.default === undefined and top-level destructuring throws.
   // '@qavajs/tx' exports expose the parser stubs so `import { test, describe } from '@qavajs/tx'` is discovered.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const txStub: any = new Proxy(
     Object.assign(() => deepNoop, { __esModule: false, default: deepNoop, test, describe, beforeEach: noop, afterEach: noop, beforeAll: noop, afterAll: noop }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    
     { get: (t, k) => (k in t ? (t as any)[k] : deepNoop) },
   );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const moduleStub: any = new Proxy(
     Object.assign(() => deepNoop, { __esModule: false, default: deepNoop }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    
     { get: (t, k) => (k in t ? (t as any)[k] : deepNoop) },
   );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const pageProxy: any = new Proxy({}, { get: () => noop });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const exportsObj: any = {};
   const sandbox = vm.createContext({
     expect: () => noop,

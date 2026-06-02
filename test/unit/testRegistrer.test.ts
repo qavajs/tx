@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFixtureDeps, buildTestRegistrar, type QueueItem } from '../../src/runner/testRegistrer';
+import { parseFixtureDeps, buildTestRegistrar, type QueueItem } from '../../src/runner/testRegistrar';
 import { parseTestCode } from '../../src/runner/runner';
 
 // ── parseFixtureDeps ───────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ describe('parseFixtureDeps', () => {
 
   test('returns cached _deps when present', () => {
     const fn = async (_: Record<string, unknown>, use: (v: unknown) => Promise<void>) => { await use(null); };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    
     (fn as any)._deps = ['cached'];
     assert.deepEqual(parseFixtureDeps(fn), ['cached']);
   });

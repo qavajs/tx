@@ -168,6 +168,18 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             gap: 8px;
         }
 
+        .tx-progress-badge {
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+            color: var(--text-dim);
+            background: var(--bg-card);
+            border: 1px solid var(--border-s);
+            border-radius: 20px;
+            padding: 4px 11px;
+            letter-spacing: 0.01em;
+        }
+
         .tx-status-pill {
             display: flex;
             align-items: center;
@@ -931,18 +943,24 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             text-align: center;
             color: var(--text-muted);
             font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
         }
-        .tx-loading::after {
+        .tx-loading::before {
             content: '';
-            display: inline-block;
-            width: 3px;
-            animation: tx-ellipsis 1.2s steps(4, end) infinite;
+            display: block;
+            width: 13px;
+            height: 13px;
+            border: 1.5px solid var(--border-s);
+            border-top-color: var(--jade);
+            border-radius: 50%;
+            animation: tx-spin 0.7s linear infinite;
+            flex-shrink: 0;
         }
-        @keyframes tx-ellipsis {
-            0%   { content: ''; }
-            25%  { content: '.'; }
-            50%  { content: '..'; }
-            75%  { content: '...'; }
+        @keyframes tx-spin {
+            to { transform: rotate(360deg); }
         }
 
         /* ══ Network panel ═══════════════════════════════════════════ */
@@ -1465,6 +1483,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             &#9632;&nbsp; Stop
         </button>
         <div class="tx-topbar-right">
+            <span id="runProgress" class="tx-progress-badge tx-hidden"></span>
             <div class="tx-status-pill">
                 <span class="tx-status-dot" id="statusIndicator"></span>
                 <span id="statusText">Initializing…</span>

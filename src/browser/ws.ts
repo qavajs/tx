@@ -50,7 +50,7 @@ export function wsConnect(onConnected?: () => void, onDisconnected?: () => void)
   _wsConnectInternal();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export function wsOnMessage(type: string, fn: (msg: any) => void): () => void {
   if (!_wsListeners.has(type)) _wsListeners.set(type, new Set());
   _wsListeners.get(type)!.add(fn);

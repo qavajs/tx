@@ -1,4 +1,4 @@
-import { type HookScope, type QueueItem, type FixtureDefs, parseFixtureDeps, defaultFixtureDefs, buildTestRegistrar } from './testRegistrer';
+import { type HookScope, type QueueItem, type FixtureDefs, parseFixtureDeps, defaultFixtureDefs, buildTestRegistrar } from './testRegistrar';
 export type { QueueItem, FixtureDefs };
 
 export interface TestResult {
@@ -13,10 +13,10 @@ import type { LogEntry } from '../browser/browser';
 
 export async function runWithFixtures(
   fixtureDefs: FixtureDefs,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   testFn: (fixtures: Record<string, any>) => unknown,
 ): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const resolved: Record<string, any> = {};
   const ordered: string[] = [];
   const visiting = new Set<string>();

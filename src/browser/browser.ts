@@ -1,48 +1,34 @@
 import { domToPng } from 'modern-screenshot';
+import { actionTimeout, waitTimeout } from './config';
+import type { WindowConfig } from '../types';
 import { Route, routeHandlers as _routeHandlers, matchesRoutePattern as _matchesRoutePattern } from './route';
 export { Route };
 import { installEventBridges as _installEventBridges, installWindowBridges as _installWindowBridges } from './bridges';
-import { Locator, FrameLocator, textMatches, resolveSelector, ROLE_SELECTORS, _locatorHandlers } from './locator';
+import { Locator, textMatches, resolveSelector, _locatorHandlers } from './locator';
+import { makeLocatorQueries } from './locator-queries';
 import { Mouse } from './mouse';
 import { Keyboard } from './keyboard';
 import { wsConnect, wsOnMessage, wsSend, wsRequest } from './ws';
 export { wsConnect, wsOnMessage, wsSend, wsRequest };
 export { expect } from './assertions';
 
+// ── Sub-modules ───────────────────────────────────────────────────────────────
+
+import { _abortListeners, getAbortError, _awaitOrAbort } from './abort';
+export { setTestAbort, _awaitOrAbort } from './abort';
+
+import { _emitPage, _addPageListener, _removePageListener, addPermanentPageListener, clearPageListeners } from './page-events';
+export { _emitPage } from './page-events';
+
+import { logCommand, log, _withCommand, setLogContainer, stopCollectingLogs, setSnapshotCaptureFn } from './log';
+export { LogEntry, TxCommandHandle, TxGroupHandle, logCommand, log, attach, _withCommand, setLogContainer, startCollectingLogs, stopCollectingLogs } from './log';
+
 // ── Global types ──────────────────────────────────────────────────────────────
 
 declare global {
   interface Window {
-    __CONFIG__: { proxyUrl: string; port: number; viewport?: { width: number; height: number }; autorun?: boolean; snapshot?: boolean; grep?: string; grepFlags?: string; actionTimeout?: number; expectTimeout?: number; testTimeout?: number; retries?: number };
+    __CONFIG__: WindowConfig;
   }
-}
-
-// ── Test abort mechanism ──────────────────────────────────────────────────────
-
-let _testAbortError: Error | null = null;
-const _abortListeners: Array<(err: Error) => void> = [];
-
-export function setTestAbort(err: Error | null): void {
-  _testAbortError = err;
-  const fns = _abortListeners.splice(0);
-  if (err) for (const fn of fns) fn(err);
-}
-
-export function _awaitOrAbort(ms: number): Promise<void> {
-  if (_testAbortError) return Promise.reject(_testAbortError);
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const abortFn = (err: Error) => { if (!settled) { settled = true; clearTimeout(id); reject(err); } };
-    _abortListeners.push(abortFn);
-    const id = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        const idx = _abortListeners.indexOf(abortFn);
-        if (idx >= 0) _abortListeners.splice(idx, 1);
-        resolve();
-      }
-    }, ms);
-  });
 }
 
 // ── Viewport ──────────────────────────────────────────────────────────────────
@@ -178,6 +164,9 @@ function _captureSnapshot(label: string): number {
   _notifySnapshotListeners();
   return snapshotId;
 }
+
+// Wire snapshot capture into the log module so logCommand.success can attach snapshots
+setSnapshotCaptureFn(_captureSnapshot);
 
 export function getSnapshots(): SnapshotEntry[] {
   return [..._snapshots];
@@ -331,265 +320,6 @@ export function closeExtraTabs() {
   for (const id of extra) closeTab(id);
 }
 
-// ── Command Log ───────────────────────────────────────────────────────────────
-
-type LogState = 'pending' | 'info' | 'pass' | 'fail';
-
-const LOG_STATE: Record<LogState, { icon: string }> = {
-  pending: { icon: '…' },
-  info:    { icon: '›' },
-  pass:    { icon: '✓' },
-  fail:    { icon: '✗' },
-};
-
-let _logContainer: HTMLElement | null = null;
-export function setLogContainer(el: HTMLElement | null) { _logContainer = el; }
-
-export interface LogEntry {
-  cmd: string;
-  message: string;
-  state: 'pass' | 'fail' | 'info';
-  duration?: number;
-  attachment?: { body: string; contentType: string };
-  children?: LogEntry[];
-}
-
-let _collectedLogs: LogEntry[] | null = null;
-
-export function startCollectingLogs(): void { _collectedLogs = []; }
-
-export function stopCollectingLogs(): LogEntry[] {
-  const logs = _collectedLogs ?? [];
-  _collectedLogs = null;
-  return logs;
-}
-
-function createLogEntry(message: string, state: LogState, cmd?: string, duration?: number) {
-  const container = _logContainer ?? document.getElementById('console');
-  if (!container) return null;
-  const cls = state;
-  const icon = LOG_STATE[state].icon;
-  const label = cmd ?? (state === 'pass' ? 'ok' : state === 'fail' ? 'err' : state === 'pending' ? 'pending' : 'log');
-  const entry = document.createElement('div');
-  entry.className = `tx-cmd ${cls}`;
-  const iconEl = document.createElement('span'); iconEl.className = `tx-cmd-icon ${cls}`; iconEl.textContent = icon;
-  const labelEl = document.createElement('span'); labelEl.className = `tx-cmd-label ${cls}`; labelEl.textContent = label;
-  const msgEl = document.createElement('span'); msgEl.className = 'tx-cmd-msg'; msgEl.textContent = message;
-  entry.appendChild(iconEl); entry.appendChild(labelEl); entry.appendChild(msgEl);
-  if (duration != null) {
-    const durEl = document.createElement('span'); durEl.className = 'tx-cmd-dur'; durEl.textContent = duration + 'ms';
-    entry.appendChild(durEl);
-  }
-  container.appendChild(entry);
-  container.scrollTop = container.scrollHeight;
-  return entry;
-}
-
-function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail', duration?: number) {
-  if (!entry) return;
-  entry.classList.remove('pending', 'info', 'pass', 'fail');
-  entry.classList.add(state);
-  const iconEl = entry.querySelector<HTMLElement>('.tx-cmd-icon');
-  const labelEl = entry.querySelector<HTMLElement>('.tx-cmd-label');
-  if (iconEl) {
-    iconEl.className = `tx-cmd-icon ${state}`;
-    iconEl.textContent = state === 'pass' ? '✓' : '✗';
-  }
-  if (labelEl) {
-    labelEl.className = `tx-cmd-label ${state}`;
-  }
-  if (duration != null) {
-    let durEl = entry.querySelector<HTMLElement>('.tx-cmd-dur');
-    if (!durEl) {
-      durEl = document.createElement('span');
-      durEl.className = 'tx-cmd-dur';
-      entry.appendChild(durEl);
-    }
-    durEl.textContent = duration + 'ms';
-  }
-}
-
-const _snapshotCommands = new Set([
-  'click', 'dblclick', 'rightClick', 'fill', 'type', 'press', 'select', 'check', 'uncheck', 'focus', 'hover', 'scroll', 'goto', 'reload', 'waitForURL', 'setInputFiles',
-  'mouse.click', 'mouse.dblclick',
-  'keyboard.press', 'keyboard.type', 'keyboard.insertText',
-]);
-
-function _log(message: string, opts?: { type?: 'info' | 'success' | 'error'; cmd?: string; duration?: number }) {
-  const type = opts?.type ?? 'info';
-  const state = type === 'success' ? 'pass' : type === 'error' ? 'fail' : 'info';
-  createLogEntry(message, state, opts?.cmd, opts?.duration);
-  if (_collectedLogs) _collectedLogs.push({ cmd: opts?.cmd ?? state, message, state, duration: opts?.duration });
-}
-
-export function attach(label: string, body: string, contentType = 'text/plain'): void {
-  if (_collectedLogs) {
-    _collectedLogs.push({ cmd: 'attach', message: label, state: 'info', attachment: { body, contentType } });
-  }
-  createLogEntry(label, 'info', 'attach');
-}
-
-export interface TxCommandHandle {
-  /** Resolve the entry as passed. `duration` defaults to elapsed ms since `logCommand` was called. */
-  success(duration?: number): void;
-  /** Resolve the entry as failed, optionally appending `error` to the log message. */
-  fail(error?: string): void;
-}
-
-export interface TxGroupHandle {
-  /** Close the group and finalize its pass/fail state based on child entries. */
-  end(): void;
-}
-
-/**
- * Open a pending command entry in the test log and return a handle to resolve it.
- *
- * The entry shows a spinner (pending state) until `success` or `fail` is called.
- * If the command name is in the snapshot-capture list, `success` also captures
- * a DOM snapshot that can be inspected in the UI.
- *
- * @param message Human-readable description shown in the log panel.
- * @param cmd     Short label displayed as the command type (e.g. `'click'`, `'request'`).
- */
-export function logCommand(message: string, cmd: string): TxCommandHandle {
-  const entry = createLogEntry(message, 'pending', cmd);
-  const startedAt = Date.now();
-  return {
-    success(duration?: number) {
-      const dur = duration ?? Math.max(0, Date.now() - startedAt);
-      updateLogEntry(entry, 'pass', dur);
-      if (_collectedLogs) _collectedLogs.push({ cmd, message, state: 'pass', duration: dur });
-      if (window.__CONFIG__.snapshot && _snapshotCommands.has(cmd)) {
-        try {
-          const snapshotId = _captureSnapshot(message || cmd);
-          if (snapshotId > 0 && entry) {
-            entry.dataset.snapshotId = String(snapshotId);
-            entry.title = 'Click to open snapshot';
-            entry.classList.add('has-snapshot');
-            entry.onclick = () => {
-              const id = Number(entry.dataset.snapshotId);
-              if (id && (window as any).openSnapshot) (window as any).openSnapshot(id);
-            };
-            if (!entry.querySelector('.tx-cmd-snapshot-badge')) {
-              const badge = document.createElement('span');
-              badge.className = 'tx-cmd-snapshot-badge';
-              badge.title = 'Snapshot available';
-              const durEl = entry.querySelector<HTMLElement>('.tx-cmd-dur');
-              entry.insertBefore(badge, durEl || null);
-            }
-          }
-        } catch { /* ignore */ }
-      }
-    },
-    fail(error?: string) {
-      if (error && entry) {
-        const msgEl = entry.querySelector<HTMLElement>('.tx-cmd-msg');
-        if (msgEl) msgEl.textContent += ` — ${error}`;
-      }
-      const dur = Math.max(0, Date.now() - startedAt);
-      updateLogEntry(entry, 'fail', dur);
-      if (_collectedLogs) _collectedLogs.push({ cmd, message: error ? `${message} — ${error}` : message, state: 'fail', duration: dur });
-    },
-  };
-}
-
-function logGroup(message: string, cmd?: string): TxGroupHandle;
-function logGroup<T>(message: string, fn: () => T | Promise<T>): Promise<T>;
-function logGroup<T>(message: string, cmd: string, fn: () => T | Promise<T>): Promise<T>;
-function logGroup(message: string, cmdOrFn?: string | (() => any), fn?: () => any): TxGroupHandle | Promise<any> {
-  const resolvedCmd = typeof cmdOrFn === 'string' ? cmdOrFn : 'group';
-  const resolvedFn = typeof cmdOrFn === 'function' ? cmdOrFn : fn;
-
-  const container = _logContainer ?? document.getElementById('console');
-
-  let groupEl: HTMLElement | null = null;
-  let bodyEl: HTMLElement | null = null;
-
-  if (container) {
-    groupEl = document.createElement('div');
-    groupEl.className = 'tx-cmd-group open';
-
-    const hdrEl = document.createElement('div');
-    hdrEl.className = 'tx-cmd-group-hdr';
-    hdrEl.onclick = () => groupEl!.classList.toggle('open');
-
-    const chevronEl = document.createElement('span');
-    chevronEl.className = 'tx-cmd-group-chevron';
-    chevronEl.textContent = '▶';
-
-    const cmdLabelEl = document.createElement('span');
-    cmdLabelEl.className = 'tx-cmd-group-cmd';
-    cmdLabelEl.textContent = resolvedCmd;
-
-    const msgEl = document.createElement('span');
-    msgEl.className = 'tx-cmd-group-msg';
-    msgEl.textContent = message;
-
-    hdrEl.appendChild(chevronEl);
-    hdrEl.appendChild(cmdLabelEl);
-    hdrEl.appendChild(msgEl);
-
-    bodyEl = document.createElement('div');
-    bodyEl.className = 'tx-cmd-group-body';
-
-    groupEl.appendChild(hdrEl);
-    groupEl.appendChild(bodyEl);
-    container.appendChild(groupEl);
-    container.scrollTop = container.scrollHeight;
-  }
-
-  const savedContainer = _logContainer;
-  const savedCollected = _collectedLogs;
-  _logContainer = bodyEl;
-
-  const children: LogEntry[] = [];
-  const groupEntry: LogEntry = { cmd: resolvedCmd, message, state: 'info', children };
-  if (savedCollected !== null) savedCollected.push(groupEntry);
-  _collectedLogs = savedCollected !== null ? children : null;
-
-  const end = () => {
-    _logContainer = savedContainer;
-    _collectedLogs = savedCollected;
-    const hasFail = children.some(c => c.state === 'fail');
-    const hasPass = children.some(c => c.state === 'pass');
-    groupEntry.state = hasFail ? 'fail' : 'info';
-    if (groupEl) {
-      groupEl.classList.toggle('fail', hasFail);
-      groupEl.classList.toggle('pass', !hasFail && hasPass);
-    }
-    if (savedContainer) savedContainer.scrollTop = savedContainer.scrollHeight;
-  };
-
-  if (resolvedFn === undefined) return { end };
-
-  return (async () => {
-    try {
-      const result = await resolvedFn();
-      end();
-      return result;
-    } catch (e) {
-      end();
-      throw e;
-    }
-  })();
-}
-
-export const log = Object.assign(_log, { open: logCommand, group: logGroup });
-
-// ── Command helper ────────────────────────────────────────────────────────────
-
-export async function _withCommand<T>(message: string, cmd: string, fn: () => Promise<T>): Promise<T> {
-  const entry = logCommand(message, cmd);
-  try {
-    const result = await fn();
-    entry.success();
-    return result;
-  } catch (error: unknown) {
-    entry.fail(error instanceof Error ? error.message : String(error));
-    throw error;
-  }
-}
-
 // ── Init scripts ─────────────────────────────────────────────────────────────
 
 const _initScripts: string[] = [];
@@ -601,29 +331,6 @@ function _runInitScripts(): void {
     try { win.eval(code); }
     catch (e: any) { console.error('[addInitScript]', e.message); }
   }
-}
-
-// ── Page event system ─────────────────────────────────────────────────────────
-
-const _pageListeners = new Map<string, Set<(...args: any[]) => any>>();
-const _permanentPageListeners = new Map<string, Set<(...args: any[]) => any>>();
-
-export function _emitPage(event: string, ...args: any[]): void {
-  for (const fn of _permanentPageListeners.get(event) ?? []) {
-    try { fn(...args); } catch (e) { console.error(`page.on('${event}') handler error:`, e); }
-  }
-  for (const fn of _pageListeners.get(event) ?? []) {
-    try { fn(...args); } catch (e) { console.error(`page.on('${event}') handler error:`, e); }
-  }
-}
-
-function _addPageListener(event: string, fn: (...args: any[]) => any): void {
-  if (!_pageListeners.has(event)) _pageListeners.set(event, new Set());
-  _pageListeners.get(event)!.add(fn);
-}
-
-function _removePageListener(event: string, fn: (...args: any[]) => any): void {
-  _pageListeners.get(event)?.delete(fn);
 }
 
 // ── Per-protocol bridge installers moved to ./bridges ────────────────────────
@@ -801,6 +508,40 @@ export interface StorageState {
   }>;
 }
 
+// ── Shared page-event waiter ──────────────────────────────────────────────────
+
+function _waitForPageEvent<T>(
+  event: string,
+  predicate: (arg: T) => boolean | Promise<boolean>,
+  timeout: number,
+  desc: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      settled = true;
+      clearTimeout(timeoutId);
+      _removePageListener(event, handler);
+      _abortListeners.delete(abortFn);
+    };
+    const handler = async (arg: T) => {
+      if (settled) return;
+      try { if (!await Promise.resolve(predicate(arg))) return; } catch { return; }
+      cleanup();
+      resolve(arg);
+    };
+    const abortFn = (err: Error) => { if (!settled) { cleanup(); reject(err); } };
+    const abortErr = getAbortError();
+    if (abortErr) { reject(abortErr); return; }
+    _abortListeners.add(abortFn);
+    _addPageListener(event, handler);
+    timeoutId = setTimeout(() => {
+      if (!settled) { cleanup(); reject(new Error(`${desc} timed out after ${timeout}ms`)); }
+    }, timeout);
+  });
+}
+
 export const page = {
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -885,120 +626,7 @@ export const page = {
     }, selector);
   },
 
-  getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator {
-    const exact = opts?.exact ?? false;
-    const desc = `text(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = iframeDoc();
-      if (!doc) return [];
-      const leafs = Array.from(doc.querySelectorAll('*')).filter(
-        el => el.children.length === 0 && textMatches(el, text, exact)
-      );
-      if (leafs.length) return leafs;
-      return Array.from(doc.querySelectorAll('*')).filter(el => textMatches(el, text, exact));
-    }, desc);
-  },
-
-  getByRole(role: string, opts?: { name?: string | RegExp; exact?: boolean }): Locator {
-    const desc = opts?.name ? `role=${role}[name="${opts.name}"]` : `role=${role}`;
-    return new Locator(() => {
-      const doc = iframeDoc();
-      if (!doc) return [];
-      const sel = ROLE_SELECTORS[role] ?? `[role="${role}"]`;
-      let els = Array.from(doc.querySelectorAll(sel));
-      if (opts?.name) {
-        const name = opts.name;
-        const exact = opts.exact ?? false;
-        els = els.filter(el => {
-          const labelledById = el.getAttribute('aria-labelledby');
-          const labelled = labelledById ? doc.getElementById(labelledById) : null;
-          const acc = (
-            el.getAttribute('aria-label') ??
-            labelled?.textContent ??
-            (el.tagName === 'INPUT' ? el.getAttribute('value') : null) ??
-            el.textContent ??
-            ''
-          ).trim();
-          return name instanceof RegExp ? name.test(acc) : exact ? acc === name : acc.includes(name);
-        });
-      }
-      return els;
-    }, desc);
-  },
-
-  getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator {
-    const exact = opts?.exact ?? false;
-    const desc = `label(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = iframeDoc();
-      if (!doc) return [];
-      const results: Element[] = [];
-      for (const label of Array.from(doc.querySelectorAll<HTMLLabelElement>('label'))) {
-        if (!textMatches(label, text, exact)) continue;
-        const target = label.htmlFor
-          ? doc.getElementById(label.htmlFor)
-          : label.querySelector('input,select,textarea');
-        if (target && !results.includes(target)) results.push(target);
-      }
-      // aria-label fallback
-      for (const el of Array.from(doc.querySelectorAll('[aria-label]'))) {
-        const lbl = el.getAttribute('aria-label') ?? '';
-        const ok = text instanceof RegExp ? text.test(lbl) : exact ? lbl === text : lbl.includes(text as string);
-        if (ok && !results.includes(el)) results.push(el);
-      }
-      return results;
-    }, desc);
-  },
-
-  getByPlaceholder(text: string | RegExp): Locator {
-    const desc = `placeholder(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = iframeDoc();
-      if (!doc) return [];
-      return Array.from(doc.querySelectorAll('[placeholder]')).filter(el => {
-        const p = el.getAttribute('placeholder') ?? '';
-        return text instanceof RegExp ? text.test(p) : p.includes(text as string);
-      });
-    }, desc);
-  },
-
-  getByTestId(id: string): Locator {
-    return new Locator(() => {
-      const doc = iframeDoc();
-      if (!doc) return [];
-      const q = id.replace(/"/g, '\\"');
-      // Support both data-testid (Playwright default) and data-test (common alternative)
-      return Array.from(doc.querySelectorAll(`[data-testid="${q}"],[data-test="${q}"]`));
-    }, `[data-testid="${id}"]`);
-  },
-
-  getByAltText(text: string | RegExp): Locator {
-    const desc = `alt(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = iframeDoc();
-      if (!doc) return [];
-      return Array.from(doc.querySelectorAll('[alt]')).filter(el => {
-        const a = el.getAttribute('alt') ?? '';
-        return text instanceof RegExp ? text.test(a) : a.includes(text as string);
-      });
-    }, desc);
-  },
-
-  getByTitle(text: string | RegExp): Locator {
-    const desc = `title(${text instanceof RegExp ? text : `"${text}"`})`;
-    return new Locator(() => {
-      const doc = iframeDoc();
-      if (!doc) return [];
-      return Array.from(doc.querySelectorAll('[title]')).filter(el => {
-        const t = el.getAttribute('title') ?? '';
-        return text instanceof RegExp ? text.test(t) : t.includes(text as string);
-      });
-    }, desc);
-  },
-
-  frameLocator(selector: string): FrameLocator {
-    return new FrameLocator(selector, iframeDoc);
-  },
+  ...makeLocatorQueries(iframeDoc),
 
   // ── Page state ─────────────────────────────────────────────────────────────
 
@@ -1015,7 +643,7 @@ export const page = {
   // ── Waits ──────────────────────────────────────────────────────────────────
 
   async waitForURL(url: string | RegExp, opts?: { timeout?: number }): Promise<void> {
-    const timeout = opts?.timeout ?? window.__CONFIG__?.actionTimeout ?? 5000;
+    const timeout = actionTimeout(opts?.timeout);
     const re = typeof url === 'string' ? new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : url;
     return _withCommand(String(url), 'waitForURL', async () => {
       const t0 = Date.now();
@@ -1041,70 +669,26 @@ export const page = {
     urlOrPredicate: string | RegExp | ((req: any) => boolean | Promise<boolean>),
     options?: { timeout?: number }
   ): Promise<any> {
-    const timeout = options?.timeout ?? window.__CONFIG__?.actionTimeout ?? 30000;
+    const timeout = waitTimeout(options?.timeout);
     const predicate: (req: any) => boolean | Promise<boolean> = typeof urlOrPredicate === 'function'
       ? urlOrPredicate
       : (req: any) => _matchesRoutePattern(urlOrPredicate, req.url());
     const desc = typeof urlOrPredicate === 'string' ? urlOrPredicate : String(urlOrPredicate);
-    return _withCommand(desc.slice(0, 50), 'waitForRequest', () => new Promise<any>((resolve, reject) => {
-      let settled = false;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const cleanup = () => {
-        settled = true;
-        clearTimeout(timeoutId);
-        _removePageListener('request', handler);
-        const idx = _abortListeners.indexOf(abortFn);
-        if (idx >= 0) _abortListeners.splice(idx, 1);
-      };
-      const handler = async (req: any) => {
-        if (settled) return;
-        try { if (!await Promise.resolve(predicate(req))) return; } catch { return; }
-        cleanup();
-        resolve(req);
-      };
-      const abortFn = (err: Error) => { if (!settled) { cleanup(); reject(err); } };
-      if (_testAbortError) { reject(_testAbortError); return; }
-      _abortListeners.push(abortFn);
-      _addPageListener('request', handler);
-      timeoutId = setTimeout(() => {
-        if (!settled) { cleanup(); reject(new Error(`waitForRequest(${desc}) timed out after ${timeout}ms`)); }
-      }, timeout);
-    }));
+    return _withCommand(desc.slice(0, 50), 'waitForRequest', () =>
+      _waitForPageEvent('request', predicate, timeout, `waitForRequest(${desc})`));
   },
 
   waitForResponse(
     urlOrPredicate: string | RegExp | ((resp: any) => boolean | Promise<boolean>),
     options?: { timeout?: number }
   ): Promise<any> {
-    const timeout = options?.timeout ?? window.__CONFIG__?.actionTimeout ?? 30000;
+    const timeout = waitTimeout(options?.timeout);
     const predicate: (resp: any) => boolean | Promise<boolean> = typeof urlOrPredicate === 'function'
       ? urlOrPredicate
       : (resp: any) => _matchesRoutePattern(urlOrPredicate, resp.url());
     const desc = typeof urlOrPredicate === 'string' ? urlOrPredicate : String(urlOrPredicate);
-    return _withCommand(desc.slice(0, 50), 'waitForResponse', () => new Promise<any>((resolve, reject) => {
-      let settled = false;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const cleanup = () => {
-        settled = true;
-        clearTimeout(timeoutId);
-        _removePageListener('response', handler);
-        const idx = _abortListeners.indexOf(abortFn);
-        if (idx >= 0) _abortListeners.splice(idx, 1);
-      };
-      const handler = async (resp: any) => {
-        if (settled) return;
-        try { if (!await Promise.resolve(predicate(resp))) return; } catch { return; }
-        cleanup();
-        resolve(resp);
-      };
-      const abortFn = (err: Error) => { if (!settled) { cleanup(); reject(err); } };
-      if (_testAbortError) { reject(_testAbortError); return; }
-      _abortListeners.push(abortFn);
-      _addPageListener('response', handler);
-      timeoutId = setTimeout(() => {
-        if (!settled) { cleanup(); reject(new Error(`waitForResponse(${desc}) timed out after ${timeout}ms`)); }
-      }, timeout);
-    }));
+    return _withCommand(desc.slice(0, 50), 'waitForResponse', () =>
+      _waitForPageEvent('response', predicate, timeout, `waitForResponse(${desc})`));
   },
 
   // ── Keyboard ───────────────────────────────────────────────────────────────
@@ -1142,8 +726,7 @@ export const page = {
   },
 
   onPermanent(event: string, fn: (...args: any[]) => any) {
-    if (!_permanentPageListeners.has(event)) _permanentPageListeners.set(event, new Set());
-    _permanentPageListeners.get(event)!.add(fn);
+    addPermanentPageListener(event, fn);
     return page;
   },
 
@@ -1167,31 +750,10 @@ export const page = {
       : optionsOrPredicate?.predicate;
     const timeout = (typeof optionsOrPredicate === 'object' && optionsOrPredicate?.timeout != null)
       ? optionsOrPredicate.timeout
-      : window.__CONFIG__?.actionTimeout ?? 30000;
-    return _withCommand(event, 'waitForEvent', () => new Promise<T>((resolve, reject) => {
-      let settled = false;
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const cleanup = () => {
-        settled = true;
-        clearTimeout(timeoutId);
-        _removePageListener(event, handler);
-        const idx = _abortListeners.indexOf(abortFn);
-        if (idx >= 0) _abortListeners.splice(idx, 1);
-      };
-      const handler = async (arg: T) => {
-        if (settled) return;
-        try { if (predicate && !await Promise.resolve(predicate(arg))) return; } catch { return; }
-        cleanup();
-        resolve(arg);
-      };
-      const abortFn = (err: Error) => { if (!settled) { cleanup(); reject(err); } };
-      if (_testAbortError) { reject(_testAbortError); return; }
-      _abortListeners.push(abortFn);
-      _addPageListener(event, handler);
-      timeoutId = setTimeout(() => {
-        if (!settled) { cleanup(); reject(new Error(`waitForEvent(${JSON.stringify(event)}) timed out after ${timeout}ms`)); }
-      }, timeout);
-    }));
+      : waitTimeout();
+    const matchAll = (arg: T): boolean | Promise<boolean> => predicate ? predicate(arg) : true;
+    return _withCommand(event, 'waitForEvent', () =>
+      _waitForPageEvent<T>(event, matchAll, timeout, `waitForEvent(${JSON.stringify(event)})`));
   },
 
   async evaluate(pageFunction: string | ((...args: any[]) => any), arg?: any): Promise<any> {
@@ -1250,7 +812,7 @@ export const page = {
     return _withCommand('', 'resetSession', async () => {
       _locatorHandlers.length = 0;
       _routeHandlers.length = 0;
-      _pageListeners.clear();
+      clearPageListeners();
 
       try {
         const win = iframeWin() as any;
@@ -1459,12 +1021,12 @@ function _startEarlyBridgeWatcher(): void {
 export function _resetBrowserState(): void {
   _locatorHandlers.length = 0;
   _routeHandlers.length = 0;
-  _pageListeners.clear();
+  clearPageListeners();
   _snapshotListeners.clear();
   _snapshots.length = 0;
   _snapshotCounter = 0;
-  _collectedLogs = null;
-  _logContainer = null;
+  stopCollectingLogs();
+  setLogContainer(null);
 }
 
 // ── iframe init ───────────────────────────────────────────────────────────────

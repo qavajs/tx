@@ -2,6 +2,21 @@
  * Type Definitions for Tx
  */
 
+/** Runtime config injected into window.__CONFIG__ by the control panel HTML */
+export interface WindowConfig {
+  proxyUrl: string;
+  port: number;
+  viewport?: { width: number; height: number };
+  autorun?: boolean;
+  snapshot?: boolean;
+  grep?: string;
+  grepFlags?: string;
+  actionTimeout?: number;
+  expectTimeout?: number;
+  testTimeout?: number;
+  retries?: number;
+}
+
 /** A reporter entry: [path-to-module, config-object] */
 export type ReporterEntry = [path: string, config: Record<string, unknown>];
 

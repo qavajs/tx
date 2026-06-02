@@ -30,7 +30,7 @@ describe('runWithFixtures', () => {
       },
     };
     // Explicit _deps so parseFixtureDeps doesn't need to parse the stringified fn
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    
     (defs.b as any)._deps = ['a'];
 
     let bVal: unknown;
