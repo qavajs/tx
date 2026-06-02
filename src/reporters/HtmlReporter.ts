@@ -235,7 +235,7 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 40px; }
 .sico.pass { color: var(--pass); }
 .sico.fail { color: var(--fail); }
 .sico.info { color: #94a3b8; }
-.scmd { font-weight: 600; color: #334155; margin-right: 2px; }
+.step span { font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; font-size: 0.79rem; }
 .sdur { color: #94a3b8; margin-left: auto; white-space: nowrap; padding-left: 10px; }
 
 /* ── Error ── */
@@ -316,7 +316,7 @@ const JS = `
       steps = '<ul class="steps">' + t.steps.map(function(s) {
         var ico = STEP_ICONS[s.state] || STEP_ICONS.info;
         var dur = s.duration != null ? '<span class="sdur">' + fmt(s.duration) + '</span>' : '';
-        return '<li class="step">' + ico + '<span class="scmd">' + esc(s.cmd) + '</span><span>' + esc(s.message) + '</span>' + dur + '</li>';
+        return '<li class="step">' + ico + '<span>' + esc(s.message) + '</span>' + dur + '</li>';
       }).join('') + '</ul>';
     }
 

@@ -99,7 +99,7 @@ export class Keyboard {
   }
 
   async down(key: string): Promise<void> {
-    return _withCommand(key, 'keyboard.down', async () => {
+    return _withCommand(`page.keyboard.down(${JSON.stringify(key)})`, 'keyboard.down', async () => {
       const info = _resolveKey(key);
       this._pressed.add(info.key);
       this._fire(this._activeEl(), 'keydown', this._buildInit(info));
@@ -107,7 +107,7 @@ export class Keyboard {
   }
 
   async up(key: string): Promise<void> {
-    return _withCommand(key, 'keyboard.up', async () => {
+    return _withCommand(`page.keyboard.up(${JSON.stringify(key)})`, 'keyboard.up', async () => {
       const info = _resolveKey(key);
       this._pressed.delete(info.key);
       this._fire(this._activeEl(), 'keyup', this._buildInit(info));
@@ -130,7 +130,7 @@ export class Keyboard {
   }
 
   async press(key: string, opts?: { delay?: number }): Promise<void> {
-    return _withCommand(key, 'keyboard.press', async () => {
+    return _withCommand(`page.keyboard.press(${JSON.stringify(key)})`, 'keyboard.press', async () => {
       const parts = key.split('+');
       const mainKey = parts[parts.length - 1];
       const mods = parts.slice(0, -1);
@@ -150,7 +150,7 @@ export class Keyboard {
   }
 
   async type(text: string, opts?: { delay?: number }): Promise<void> {
-    return _withCommand(`"${text}"`, 'keyboard.type', async () => {
+    return _withCommand(`page.keyboard.type(${JSON.stringify(text)})`, 'keyboard.type', async () => {
       for (const ch of text) {
         if (opts?.delay) await _awaitOrAbort(opts.delay);
         const info = _resolveKey(ch);
@@ -174,7 +174,7 @@ export class Keyboard {
   }
 
   async insertText(text: string): Promise<void> {
-    return _withCommand(`"${text}"`, 'keyboard.insertText', async () => {
+    return _withCommand(`page.keyboard.insertText(${JSON.stringify(text)})`, 'keyboard.insertText', async () => {
       const target = this._activeEl() as HTMLInputElement | HTMLTextAreaElement | null;
       if (target && 'value' in target) {
         const win = iframeWin() as any;

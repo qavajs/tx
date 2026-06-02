@@ -90,7 +90,7 @@ export class Mouse {
   }
 
   async move(x: number, y: number, opts?: { steps?: number }): Promise<void> {
-    return _withCommand(`${x}, ${y}`, 'mouse.move', async () => {
+    return _withCommand(`page.mouse.move(${x}, ${y})`, 'mouse.move', async () => {
       const steps = Math.max(1, opts?.steps ?? 1);
       const startX = this._x;
       const startY = this._y;
@@ -107,7 +107,7 @@ export class Mouse {
   }
 
   async down(opts?: { button?: MouseButton }): Promise<void> {
-    return _withCommand(`${this._x}, ${this._y}`, 'mouse.down', async () => {
+    return _withCommand(`page.mouse.down()`, 'mouse.down', async () => {
       const button = this._buttonCode(opts?.button);
       this._buttons |= this._buttonMask(button);
       const target = this._target();
@@ -117,7 +117,7 @@ export class Mouse {
   }
 
   async up(opts?: { button?: MouseButton }): Promise<void> {
-    return _withCommand(`${this._x}, ${this._y}`, 'mouse.up', async () => {
+    return _withCommand(`page.mouse.up()`, 'mouse.up', async () => {
       const button = this._buttonCode(opts?.button);
       const mask = this._buttonMask(button);
       const target = this._target();
@@ -128,7 +128,7 @@ export class Mouse {
   }
 
   async click(x: number, y: number, opts?: { button?: MouseButton; clickCount?: number; delay?: number }): Promise<void> {
-    return _withCommand(`${x}, ${y}`, 'mouse.click', async () => {
+    return _withCommand(`page.mouse.click(${x}, ${y})`, 'mouse.click', async () => {
       await this.move(x, y);
       this._clickCount = opts?.clickCount ?? this._clickCount + 1;
       await this.down(opts);
@@ -142,7 +142,7 @@ export class Mouse {
   }
 
   async dblclick(x: number, y: number, opts?: { button?: MouseButton; delay?: number }): Promise<void> {
-    return _withCommand(`${x}, ${y}`, 'mouse.dblclick', async () => {
+    return _withCommand(`page.mouse.dblclick(${x}, ${y})`, 'mouse.dblclick', async () => {
       await this.click(x, y, { ...opts, clickCount: 1 });
       if (opts?.delay) await new Promise(r => setTimeout(r, opts.delay));
       await this.click(x, y, { ...opts, clickCount: 2 });
@@ -152,7 +152,7 @@ export class Mouse {
   }
 
   async wheel(deltaX: number, deltaY: number): Promise<void> {
-    return _withCommand(`Δ${deltaX}, ${deltaY}`, 'mouse.wheel', async () => {
+    return _withCommand(`page.mouse.wheel(${deltaX}, ${deltaY})`, 'mouse.wheel', async () => {
       this._target()?.dispatchEvent(new WheelEvent('wheel', {
         bubbles: true, cancelable: true,
         clientX: this._x, clientY: this._y, screenX: this._x, screenY: this._y,

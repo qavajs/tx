@@ -546,7 +546,7 @@ export const page = {
   // ── Navigation ─────────────────────────────────────────────────────────────
 
   goto(url: string): Promise<void> {
-    return _withCommand(url, 'goto', () => new Promise<void>((resolve, reject) => {
+    return _withCommand(`page.goto(${JSON.stringify(url)})`, 'goto', () => new Promise<void>((resolve, reject) => {
       const tab = _activeTab();
       if (!tab) { reject(new Error('no active tab')); return; }
       const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
@@ -584,7 +584,7 @@ export const page = {
   },
 
   reload(): Promise<void> {
-    return _withCommand('', 'reload', () => new Promise<void>((resolve, reject) => {
+    return _withCommand('page.reload()', 'reload', () => new Promise<void>((resolve, reject) => {
       const win = iframeWin();
       const tab = _activeTab();
       if (!win || !tab) { reject(new Error('no active tab')); return; }
@@ -623,7 +623,7 @@ export const page = {
         }
       }
       return out;
-    }, selector);
+    }, `locator('${selector}')`);
   },
 
   ...makeLocatorQueries(iframeDoc),
@@ -631,7 +631,7 @@ export const page = {
   // ── Page state ─────────────────────────────────────────────────────────────
 
   async title(): Promise<string> {
-    return _withCommand('', 'title', async () => iframeDoc()?.title ?? '');
+    return _withCommand('page.title()', 'title', async () => iframeDoc()?.title ?? '');
   },
   url(): string {
     try {
@@ -645,7 +645,7 @@ export const page = {
   async waitForURL(url: string | RegExp, opts?: { timeout?: number }): Promise<void> {
     const timeout = actionTimeout(opts?.timeout);
     const re = typeof url === 'string' ? new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : url;
-    return _withCommand(String(url), 'waitForURL', async () => {
+    return _withCommand(`page.waitForURL(${JSON.stringify(String(url))})`, 'waitForURL', async () => {
       const t0 = Date.now();
       while (Date.now() - t0 < timeout) {
         if (re.test(page.url())) return;
@@ -662,7 +662,7 @@ export const page = {
   },
 
   async waitForTimeout(ms: number): Promise<void> {
-    return _withCommand(`${ms}ms`, 'wait', () => _awaitOrAbort(ms));
+    return _withCommand(`page.waitForTimeout(${ms})`, 'wait', () => _awaitOrAbort(ms));
   },
 
   waitForRequest(
@@ -674,7 +674,7 @@ export const page = {
       ? urlOrPredicate
       : (req: any) => _matchesRoutePattern(urlOrPredicate, req.url());
     const desc = typeof urlOrPredicate === 'string' ? urlOrPredicate : String(urlOrPredicate);
-    return _withCommand(desc.slice(0, 50), 'waitForRequest', () =>
+    return _withCommand(`page.waitForRequest(${JSON.stringify(desc.slice(0, 50))})`, 'waitForRequest', () =>
       _waitForPageEvent('request', predicate, timeout, `waitForRequest(${desc})`));
   },
 
@@ -687,7 +687,7 @@ export const page = {
       ? urlOrPredicate
       : (resp: any) => _matchesRoutePattern(urlOrPredicate, resp.url());
     const desc = typeof urlOrPredicate === 'string' ? urlOrPredicate : String(urlOrPredicate);
-    return _withCommand(desc.slice(0, 50), 'waitForResponse', () =>
+    return _withCommand(`page.waitForResponse(${JSON.stringify(desc.slice(0, 50))})`, 'waitForResponse', () =>
       _waitForPageEvent('response', predicate, timeout, `waitForResponse(${desc})`));
   },
 
@@ -702,7 +702,7 @@ export const page = {
   // ── Viewport ───────────────────────────────────────────────────────────────
 
   setViewportSize(size: { width: number; height: number }): void {
-    const entry = logCommand(`${size.width} × ${size.height}`, 'viewport');
+    const entry = logCommand(`page.setViewportSize({ width: ${size.width}, height: ${size.height} })`, 'viewport');
     try {
       applyViewport(size.width, size.height);
       entry.success();
@@ -752,7 +752,7 @@ export const page = {
       ? optionsOrPredicate.timeout
       : waitTimeout();
     const matchAll = (arg: T): boolean | Promise<boolean> => predicate ? predicate(arg) : true;
-    return _withCommand(event, 'waitForEvent', () =>
+    return _withCommand(`page.waitForEvent(${JSON.stringify(event)})`, 'waitForEvent', () =>
       _waitForPageEvent<T>(event, matchAll, timeout, `waitForEvent(${JSON.stringify(event)})`));
   },
 
@@ -764,7 +764,7 @@ export const page = {
         ? `(${pageFunction.toString()})(${JSON.stringify(arg)})`
         : `(${pageFunction.toString()})()`
       : String(pageFunction);
-    return _withCommand(code.slice(0, 50).replace(/\s+/g, ' '), 'evaluate', () => Promise.resolve(win.eval(code)));
+    return _withCommand(`page.evaluate(${code.slice(0, 50).replace(/\s+/g, ' ')})`, 'evaluate', () => Promise.resolve(win.eval(code)));
   },
 
   addInitScript(script: string | ((...args: any[]) => any), arg?: any): { dispose: () => void } {
@@ -777,7 +777,7 @@ export const page = {
       code = script;
     }
     _initScripts.push(code);
-    const entry = logCommand(code.slice(0, 50).replace(/\s+/g, ' '), 'initScript');
+    const entry = logCommand(`page.addInitScript(${code.slice(0, 50).replace(/\s+/g, ' ')})`, 'initScript');
     entry.success();
     return {
       dispose() {
@@ -809,7 +809,7 @@ export const page = {
   },
 
   async resetSession(): Promise<void> {
-    return _withCommand('', 'resetSession', async () => {
+    return _withCommand('page.resetSession()', 'resetSession', async () => {
       _locatorHandlers.length = 0;
       _routeHandlers.length = 0;
       clearPageListeners();
@@ -889,7 +889,7 @@ export const page = {
   },
 
   async screenshot(opts?: { path?: string }): Promise<string> {
-    return _withCommand(opts?.path ?? '', 'screenshot', async () => {
+    return _withCommand('page.screenshot()', 'screenshot', async () => {
       const dataUrl = await captureScreenshot();
       if (opts?.path) saveArtifact(opts.path, dataUrl);
       return dataUrl;
@@ -897,7 +897,7 @@ export const page = {
   },
 
   async snapshot(opts?: { path?: string }): Promise<string> {
-    return _withCommand(opts?.path ?? '', 'snapshot', async () => {
+    return _withCommand('page.snapshot()', 'snapshot', async () => {
       const html = await captureFullSnapshot();
       if (opts?.path) saveArtifact(opts.path, html, 'html');
       return html;
@@ -1100,7 +1100,7 @@ function _isTextContent(contentType: string): boolean {
 
 export const request = {
   async fetch(url: string, options?: RequestInit): Promise<ApiResponse> {
-    const entry = logCommand(url, 'request');
+    const entry = logCommand(`request.fetch(${JSON.stringify(url)})`, 'request');
     const method = (options?.method ?? 'GET').toUpperCase();
     const reqHeaders = _normalizeHeaders(options?.headers);
     const req = {
@@ -1139,7 +1139,7 @@ export const request = {
 export const node = {
   /** Execute a named task in the Node.js context and return its result */
   async task<T = unknown>(name: string, payload?: unknown): Promise<T> {
-    return _withCommand(name, 'task', async () => {
+    return _withCommand(`node.task(${JSON.stringify(name)})`, 'task', async () => {
       const resp = await wsRequest<{ result?: T; error?: string }>('task', { name, payload: payload ?? null } as Record<string, unknown>);
       if (resp.error) throw new Error(resp.error ?? `task "${name}" failed`);
       return resp.result as T;
@@ -1244,7 +1244,7 @@ export const browser = {
   },
 
   async storageState(opts?: { path?: string }): Promise<StorageState> {
-    return _withCommand(opts?.path ?? '', 'storageState', async () => {
+    return _withCommand('page.storageState()', 'storageState', async () => {
       const { jar } = await wsRequest<{ jar: object }>('get-cookie-jar');
 
       const win = iframeWin() as any;
@@ -1275,7 +1275,7 @@ export const browser = {
   },
 
   async loadStorageState(state: StorageState | string): Promise<void> {
-    return _withCommand(typeof state === 'string' ? state : '', 'loadStorageState', async () => {
+    return _withCommand(`page.loadStorageState(${typeof state === 'string' ? JSON.stringify(state) : ''})`, 'loadStorageState', async () => {
       let resolved: StorageState;
       if (typeof state === 'string') {
         const { data } = await wsRequest<{ data: string }>('load-storage-state', { filePath: state });

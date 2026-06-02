@@ -54,13 +54,11 @@ function createLogEntry(message: string, state: LogState, cmd?: string, duration
   if (!container) return null;
   const cls = state;
   const icon = LOG_STATE[state].icon;
-  const label = cmd ?? (state === 'pass' ? 'ok' : state === 'fail' ? 'err' : state === 'pending' ? 'pending' : 'log');
   const entry = document.createElement('div');
   entry.className = `tx-cmd ${cls}`;
   const iconEl = document.createElement('span'); iconEl.className = `tx-cmd-icon ${cls}`; iconEl.textContent = icon;
-  const labelEl = document.createElement('span'); labelEl.className = `tx-cmd-label ${cls}`; labelEl.textContent = label;
   const msgEl = document.createElement('span'); msgEl.className = 'tx-cmd-msg'; msgEl.textContent = message;
-  entry.appendChild(iconEl); entry.appendChild(labelEl); entry.appendChild(msgEl);
+  entry.appendChild(iconEl); entry.appendChild(msgEl);
   if (duration != null) {
     const durEl = document.createElement('span'); durEl.className = 'tx-cmd-dur'; durEl.textContent = duration + 'ms';
     entry.appendChild(durEl);
@@ -180,14 +178,10 @@ function logGroup(message: string, cmdOrFn?: string | (() => any), fn?: () => an
     const chevronEl = document.createElement('span');
     chevronEl.className = 'tx-cmd-group-chevron';
     chevronEl.textContent = '▶';
-    const cmdLabelEl = document.createElement('span');
-    cmdLabelEl.className = 'tx-cmd-group-cmd';
-    cmdLabelEl.textContent = resolvedCmd;
     const msgEl = document.createElement('span');
     msgEl.className = 'tx-cmd-group-msg';
     msgEl.textContent = message;
     hdrEl.appendChild(chevronEl);
-    hdrEl.appendChild(cmdLabelEl);
     hdrEl.appendChild(msgEl);
     bodyEl = document.createElement('div');
     bodyEl.className = 'tx-cmd-group-body';

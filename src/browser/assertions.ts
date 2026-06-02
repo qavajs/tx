@@ -27,6 +27,12 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
   const pfx = negated ? 'not.' : '';
   const check = (passes: boolean, msg: string) => { if (negated ? passes : !passes) throw new Error(msg); };
 
+  const tgt = target instanceof Locator
+    ? locDesc
+    : target === page ? 'page'
+      : typeof target === 'function' ? 'fn'
+        : (() => { try { const s = JSON.stringify(target); return s.length > 40 ? s.slice(0, 37) + '…' : s; } catch { return String(target).slice(0, 40); } })();
+
   const la = async (cmd: string, msg: string, fn: () => Promise<void>) => {
     const entry = logCommand(msg, cmd);
     try { await fn(); entry.success(); }
@@ -38,9 +44,12 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
     catch (e: unknown) { entry.fail(e instanceof Error ? e.message : String(e)); throw e; }
   };
 
-   
-  const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number, expected?: string) =>
-    la(pfx + cmd, expected !== undefined ? `${locDesc}  ${expected}` : locDesc, async () => await _retry(() => fn(target as Locator), t(timeout)));
+  const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number, expected?: string) => {
+    const expr = expected !== undefined
+      ? `expect(${tgt}).${pfx}${cmd}(${expected})`
+      : `expect(${tgt}).${pfx}${cmd}()`;
+    return la(pfx + cmd, expr, async () => await _retry(() => fn(target as Locator), t(timeout)));
+  };
 
   
   const assertions: Record<string, any> = {
@@ -134,7 +143,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
     // ── Page-level assertions ──────────────────────────────────────────────────
 
     async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
-      await la(pfx + 'toHaveURL', String(url), async () => {
+      await la(pfx + 'toHaveURL', `expect(page).${pfx}toHaveURL(${JSON.stringify(String(url))})`, async () => {
         await _retry(async () => {
           const u = page.url();
           const matches = url instanceof RegExp ? url.test(u) : u.includes(url as string);
@@ -143,7 +152,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
       });
     },
     async toHaveTitle(title: string | RegExp, opts?: { timeout?: number }) {
-      await la(pfx + 'toHaveTitle', String(title), async () => {
+      await la(pfx + 'toHaveTitle', `expect(page).${pfx}toHaveTitle(${JSON.stringify(String(title))})`, async () => {
         await _retry(async () => {
           const got = iframeDoc()?.title ?? '';
           const matches = title instanceof RegExp ? title.test(got) : got === title;
@@ -156,49 +165,49 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
 
     
     toBe(expected: any) {
-      ls(pfx + 'toBe', JSON.stringify(expected), () => {
+      ls(pfx + 'toBe', `expect(${tgt}).${pfx}toBe(${JSON.stringify(expected)})`, () => {
         check(target === expected, negated ? `Expected NOT ${JSON.stringify(expected)}` : `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
       });
     },
     
     toEqual(expected: any) {
-      ls(pfx + 'toEqual', JSON.stringify(expected), () => {
+      ls(pfx + 'toEqual', `expect(${tgt}).${pfx}toEqual(${JSON.stringify(expected)})`, () => {
         check(JSON.stringify(target) === JSON.stringify(expected), negated ? `Expected NOT equal ${JSON.stringify(expected)}` : `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
       });
     },
     toBeTruthy() {
-      ls(pfx + 'toBeTruthy', JSON.stringify(target), () => {
+      ls(pfx + 'toBeTruthy', `expect(${tgt}).${pfx}toBeTruthy()`, () => {
         check(!!target, negated ? `Expected falsy, got ${JSON.stringify(target)}` : `Expected truthy, got ${JSON.stringify(target)}`);
       });
     },
     toBeFalsy() {
-      ls(pfx + 'toBeFalsy', JSON.stringify(target), () => {
+      ls(pfx + 'toBeFalsy', `expect(${tgt}).${pfx}toBeFalsy()`, () => {
         check(!target, negated ? `Expected truthy, got ${JSON.stringify(target)}` : `Expected falsy, got ${JSON.stringify(target)}`);
       });
     },
     toBeNull() {
-      ls(pfx + 'toBeNull', JSON.stringify(target), () => {
+      ls(pfx + 'toBeNull', `expect(${tgt}).${pfx}toBeNull()`, () => {
         check(target === null, negated ? 'Expected NOT null' : `Expected null, got ${JSON.stringify(target)}`);
       });
     },
     toBeUndefined() {
-      ls(pfx + 'toBeUndef', JSON.stringify(target), () => {
+      ls(pfx + 'toBeUndef', `expect(${tgt}).${pfx}toBeUndefined()`, () => {
         check(target === undefined, negated ? 'Expected NOT undefined' : `Expected undefined, got ${JSON.stringify(target)}`);
       });
     },
     toBeGreaterThan(n: number) {
-      ls(pfx + 'toBeGt', String(n), () => {
+      ls(pfx + 'toBeGt', `expect(${tgt}).${pfx}toBeGreaterThan(${n})`, () => {
         check(target > n, `${target} is ${negated ? '' : 'not '}> ${n}`);
       });
     },
     toBeLessThan(n: number) {
-      ls(pfx + 'toBeLt', String(n), () => {
+      ls(pfx + 'toBeLt', `expect(${tgt}).${pfx}toBeLessThan(${n})`, () => {
         check(target < n, `${target} is ${negated ? '' : 'not '}< ${n}`);
       });
     },
     
     toContain(item: any) {
-      ls(pfx + 'toContain', JSON.stringify(item), () => {
+      ls(pfx + 'toContain', `expect(${tgt}).${pfx}toContain(${JSON.stringify(item)})`, () => {
         const contains = Array.isArray(target) ? target.includes(item) : String(target).includes(String(item));
         check(contains, Array.isArray(target)
           ? `Expected array ${negated ? 'NOT ' : ''}to contain ${JSON.stringify(item)}`
@@ -206,13 +215,13 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
       });
     },
     toMatch(r: RegExp | string) {
-      ls(pfx + 'toMatch', String(r), () => {
+      ls(pfx + 'toMatch', `expect(${tgt}).${pfx}toMatch(${String(r)})`, () => {
         const re = typeof r === 'string' ? new RegExp(r) : r;
         check(re.test(String(target)), `"${target}" ${negated ? 'matches' : 'does not match'} ${re}`);
       });
     },
     async toPass(opts?: { timeout?: number }) {
-      await la(pfx + 'toPass', '', async () => {
+      await la(pfx + 'toPass', `expect(${tgt}).${pfx}toPass()`, async () => {
         if (negated) {
           try { await Promise.resolve((target as () => unknown)()); }
           catch { return; }

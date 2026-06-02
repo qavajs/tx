@@ -149,20 +149,26 @@ export class Locator {
   // ── Chaining ──────────────────────────────────────────────────────────────
 
   nth(n: number): Locator {
-    return new Locator(() => { const e = this._els()[n]; return e ? [e] : []; }, `${this._desc}:nth(${n})`);
+    return new Locator(() => { const e = this._els()[n]; return e ? [e] : []; }, `${this._desc}.nth(${n})`);
   }
-  first(): Locator { return this.nth(0); }
+  first(): Locator {
+    return new Locator(() => { const a = this._els(); return a.length ? [a[0]] : []; }, `${this._desc}.first()`);
+  }
   last(): Locator {
-    return new Locator(() => { const a = this._els(); return a.length ? [a[a.length - 1]] : []; }, `${this._desc}:last`);
+    return new Locator(() => { const a = this._els(); return a.length ? [a[a.length - 1]] : []; }, `${this._desc}.last()`);
   }
   filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp; visible?: boolean }): Locator {
-    const tag = opts.hasText ? `[has-text: ${opts.hasText}]` : opts.hasNotText ? `[not-text: ${opts.hasNotText}]` : opts.visible !== undefined ? `[visible: ${opts.visible}]` : '[filtered]';
+    const filterArg = opts.hasText !== undefined
+      ? `{ hasText: ${opts.hasText instanceof RegExp ? opts.hasText : JSON.stringify(opts.hasText)} }`
+      : opts.hasNotText !== undefined
+        ? `{ hasNotText: ${opts.hasNotText instanceof RegExp ? opts.hasNotText : JSON.stringify(opts.hasNotText)} }`
+        : opts.visible !== undefined ? `{ visible: ${opts.visible} }` : '{}';
     return new Locator(() => this._els().filter(el => {
       if (opts.hasText && !textMatches(el, opts.hasText)) return false;
       if (opts.hasNotText && textMatches(el, opts.hasNotText)) return false;
       if (opts.visible !== undefined && this._isVisibleElement(el) !== opts.visible) return false;
       return true;
-    }), `${this._desc}${tag}`);
+    }), `${this._desc}.filter(${filterArg})`);
   }
   locator(selector: string): Locator {
     return new Locator(() => {
@@ -178,13 +184,13 @@ export class Locator {
         }
       }
       return out;
-    }, `${this._desc} ${selector}`.trim());
+    }, `${this._desc}.locator('${selector}')`);
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   async click(opts?: { force?: boolean; timeout?: number }): Promise<void> {
-    return _withCommand(this._desc, 'click', async () => {
+    return _withCommand(`${this._desc}.click()`, 'click', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'click');
       const rect = el.getBoundingClientRect();
@@ -208,7 +214,7 @@ export class Locator {
   }
 
   async dblclick(opts?: { timeout?: number }): Promise<void> {
-    return _withCommand(this._desc, 'dblclick', async () => {
+    return _withCommand(`${this._desc}.dblclick()`, 'dblclick', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'dblclick');
       el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
@@ -216,7 +222,7 @@ export class Locator {
   }
 
   async rightClick(opts?: { timeout?: number }): Promise<void> {
-    return _withCommand(this._desc, 'rightClick', async () => {
+    return _withCommand(`${this._desc}.rightClick()`, 'rightClick', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'rightClick');
       const init: MouseEventInit = { bubbles: true, cancelable: true, button: 2, buttons: 2 };
@@ -227,7 +233,7 @@ export class Locator {
   }
 
   async fill(value: string, opts?: { timeout?: number; delay?: number }): Promise<void> {
-    return _withCommand(this._desc ? `${this._desc}  "${value}"` : `"${value}"`, 'fill', async () => {
+    return _withCommand(`${this._desc}.fill(${JSON.stringify(value)})`, 'fill', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'fill') as HTMLInputElement | HTMLTextAreaElement;
       const win = iframeWin() as any;
@@ -282,7 +288,7 @@ export class Locator {
   async clear(opts?: { timeout?: number }): Promise<void> { await this.fill('', opts); }
 
   async type(text: string, opts?: { delay?: number; timeout?: number }): Promise<void> {
-    return _withCommand(this._desc ? `${this._desc}  "${text}"` : `"${text}"`, 'type', async () => {
+    return _withCommand(`${this._desc}.type(${JSON.stringify(text)})`, 'type', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'type') as HTMLInputElement;
       el.focus();
@@ -296,7 +302,7 @@ export class Locator {
   }
 
   async press(key: string, opts?: { timeout?: number }): Promise<void> {
-    return _withCommand(this._desc ? `${this._desc}  ${key}` : key, 'press', async () => {
+    return _withCommand(`${this._desc}.press(${JSON.stringify(key)})`, 'press', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForEl(opts?.timeout);
       const kOpts = { key, bubbles: true, cancelable: true };
@@ -311,8 +317,7 @@ export class Locator {
   }
 
   async selectOption(value: string | string[], opts?: { timeout?: number }): Promise<void> {
-    const label = Array.isArray(value) ? value.join(', ') : value;
-    return _withCommand(this._desc ? `${this._desc}  ${label}` : label, 'select', async () => {
+    return _withCommand(`${this._desc}.selectOption(${JSON.stringify(value)})`, 'select', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'selectOption') as HTMLSelectElement;
       const vals = Array.isArray(value) ? value : [value];
@@ -324,7 +329,7 @@ export class Locator {
   }
 
   async check(opts?: { timeout?: number }): Promise<void> {
-    return _withCommand(this._desc, 'check', async () => {
+    return _withCommand(`${this._desc}.check()`, 'check', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'check') as HTMLInputElement;
       if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -332,7 +337,7 @@ export class Locator {
   }
 
   async uncheck(opts?: { timeout?: number }): Promise<void> {
-    return _withCommand(this._desc, 'uncheck', async () => {
+    return _withCommand(`${this._desc}.uncheck()`, 'uncheck', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'uncheck') as HTMLInputElement;
       if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -340,14 +345,14 @@ export class Locator {
   }
 
   async focus(opts?: { timeout?: number }): Promise<void> {
-    return _withCommand(this._desc, 'focus', async () => {
+    return _withCommand(`${this._desc}.focus()`, 'focus', async () => {
       await _checkLocatorHandlers();
       (await this._waitForEl(opts?.timeout)).focus();
     });
   }
 
   async hover(opts?: { timeout?: number }): Promise<void> {
-    return _withCommand(this._desc, 'hover', async () => {
+    return _withCommand(`${this._desc}.hover()`, 'hover', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForActionableEl(opts, 'hover');
       el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
@@ -356,7 +361,7 @@ export class Locator {
   }
 
   async scrollIntoViewIfNeeded(opts?: { timeout?: number }): Promise<void> {
-    return _withCommand(this._desc, 'scroll', async () => {
+    return _withCommand(`${this._desc}.scrollIntoViewIfNeeded()`, 'scroll', async () => {
       await _checkLocatorHandlers();
       (await this._waitForEl(opts?.timeout)).scrollIntoView({ block: 'nearest' });
     });
@@ -368,7 +373,7 @@ export class Locator {
   ): Promise<void> {
     const arr = Array.isArray(files) ? files : [files];
     const names = arr.map(f => (typeof f === 'string' ? f.split('/').pop() ?? f : f.name)).join(', ');
-    return _withCommand(this._desc ? `${this._desc}  ${names}` : names, 'setInputFiles', async () => {
+    return _withCommand(`${this._desc}.setInputFiles(${JSON.stringify(names)})`, 'setInputFiles', async () => {
       await _checkLocatorHandlers();
       const el = await this._waitForEl(opts?.timeout) as HTMLInputElement;
       const win = iframeWin() as any;
@@ -393,58 +398,58 @@ export class Locator {
   // ── Queries ───────────────────────────────────────────────────────────────
 
   async textContent(): Promise<string | null> {
-    return _withCommand(this._desc, 'textContent', async () => this._el()?.textContent ?? null);
+    return _withCommand(`${this._desc}.textContent()`, 'textContent', async () => this._el()?.textContent ?? null);
   }
   async innerText(): Promise<string> {
-    return _withCommand(this._desc, 'innerText', async () => (this._el() as HTMLElement | null)?.innerText ?? '');
+    return _withCommand(`${this._desc}.innerText()`, 'innerText', async () => (this._el() as HTMLElement | null)?.innerText ?? '');
   }
   async inputValue(): Promise<string> {
-    return _withCommand(this._desc, 'inputValue', async () => (this._el() as HTMLInputElement | null)?.value ?? '');
+    return _withCommand(`${this._desc}.inputValue()`, 'inputValue', async () => (this._el() as HTMLInputElement | null)?.value ?? '');
   }
   async getAttribute(name: string): Promise<string | null> {
-    return _withCommand(this._desc ? `${this._desc}  "${name}"` : `"${name}"`, 'getAttribute', async () => this._el()?.getAttribute(name) ?? null);
+    return _withCommand(`${this._desc}.getAttribute(${JSON.stringify(name)})`, 'getAttribute', async () => this._el()?.getAttribute(name) ?? null);
   }
   _checkVisibility(): boolean {
     return this._isVisibleElement(this._el());
   }
   async isVisible(): Promise<boolean> {
-    return _withCommand(this._desc, 'isVisible', async () => this._checkVisibility());
+    return _withCommand(`${this._desc}.isVisible()`, 'isVisible', async () => this._checkVisibility());
   }
   async isHidden(): Promise<boolean> {
-    return _withCommand(this._desc, 'isHidden', async () => !this._checkVisibility());
+    return _withCommand(`${this._desc}.isHidden()`, 'isHidden', async () => !this._checkVisibility());
   }
   _checkEnabled(): boolean {
     const el = this._el() as HTMLInputElement | HTMLButtonElement | null;
     return el ? !el.disabled : false;
   }
   async isEnabled(): Promise<boolean> {
-    return _withCommand(this._desc, 'isEnabled', async () => this._checkEnabled());
+    return _withCommand(`${this._desc}.isEnabled()`, 'isEnabled', async () => this._checkEnabled());
   }
   async isDisabled(): Promise<boolean> {
-    return _withCommand(this._desc, 'isDisabled', async () => !this._checkEnabled());
+    return _withCommand(`${this._desc}.isDisabled()`, 'isDisabled', async () => !this._checkEnabled());
   }
   _checkChecked(): boolean {
     return (this._el() as HTMLInputElement | null)?.checked ?? false;
   }
   async isChecked(): Promise<boolean> {
-    return _withCommand(this._desc, 'isChecked', async () => this._checkChecked());
+    return _withCommand(`${this._desc}.isChecked()`, 'isChecked', async () => this._checkChecked());
   }
   _checkEditable(): boolean {
     const el = this._el() as HTMLInputElement | null;
     return el ? !el.readOnly && !el.disabled : false;
   }
   async isEditable(): Promise<boolean> {
-    return _withCommand(this._desc, 'isEditable', async () => this._checkEditable());
+    return _withCommand(`${this._desc}.isEditable()`, 'isEditable', async () => this._checkEditable());
   }
   _textContent(): string | null { return this._el()?.textContent ?? null; }
   _inputValue(): string { return (this._el() as HTMLInputElement | null)?.value ?? ''; }
   _getAttribute(name: string): string | null { return this._el()?.getAttribute(name) ?? null; }
   async count(): Promise<number> {
-    return _withCommand(this._desc, 'count', async () => this._els().length);
+    return _withCommand(`${this._desc}.count()`, 'count', async () => this._els().length);
   }
 
   async evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T> {
-    return _withCommand(this._desc, 'evaluate', async () => {
+    return _withCommand(`${this._desc}.evaluate(...)`, 'evaluate', async () => {
       const el = await this._waitForEl();
       if (typeof pageFunction === 'function') {
         return Promise.resolve(arg !== undefined ? pageFunction(el, arg) : pageFunction(el));
@@ -459,7 +464,7 @@ export class Locator {
   async waitFor(opts?: { state?: 'visible'|'hidden'|'attached'|'detached'; timeout?: number }): Promise<void> {
     const state = opts?.state ?? 'visible';
     const timeout = actionTimeout(opts?.timeout);
-    return _withCommand(this._desc ? `${this._desc}  ${state}` : state, 'waitFor', async () => {
+    return _withCommand(`${this._desc}.waitFor({ state: '${state}' })`, 'waitFor', async () => {
       const t0 = Date.now();
       while (Date.now() - t0 < timeout) {
         const el = this._el();
@@ -491,7 +496,7 @@ export class FrameLocator {
   }
 
   private _queries() {
-    return makeLocatorQueries(() => this._frameDoc(), `frame(${this._selector})`);
+    return makeLocatorQueries(() => this._frameDoc(), `frameLocator('${this._selector}')`);
   }
 
   locator(selector: string): Locator {
@@ -508,7 +513,7 @@ export class FrameLocator {
         }
       }
       return out;
-    }, `frame(${this._selector}) >> ${selector}`);
+    }, `frameLocator('${this._selector}').locator('${selector}')`);
   }
 
   getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator { return this._queries().getByText(text, opts); }
