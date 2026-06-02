@@ -30,8 +30,8 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
   const tgt = target instanceof Locator
     ? locDesc
     : target === page ? 'page'
-    : typeof target === 'function' ? 'fn'
-    : (() => { try { const s = JSON.stringify(target); return s.length > 40 ? s.slice(0, 37) + '…' : s; } catch { return String(target).slice(0, 40); } })();
+      : typeof target === 'function' ? 'fn'
+        : (() => { try { const s = JSON.stringify(target); return s.length > 40 ? s.slice(0, 37) + '…' : s; } catch { return String(target).slice(0, 40); } })();
 
   const la = async (cmd: string, msg: string, fn: () => Promise<void>) => {
     const entry = logCommand(msg, cmd);
