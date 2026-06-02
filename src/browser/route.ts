@@ -1,5 +1,10 @@
 // ── Route interception ────────────────────────────────────────────────────────
 
+// Captures the pre-bridge fetch from the active iframe window so route.fetch()
+// can make real upstream requests that bypass route interception.
+let _routeOrigFetch: typeof fetch | null = null;
+export function _setRouteOrigFetch(fn: typeof fetch): void { _routeOrigFetch = fn; }
+
 function _globToRegex(pattern: string): RegExp {
   const reStr = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
@@ -63,6 +68,19 @@ export class Route {
 
   async continue(opts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit }): Promise<void> {
     this._decide({ action: 'continue', continueOpts: opts });
+  }
+
+  async fetch(opts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit }): Promise<Response> {
+    if (!_routeOrigFetch) throw new Error('route.fetch() unavailable: no active page');
+    const url = opts?.url ?? this._req.url();
+    const method = opts?.method ?? this._req.method();
+    const headers = { ...this._req.headers(), ...opts?.headers };
+    const postData = opts?.postData !== undefined ? opts.postData : this._req.postData();
+    return _routeOrigFetch(url, {
+      method,
+      headers,
+      ...(postData != null ? { body: postData } : {}),
+    });
   }
 
   request() { return this._req; }

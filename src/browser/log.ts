@@ -16,13 +16,14 @@ const _snapshotCommands = new Set([
 
 // ── Log state ─────────────────────────────────────────────────────────────────
 
-type LogState = 'pending' | 'info' | 'pass' | 'fail';
+type LogState = 'pending' | 'info' | 'pass' | 'fail' | 'warn';
 
 const LOG_STATE: Record<LogState, { icon: string }> = {
   pending: { icon: '…' },
   info:    { icon: '›' },
   pass:    { icon: '✓' },
   fail:    { icon: '✗' },
+  warn:    { icon: '~' },
 };
 
 let _logContainer: HTMLElement | null = null;
@@ -31,7 +32,7 @@ export function setLogContainer(el: HTMLElement | null): void { _logContainer = 
 export interface LogEntry {
   cmd: string;
   message: string;
-  state: 'pass' | 'fail' | 'info';
+  state: 'pass' | 'fail' | 'info' | 'warn';
   duration?: number;
   attachment?: { body: string; contentType: string };
   children?: LogEntry[];
@@ -68,15 +69,15 @@ function createLogEntry(message: string, state: LogState, cmd?: string, duration
   return entry;
 }
 
-function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail', duration?: number): void {
+function updateLogEntry(entry: HTMLElement | null, state: 'pass' | 'fail' | 'warn', duration?: number): void {
   if (!entry) return;
-  entry.classList.remove('pending', 'info', 'pass', 'fail');
+  entry.classList.remove('pending', 'info', 'pass', 'fail', 'warn');
   entry.classList.add(state);
   const iconEl = entry.querySelector<HTMLElement>('.tx-cmd-icon');
   const labelEl = entry.querySelector<HTMLElement>('.tx-cmd-label');
   if (iconEl) {
     iconEl.className = `tx-cmd-icon ${state}`;
-    iconEl.textContent = state === 'pass' ? '✓' : '✗';
+    iconEl.textContent = LOG_STATE[state].icon;
   }
   if (labelEl) { labelEl.className = `tx-cmd-label ${state}`; }
   if (duration != null) {
@@ -109,6 +110,8 @@ export function attach(label: string, body: string, contentType = 'text/plain'):
 export interface TxCommandHandle {
   success(duration?: number): void;
   fail(error?: string): void;
+  /** Mark the entry as a soft (non-fatal) failure — amber ⚠ instead of red ✗. */
+  warn(error?: string): void;
 }
 
 export interface TxGroupHandle {
@@ -153,6 +156,15 @@ export function logCommand(message: string, cmd: string): TxCommandHandle {
       const dur = Math.max(0, Date.now() - startedAt);
       updateLogEntry(entry, 'fail', dur);
       if (_collectedLogs) _collectedLogs.push({ cmd, message: error ? `${message} — ${error}` : message, state: 'fail', duration: dur });
+    },
+    warn(error?: string) {
+      if (error && entry) {
+        const msgEl = entry.querySelector<HTMLElement>('.tx-cmd-msg');
+        if (msgEl) msgEl.textContent += ` — ${error}`;
+      }
+      const dur = Math.max(0, Date.now() - startedAt);
+      updateLogEntry(entry, 'warn', dur);
+      if (_collectedLogs) _collectedLogs.push({ cmd, message: error ? `${message} — ${error}` : message, state: 'warn', duration: dur });
     },
   };
 }
@@ -203,11 +215,13 @@ function logGroup(message: string, cmdOrFn?: string | (() => any), fn?: () => an
     _logContainer = savedContainer;
     _collectedLogs = savedCollected;
     const hasFail = children.some(c => c.state === 'fail');
+    const hasWarn = children.some(c => c.state === 'warn');
     const hasPass = children.some(c => c.state === 'pass');
-    groupEntry.state = hasFail ? 'fail' : 'info';
+    groupEntry.state = hasFail ? 'fail' : hasWarn ? 'warn' : 'info';
     if (groupEl) {
       groupEl.classList.toggle('fail', hasFail);
-      groupEl.classList.toggle('pass', !hasFail && hasPass);
+      groupEl.classList.toggle('warn', !hasFail && hasWarn);
+      groupEl.classList.toggle('pass', !hasFail && !hasWarn && hasPass);
     }
     if (savedContainer) savedContainer.scrollTop = savedContainer.scrollHeight;
   };

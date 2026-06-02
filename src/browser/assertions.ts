@@ -3,9 +3,21 @@
 // dependency is safe because values are only accessed at call time, never
 // during module initialization.
 
-import { _awaitOrAbort, iframeDoc, logCommand, page } from './browser';
+import { _awaitOrAbort, iframeDoc, iframeWin, logCommand, page } from './browser';
 import { Locator } from './locator';
 import { expectTimeout } from './config';
+
+// ── Soft assertion error accumulator ─────────────────────────────────────────
+
+const _softErrors: Error[] = [];
+
+export function _clearSoftErrors(): void { _softErrors.length = 0; }
+
+export function _flushSoftErrors(): void {
+  if (_softErrors.length === 0) return;
+  const errs = _softErrors.splice(0);
+  throw new Error(`${errs.length} soft assertion(s) failed:\n\n${errs.map((e, i) => `  ${i + 1}) ${e.message}`).join('\n\n')}`);
+}
 
 async function _retry(fn: () => Promise<void>, timeout?: number): Promise<void> {
   const _timeout = expectTimeout(timeout);
@@ -21,10 +33,11 @@ async function _retry(fn: () => Promise<void>, timeout?: number): Promise<void> 
 type CustomMatcherFn = (target: unknown, ...args: unknown[]) => { pass: boolean; message: string } | Promise<{ pass: boolean; message: string }>;
 
 
-function _makeExpect(target: any, negated: boolean, localMatchers: Record<string, CustomMatcherFn>): unknown {
+function _makeExpect(target: any, negated: boolean, localMatchers: Record<string, CustomMatcherFn>, soft = false): unknown {
   const t = (ms?: number) => expectTimeout(ms);
   const locDesc = (target instanceof Locator) ? (target as Locator)._desc : '';
   const pfx = negated ? 'not.' : '';
+  const expectCall = soft ? 'expect.soft' : 'expect';
   const check = (passes: boolean, msg: string) => { if (negated ? passes : !passes) throw new Error(msg); };
 
   const tgt = target instanceof Locator
@@ -36,24 +49,30 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
   const la = async (cmd: string, msg: string, fn: () => Promise<void>) => {
     const entry = logCommand(msg, cmd);
     try { await fn(); entry.success(); }
-    catch (e: unknown) { entry.fail(e instanceof Error ? e.message : String(e)); throw e; }
+    catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      if (soft) { entry.warn(err.message); _softErrors.push(err); } else { entry.fail(err.message); throw e; }
+    }
   };
   const ls = (cmd: string, msg: string, fn: () => void) => {
     const entry = logCommand(msg, cmd);
     try { fn(); entry.success(); }
-    catch (e: unknown) { entry.fail(e instanceof Error ? e.message : String(e)); throw e; }
+    catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      if (soft) { entry.warn(err.message); _softErrors.push(err); } else { entry.fail(err.message); throw e; }
+    }
   };
 
   const locAssert = (cmd: string, fn: (loc: Locator) => Promise<void>, timeout?: number, expected?: string) => {
     const expr = expected !== undefined
-      ? `expect(${tgt}).${pfx}${cmd}(${expected})`
-      : `expect(${tgt}).${pfx}${cmd}()`;
+      ? `${expectCall}(${tgt}).${pfx}${cmd}(${expected})`
+      : `${expectCall}(${tgt}).${pfx}${cmd}()`;
     return la(pfx + cmd, expr, async () => await _retry(() => fn(target as Locator), t(timeout)));
   };
 
   
   const assertions: Record<string, any> = {
-    get not() { return _makeExpect(target, !negated, localMatchers); },
+    get not() { return _makeExpect(target, !negated, localMatchers, soft); },
 
     // ── Locator assertions (auto-retry) ────────────────────────────────────────
 
@@ -139,11 +158,22 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
         check(matches, `Expected class ${negated ? 'NOT ' : ''}${JSON.stringify(cls)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout, String(cls instanceof RegExp ? cls : JSON.stringify(cls)));
     },
+    async toHaveCSS(property: string, value: string | RegExp, opts?: { timeout?: number }) {
+      await locAssert('toHaveCSS', async l => {
+        const el = l._el() as HTMLElement | null;
+        if (!el) throw new Error('Element not found');
+        const win = iframeWin();
+        if (!win) throw new Error('no active page');
+        const computed = win.getComputedStyle(el).getPropertyValue(property).trim();
+        const matches = value instanceof RegExp ? value.test(computed) : computed === (value as string).trim();
+        check(matches, `Expected CSS ${JSON.stringify(property)} ${negated ? 'NOT ' : ''}to be ${JSON.stringify(String(value))}, got ${JSON.stringify(computed)}`);
+      }, opts?.timeout, String(value instanceof RegExp ? value : JSON.stringify(value)));
+    },
 
     // ── Page-level assertions ──────────────────────────────────────────────────
 
     async toHaveURL(url: string | RegExp, opts?: { timeout?: number }) {
-      await la(pfx + 'toHaveURL', `expect(page).${pfx}toHaveURL(${JSON.stringify(String(url))})`, async () => {
+      await la(pfx + 'toHaveURL', `${expectCall}(page).${pfx}toHaveURL(${JSON.stringify(String(url))})`, async () => {
         await _retry(async () => {
           const u = page.url();
           const matches = url instanceof RegExp ? url.test(u) : u.includes(url as string);
@@ -152,7 +182,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
       });
     },
     async toHaveTitle(title: string | RegExp, opts?: { timeout?: number }) {
-      await la(pfx + 'toHaveTitle', `expect(page).${pfx}toHaveTitle(${JSON.stringify(String(title))})`, async () => {
+      await la(pfx + 'toHaveTitle', `${expectCall}(page).${pfx}toHaveTitle(${JSON.stringify(String(title))})`, async () => {
         await _retry(async () => {
           const got = iframeDoc()?.title ?? '';
           const matches = title instanceof RegExp ? title.test(got) : got === title;
@@ -165,49 +195,49 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
 
     
     toBe(expected: any) {
-      ls(pfx + 'toBe', `expect(${tgt}).${pfx}toBe(${JSON.stringify(expected)})`, () => {
+      ls(pfx + 'toBe', `${expectCall}(${tgt}).${pfx}toBe(${JSON.stringify(expected)})`, () => {
         check(target === expected, negated ? `Expected NOT ${JSON.stringify(expected)}` : `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
       });
     },
     
     toEqual(expected: any) {
-      ls(pfx + 'toEqual', `expect(${tgt}).${pfx}toEqual(${JSON.stringify(expected)})`, () => {
+      ls(pfx + 'toEqual', `${expectCall}(${tgt}).${pfx}toEqual(${JSON.stringify(expected)})`, () => {
         check(JSON.stringify(target) === JSON.stringify(expected), negated ? `Expected NOT equal ${JSON.stringify(expected)}` : `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(target)}`);
       });
     },
     toBeTruthy() {
-      ls(pfx + 'toBeTruthy', `expect(${tgt}).${pfx}toBeTruthy()`, () => {
+      ls(pfx + 'toBeTruthy', `${expectCall}(${tgt}).${pfx}toBeTruthy()`, () => {
         check(!!target, negated ? `Expected falsy, got ${JSON.stringify(target)}` : `Expected truthy, got ${JSON.stringify(target)}`);
       });
     },
     toBeFalsy() {
-      ls(pfx + 'toBeFalsy', `expect(${tgt}).${pfx}toBeFalsy()`, () => {
+      ls(pfx + 'toBeFalsy', `${expectCall}(${tgt}).${pfx}toBeFalsy()`, () => {
         check(!target, negated ? `Expected truthy, got ${JSON.stringify(target)}` : `Expected falsy, got ${JSON.stringify(target)}`);
       });
     },
     toBeNull() {
-      ls(pfx + 'toBeNull', `expect(${tgt}).${pfx}toBeNull()`, () => {
+      ls(pfx + 'toBeNull', `${expectCall}(${tgt}).${pfx}toBeNull()`, () => {
         check(target === null, negated ? 'Expected NOT null' : `Expected null, got ${JSON.stringify(target)}`);
       });
     },
     toBeUndefined() {
-      ls(pfx + 'toBeUndef', `expect(${tgt}).${pfx}toBeUndefined()`, () => {
+      ls(pfx + 'toBeUndef', `${expectCall}(${tgt}).${pfx}toBeUndefined()`, () => {
         check(target === undefined, negated ? 'Expected NOT undefined' : `Expected undefined, got ${JSON.stringify(target)}`);
       });
     },
     toBeGreaterThan(n: number) {
-      ls(pfx + 'toBeGt', `expect(${tgt}).${pfx}toBeGreaterThan(${n})`, () => {
+      ls(pfx + 'toBeGt', `${expectCall}(${tgt}).${pfx}toBeGreaterThan(${n})`, () => {
         check(target > n, `${target} is ${negated ? '' : 'not '}> ${n}`);
       });
     },
     toBeLessThan(n: number) {
-      ls(pfx + 'toBeLt', `expect(${tgt}).${pfx}toBeLessThan(${n})`, () => {
+      ls(pfx + 'toBeLt', `${expectCall}(${tgt}).${pfx}toBeLessThan(${n})`, () => {
         check(target < n, `${target} is ${negated ? '' : 'not '}< ${n}`);
       });
     },
     
     toContain(item: any) {
-      ls(pfx + 'toContain', `expect(${tgt}).${pfx}toContain(${JSON.stringify(item)})`, () => {
+      ls(pfx + 'toContain', `${expectCall}(${tgt}).${pfx}toContain(${JSON.stringify(item)})`, () => {
         const contains = Array.isArray(target) ? target.includes(item) : String(target).includes(String(item));
         check(contains, Array.isArray(target)
           ? `Expected array ${negated ? 'NOT ' : ''}to contain ${JSON.stringify(item)}`
@@ -215,13 +245,13 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
       });
     },
     toMatch(r: RegExp | string) {
-      ls(pfx + 'toMatch', `expect(${tgt}).${pfx}toMatch(${String(r)})`, () => {
+      ls(pfx + 'toMatch', `${expectCall}(${tgt}).${pfx}toMatch(${String(r)})`, () => {
         const re = typeof r === 'string' ? new RegExp(r) : r;
         check(re.test(String(target)), `"${target}" ${negated ? 'matches' : 'does not match'} ${re}`);
       });
     },
     async toPass(opts?: { timeout?: number }) {
-      await la(pfx + 'toPass', `expect(${tgt}).${pfx}toPass()`, async () => {
+      await la(pfx + 'toPass', `${expectCall}(${tgt}).${pfx}toPass()`, async () => {
         if (negated) {
           try { await Promise.resolve((target as () => unknown)()); }
           catch { return; }
@@ -246,8 +276,8 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
 }
 
 function _buildExpect(localMatchers: Record<string, CustomMatcherFn>) {
-  
-  const fn = (target: any) => _makeExpect(target, false, localMatchers);
+  const fn = (target: any) => _makeExpect(target, false, localMatchers, false);
+  fn.soft = (target: any) => _makeExpect(target, false, localMatchers, true);
   fn.extend = (matchers: Record<string, CustomMatcherFn>) => _buildExpect({ ...localMatchers, ...matchers });
   return fn;
 }

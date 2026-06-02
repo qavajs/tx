@@ -351,6 +351,12 @@ export class Locator {
     });
   }
 
+  async blur(opts?: { timeout?: number }): Promise<void> {
+    return _withCommand(`${this._desc}.blur()`, 'blur', async () => {
+      (await this._waitForEl(opts?.timeout)).blur();
+    });
+  }
+
   async hover(opts?: { timeout?: number }): Promise<void> {
     return _withCommand(`${this._desc}.hover()`, 'hover', async () => {
       await _checkLocatorHandlers();
@@ -475,6 +481,14 @@ export class Locator {
         await _awaitOrAbort(50);
       }
       throw new Error(`waitFor(state="${state}") timed out after ${timeout}ms`);
+    });
+  }
+
+  async boundingBox(opts?: { timeout?: number }): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    return _withCommand(`${this._desc}.boundingBox()`, 'boundingBox', async () => {
+      const el = await this._waitForEl(opts?.timeout);
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
     });
   }
 }

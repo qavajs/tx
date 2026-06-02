@@ -1,7 +1,7 @@
 // ── Per-protocol bridge installers ────────────────────────────────────────────
 
 import { _emitPage, fromProxiedUrl, iframeWin, iframeDoc, createTab, wsRequest } from './browser';
-import { Route, routeHandlers, dispatchRoute, matchesRoutePattern } from './route';
+import { Route, routeHandlers, dispatchRoute, matchesRoutePattern, _setRouteOrigFetch } from './route';
 
 let _frameObserver: MutationObserver | null = null;
 
@@ -89,6 +89,7 @@ function _bridgePopup(win: any): void {
 function _bridgeFetch(win: any): void {
   if (typeof win.fetch !== 'function') return;
   const origFetch = (win.fetch as typeof fetch).bind(win);
+  _setRouteOrigFetch(origFetch);
   win.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     let url = typeof input === 'string' ? input
       : (input && typeof (input as any).href === 'string') ? (input as any).href
