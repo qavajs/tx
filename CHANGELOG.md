@@ -4,6 +4,11 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- `workers` config option — splits spec files across N independent browser workers running in parallel when `testMode` is true. Each worker gets its own browser process, Hammerhead proxy, and HTTP/WebSocket server; they share no mutable state. Test events stream to a single shared `ReporterEmitter` in real time so reporters receive results as they arrive. Workers always run headless; Safari is not supported (it reuses an existing window). File distribution is round-robin across workers; port allocation is automatic (base ports + worker index × 10).  Activate with `--workers <n>` on the CLI or `workers: N` in the config file.
+
 ## [0.0.9]
 
 ### Added

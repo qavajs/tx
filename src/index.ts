@@ -7,7 +7,8 @@ import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { TxWrapper } from './core/wrapper';
 import { TxConfig, ReporterEntry } from './types';
-import type { Reporter } from './runner/reporter';
+import { ReporterEmitter, type Reporter, type TestCase } from './runner/reporter';
+import { parseTestFile } from './runner/runner';
 import { register as registerTsLoader } from './core/tsLoader';
 import { matchGlob } from './utils/glob';
 
@@ -95,6 +96,7 @@ const CONFIG_FIELDS: Record<string, FieldSetter> = {
     if (total < 1 || current < 1 || current > total) { console.warn(`Invalid --shard value: "${v}". current must be ≥1 and ≤ total.`); return; }
     c.shard = { current, total };
   },
+  workers:           (c, v) => { c.workers = parseInt(v, 10); },
 };
 
 function setConfigField(config: TxConfig, key: string, value: string): void {
@@ -190,6 +192,89 @@ function resolveTestFiles(config: Pick<TxConfig, 'testFiles'>, configDir: string
   return files.length > 0 ? files : undefined;
 }
 
+// ── Parallel worker execution ──────────────────────────────────────────────────
+
+type WrapperConfig = NonNullable<ConstructorParameters<typeof TxWrapper>[0]>;
+
+async function runParallel(
+  baseConfig: WrapperConfig,
+  reporters: Reporter[],
+  workers: number,
+): Promise<{ passed: number; failed: number }> {
+  const browserStr = (baseConfig.browser ?? '').toLowerCase();
+  if (browserStr.includes('safari')) {
+    throw new Error(
+      'workers > 1 is not compatible with Safari — Safari reuses an existing window. ' +
+      'Use Chrome, Firefox, or Edge for parallel test execution.',
+    );
+  }
+
+  if (!baseConfig.headless) {
+    console.warn('⚠️  workers > 1 requires headless mode. Forcing headless: true for all workers.');
+  }
+
+  const testFiles = baseConfig.testFiles ?? [];
+  const N = Math.min(workers, testFiles.length);
+
+  // Distribute files round-robin across workers
+  const groups: string[][] = Array.from({ length: N }, () => []);
+  testFiles.forEach((f, i) => groups[i % N].push(f));
+
+  // Pre-parse all files to build the merged Suite for onBegin
+  const allParsed = testFiles.map(f => parseTestFile(f));
+  const allCases: TestCase[] = allParsed.flatMap(p =>
+    p.tests.map(t => ({
+      title: t.name,
+      fullTitle: t.suite ? `${t.suite} > ${t.name}` : t.name,
+      file: p.filename,
+    }))
+  );
+
+  // Shared emitter — real-time test events stream in as workers complete tests
+  const emitter = new ReporterEmitter();
+  reporters.forEach(r => emitter.add(r));
+  emitter.emitBegin({ testFiles }, { title: '', tests: allCases, allTests: () => allCases });
+
+  const t0 = Date.now();
+  const port1 = baseConfig.port1 ?? 11337;
+  const port2 = baseConfig.port2 ?? 11338;
+  const controlPanelPort = baseConfig.controlPanelPort ?? 11339;
+
+  const wrappers = groups.map((files, i) => {
+    const streamingReporter: Reporter = {
+      onBegin:     () => {}, // coordinator already fired the merged begin
+      onTestBegin: (test, result) => emitter.emitTestBegin(test, result),
+      onTestEnd:   (test, result) => emitter.emitTestEnd(test, result),
+      onEnd:       () => {}, // coordinator fires the merged end below
+    };
+    return new TxWrapper({
+      ...baseConfig,
+      headless:         true,
+      testFiles:        files,
+      port1:            port1 + i * 10,
+      port2:            port2 + i * 10,
+      controlPanelPort: controlPanelPort + i * 10,
+      reporters:        [streamingReporter],
+    });
+  });
+
+  const results = await Promise.all(
+    wrappers.map(async w => {
+      await w.start();
+      const r = await w.waitForTests();
+      await w.stop();
+      return r;
+    })
+  );
+
+  const passed = results.reduce((s, r) => s + r.passed, 0);
+  const failed = results.reduce((s, r) => s + r.failed, 0);
+  const total = passed + failed;
+  emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration: Date.now() - t0 });
+
+  return { passed, failed };
+}
+
 // ── Entry point ────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -236,6 +321,7 @@ async function main() {
     expectTimeout:    fileConfig.expectTimeout,
     testTimeout:      fileConfig.testTimeout,
     retries:              cliConfig.retries ?? fileConfig.retries,
+    workers:              cliConfig.workers ?? fileConfig.workers,
   };
 
   // Resolve testFiles into absolute paths
@@ -272,7 +358,7 @@ async function main() {
 
   const reporters: Reporter[] = (fileConfig.reporters ?? []).map(entry => loadReporter(entry, configDir));
 
-  const wrapper = new TxWrapper({
+  const wrapperConfig: WrapperConfig = {
     ...mergedConfig,
     testFiles: resolvedFiles,
     testPatterns,
@@ -281,7 +367,27 @@ async function main() {
     tasks: fileConfig.tasks,
     preprocessor: fileConfig.preprocessor,
     grep,
-  });
+  };
+
+  const workers = mergedConfig.workers ?? 1;
+
+  // Parallel test mode: spawn N independent workers each with their own browser
+  if (mergedConfig.testMode && workers > 1 && resolvedFiles && resolvedFiles.length > 0) {
+    console.log(`🧪 Test mode: running all specs…\n`);
+    console.log(`⚡ Parallel mode: ${workers} worker(s) across ${resolvedFiles.length} file(s)`);
+    try {
+      const { passed, failed } = await runParallel(wrapperConfig, reporters, workers);
+      console.log(`\n✅ ${passed} passed, ❌ ${failed} failed`);
+      process.exit(failed > 0 ? 1 : 0);
+    } catch (error) {
+      console.error('Error:', error);
+      process.exit(1);
+    }
+    return;
+  }
+
+  // Single-worker path (default, and for interactive mode)
+  const wrapper = new TxWrapper(wrapperConfig);
 
   try {
     await wrapper.start();

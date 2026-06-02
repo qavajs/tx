@@ -40,6 +40,7 @@
     "start": "node dist/index.js --config test/tx.config.js",
     "dev": "node build.mjs && node dist/index.js --config test/tx.config.js",
     "test": "node build.mjs && node dist/index.js --config test/tx.config.js --test",
+    "test:parallel": "node build.mjs && node dist/index.js --config test/tx.config.js --test --workers 4",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit --project test/tsconfig.json",
     "lint": "eslint --fix src",
