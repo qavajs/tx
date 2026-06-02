@@ -1,6 +1,6 @@
 {
   "name": "@qavajs/tx",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "@qavajs/tx — testing framework via Hammerhead proxy",
   "license": "MIT",
   "author": "Oleksandr Halichenko",
@@ -43,7 +43,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit --project test/tsconfig.json",
     "lint": "eslint --fix src",
-    "test:unit": "node --require ts-node/register --test test/unit/glob.test.ts test/unit/testRegistrer.test.ts test/unit/runner.test.ts test/unit/locator.test.ts test/unit/executor.test.ts"
+    "test:unit": "node --require ts-node/register --test test/unit/glob.test.ts test/unit/testRegistrer.test.ts test/unit/runner.test.ts test/unit/locator.test.ts test/unit/executor.test.ts test/unit/route.test.ts"
   },
   "dependencies": {
     "esbuild": "^0.28.0",

@@ -4,6 +4,22 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.0.9]
+
+### Added
+- `expect.soft(target)` — non-fatal assertion variant; soft assertion failures are collected rather than thrown immediately. All accumulated failures are reported as a single aggregated error after the test body finishes (including `afterEach` hooks). Cleared automatically at the start of each attempt (including retries). Supports negation (`expect.soft(loc).not.toBeVisible()`) and all built-in matchers.
+- `route.fetch(opts?)` — fetch the actual upstream response from within a `page.route()` handler without triggering route interception again. Accepts optional overrides (`url`, `method`, `headers`, `postData`) and returns a native `Response`. Enables the intercept-modify-fulfill pattern: `const resp = await route.fetch(); const json = await resp.json(); await route.fulfill({ json: { ...json, injected: true } });`
+- `locator.boundingBox(opts?)` — returns `{ x, y, width, height }` of the element's bounding rectangle in the iframe viewport coordinate space, or `null` if the element is not found. Respects `timeout`.
+- `locator.blur(opts?)` — dispatches `blur()` on the element; counterpart to `locator.focus()`.
+- `expect(locator).toHaveCSS(property, value, opts?)` — asserts that `getComputedStyle(element).getPropertyValue(property)` matches the given value (string exact match or RegExp). Auto-retries until the condition is met or the timeout expires. Supports negation.
+
+### Changed
+- Command log messages now use full call-site syntax: `page.goto("url")` instead of `url`, `page.waitForTimeout(500)` instead of `500ms`, `request.fetch("url")` instead of `url`, etc.; applies to all `page.*`, `browser.*`, `request.*`, and `node.*` commands
+- `expect()` log messages now show the full assertion expression: `expect(locator).toHaveText("foo")`, `expect(page).not.toHaveURL(/login/)`, etc.; applies to all built-in matchers and custom matchers registered via `expect.extend()`
+- `page.route()`, `page.unroute()`, and `page.close()` now use `_withCommand` — they emit pending → pass/fail log entries with elapsed timing, consistent with all other `page.*` commands
+- `page.addLocatorHandler()` and `page.removeLocatorHandler()` now use `logCommand` — they emit pass/fail entries with the locator description, consistent with other handler registration calls
+- `browser.newPage()`, `browser.newWindow()`, and `browser.switchTab()` now use `_withCommand`/`logCommand` — they emit pending → pass/fail log entries with timing, replacing bare info-level `log()` calls
+
 ## [0.0.8]
 
 ### Added

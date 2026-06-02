@@ -5,6 +5,7 @@ import type { WindowConfig } from '../types';
 declare global { interface Window { __CONFIG__: WindowConfig; __CURRENT_TEST_INFO__: unknown; } }
 import { type TestResult, runWithFixtures, buildTestQueue } from './executor';
 import { page, closeExtraTabs, setTestAbort, startCollectingLogs, stopCollectingLogs, setLogContainer } from '../browser/browser';
+import { _clearSoftErrors, _flushSoftErrors } from '../browser/assertions';
 
 function makeRemapper(code: string): ((s: string) => string) | null {
   const m = code.match(/\/\/# sourceMappingURL=data:application\/json[^,]*,([^\s]+)/);
@@ -80,6 +81,7 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
       const t0 = Date.now();
       let _timeoutId: ReturnType<typeof setTimeout> | undefined;
       startCollectingLogs();
+      _clearSoftErrors();
       let testError: unknown = undefined;
       try {
         closeExtraTabs();
@@ -106,6 +108,7 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
           }),
           _stopPromise,
         ]);
+        _flushSoftErrors();
       } catch (e: unknown) {
         testError = e;
       }

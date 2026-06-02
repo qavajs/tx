@@ -106,128 +106,222 @@ interface TxLocatorHandlerOptions {
 
 interface Locator {
   // ── Chaining ────────────────────────────────────────────────────────────────
+  /** Returns a locator pointing to the nth (zero-based) matched element. */
   nth(n: number): Locator;
+  /** Returns a locator pointing to the first matched element. */
   first(): Locator;
+  /** Returns a locator pointing to the last matched element. */
   last(): Locator;
+  /** Returns a new locator filtered by the given conditions. */
   filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp; visible?: boolean }): Locator;
+  /** Returns a locator for a descendant element matching `selector` within the current locator's elements. */
   locator(selector: string): Locator;
 
   // ── Actions ─────────────────────────────────────────────────────────────────
+  /** Clicks the element. Waits for it to be actionable unless `force` is set. */
   click(opts?: { force?: boolean; timeout?: number }): Promise<void>;
+  /** Double-clicks the element. */
   dblclick(opts?: TxTimeoutOptions): Promise<void>;
+  /** Right-clicks the element, triggering a context-menu event. */
   rightClick(opts?: TxTimeoutOptions): Promise<void>;
+  /** Clears any existing value, then types `value` into the element. */
   fill(value: string, opts?: TxFillOptions): Promise<void>;
+  /** Clears the current value of an input or textarea. */
   clear(opts?: TxTimeoutOptions): Promise<void>;
+  /** Types `text` character by character into the element, firing key events for each character. */
   type(text: string, opts?: { delay?: number; timeout?: number }): Promise<void>;
+  /** Presses a keyboard key on the element. Supports modifier combos, e.g. `'Shift+A'`. */
   press(key: string, opts?: TxTimeoutOptions): Promise<void>;
+  /** Selects one or more `<option>` elements by value inside a `<select>`. */
   selectOption(value: string | string[], opts?: TxTimeoutOptions): Promise<void>;
+  /** Checks a checkbox or radio input. */
   check(opts?: TxTimeoutOptions): Promise<void>;
+  /** Unchecks a checkbox input. */
   uncheck(opts?: TxTimeoutOptions): Promise<void>;
+  /** Moves keyboard focus to the element. */
   focus(opts?: TxTimeoutOptions): Promise<void>;
+  /** Removes keyboard focus from the element. */
+  blur(opts?: TxTimeoutOptions): Promise<void>;
+  /** Moves the mouse pointer over the element, triggering hover/mouseover events. */
   hover(opts?: TxTimeoutOptions): Promise<void>;
+  /** Scrolls the element into view if it is outside the visible area of the page. */
   scrollIntoViewIfNeeded(opts?: TxTimeoutOptions): Promise<void>;
+  /** Sets the value of a file input. Accepts a path string, an array of paths, or `TxFilePayload` descriptors. */
   setInputFiles(files: string | string[] | TxFilePayload | TxFilePayload[], opts?: TxTimeoutOptions): Promise<void>;
 
   // ── State queries ────────────────────────────────────────────────────────────
+  /** Returns the `textContent` of the element, or `null` if the element has no text content. */
   textContent(): Promise<string | null>;
+  /** Returns the `innerText` of the element (visible text only, affected by CSS). */
   innerText(): Promise<string>;
+  /** Returns the current value of an input, textarea, or select element. */
   inputValue(): Promise<string>;
+  /** Returns the value of the named attribute, or `null` if the attribute is absent. */
   getAttribute(name: string): Promise<string | null>;
+  /** Returns `true` if the element is visible (not hidden by CSS or `display:none`). */
   isVisible(): Promise<boolean>;
+  /** Returns `true` if the element is hidden or not present in the DOM. */
   isHidden(): Promise<boolean>;
+  /** Returns `true` if the element is not disabled. */
   isEnabled(): Promise<boolean>;
+  /** Returns `true` if the element is disabled. */
   isDisabled(): Promise<boolean>;
+  /** Returns `true` if the checkbox or radio element is checked. */
   isChecked(): Promise<boolean>;
+  /** Returns `true` if the element is editable (an input that is not read-only or disabled). */
   isEditable(): Promise<boolean>;
+  /** Returns the number of elements matched by this locator. */
   count(): Promise<number>;
+  /** Evaluates `pageFunction` in the page context with the matched element as its argument and returns the result. */
   evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T>;
+  /** Waits for the element to reach the given state (default `'visible'`). */
   waitFor(opts?: { state?: 'visible' | 'hidden' | 'attached' | 'detached'; timeout?: number }): Promise<void>;
+  /** Returns the bounding box of the element in the iframe viewport coordinate space, or `null` if the element is not found. */
+  boundingBox(opts?: TxTimeoutOptions): Promise<{ x: number; y: number; width: number; height: number } | null>;
 }
 
 // ── Assertions ────────────────────────────────────────────────────────────────
 
 interface LocatorAssertions extends TxLocatorMatchers {
+  /** Asserts that the element is visible on the page. */
   toBeVisible(opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element is hidden or not present in the DOM. */
   toBeHidden(opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element is not disabled. */
   toBeEnabled(opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element is disabled. */
   toBeDisabled(opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the checkbox or radio element is checked. */
   toBeChecked(opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element is editable (not read-only or disabled). */
   toBeEditable(opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element has no value (empty input, textarea, or no text content). */
   toBeEmpty(opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element's text content exactly matches `text` (or matches the RegExp). */
   toHaveText(text: string | RegExp, opts?: TxTextOptions): Promise<void>;
+  /** Asserts that the element's text content includes `text` (or a portion matching the RegExp). */
   toContainText(text: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the input, textarea, or select element has the given `value`. */
   toHaveValue(value: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element has attribute `name`, optionally equal to `value`. */
   toHaveAttribute(name: string, value?: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the locator matches exactly `count` elements. */
   toHaveCount(count: number, opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element has the given CSS class in its `className`. */
   toHaveClass(cls: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the element's computed CSS `property` equals `value`. */
+  toHaveCSS(property: string, value: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  /** Retries the preceding assertion until it passes or `timeout` is exceeded. */
   toPass(opts?: TxTimeoutOptions): Promise<void>;
+  /** Negates all assertions on this object. */
   not: Omit<LocatorAssertions, 'not'>;
 }
 
 interface PageAssertions extends TxPageMatchers {
+  /** Asserts that the page's `<title>` matches `titleOrRegExp`. */
   toHaveTitle(titleOrRegExp: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  /** Asserts that the page's current URL matches `url`. */
   toHaveURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  /** Retries the preceding assertion until it passes or `timeout` is exceeded. */
   toPass(opts?: TxTimeoutOptions): Promise<void>;
+  /** Negates all assertions on this object. */
   not: Omit<PageAssertions, 'not'>;
 }
 
 interface ValueAssertions extends TxValueMatchers {
+  /** Asserts strict equality (`===`) to `expected`. */
   toBe(expected: any): void;
+  /** Asserts deep equality to `expected`. */
   toEqual(expected: any): void;
+  /** Asserts that the value is truthy. */
   toBeTruthy(): void;
+  /** Asserts that the value is falsy. */
   toBeFalsy(): void;
+  /** Asserts that the value is `null`. */
   toBeNull(): void;
+  /** Asserts that the value is `undefined`. */
   toBeUndefined(): void;
+  /** Asserts that the numeric value is greater than `n`. */
   toBeGreaterThan(n: number): void;
+  /** Asserts that the numeric value is less than `n`. */
   toBeLessThan(n: number): void;
+  /** Asserts that an array contains `item`, or a string contains the substring `item`. */
   toContain(item: any): void;
+  /** Asserts that the string value matches the RegExp or contains the substring. */
   toMatch(r: RegExp | string): void;
+  /** Retries the preceding assertion until it passes or `timeout` is exceeded. */
   toPass(opts?: TxTimeoutOptions): Promise<void>;
+  /** Negates all assertions on this object. */
   not: Omit<ValueAssertions, 'not'>;
 }
 
 // ── Page event payload types ───────────────────────────────────────────────────
 
 interface TxConsoleMessage {
+  /** Returns the console message type (e.g. `'log'`, `'error'`, `'warning'`). */
   type(): string;
+  /** Returns the text content of the console message. */
   text(): string;
+  /** Returns the list of arguments passed to the console call. */
   args(): any[];
+  /** Returns the source location where the console method was called. */
   location(): { url: string; lineNumber: number; columnNumber: number };
 }
 
 interface TxRequest {
+  /** Returns the request URL. */
   url(): string;
+  /** Returns the HTTP method (e.g. `'GET'`, `'POST'`). */
   method(): string;
+  /** Returns the HTTP request headers as a key-value map. */
   headers(): Record<string, string>;
+  /** Returns the request body, or `null` for requests without a body. */
   postData(): any;
+  /** Returns `true` if this request is a top-level navigation request. */
   isNavigationRequest(): boolean;
+  /** Returns the resource type (e.g. `'document'`, `'fetch'`, `'xhr'`, `'image'`). */
   resourceType(): string;
 }
 
 interface TxResponse {
+  /** Returns the response URL. */
   url(): string;
+  /** Returns the HTTP status code (e.g. `200`, `404`). */
   status(): number;
+  /** Returns the HTTP status text (e.g. `'OK'`, `'Not Found'`). */
   statusText(): string;
+  /** Returns `true` if the status code is in the 200–299 range. */
   ok(): boolean;
+  /** Returns the HTTP response headers as a key-value map. */
   headers(): Record<string, string>;
+  /** Returns the response body as a string, or `null`. */
   body(): string | null;
+  /** Returns the {@link TxRequest} that initiated this response. */
   request(): TxRequest;
 }
 
 interface TxFailedRequest extends TxRequest {
+  /** Returns failure details including the human-readable error text. */
   failure(): { errorText: string };
 }
 
 interface TxDialog {
+  /** Returns the dialog type: `'alert'`, `'confirm'`, or `'prompt'`. */
   type(): 'alert' | 'confirm' | 'prompt';
+  /** Returns the message text displayed inside the dialog. */
   message(): string;
+  /** Returns the default value of a prompt dialog (empty string for alert/confirm). */
   defaultValue(): string;
+  /** Accepts the dialog, optionally providing `promptText` for prompt dialogs. */
   accept(promptText?: string): void;
+  /** Dismisses the dialog (equivalent to clicking Cancel). */
   dismiss(): void;
 }
 
 interface TxDownload {
+  /** Returns the download URL. */
   url(): string;
+  /** Returns the suggested filename derived from the `Content-Disposition` header or URL. */
   suggestedFilename(): string;
   /** Returns a Web ReadableStream of the downloaded file's bytes. */
   createReadStream(): Promise<ReadableStream<Uint8Array>>;
@@ -236,29 +330,45 @@ interface TxDownload {
 }
 
 interface TxFileChooser {
+  /** Returns the underlying `<input type="file">` element. */
   element(): HTMLInputElement;
+  /** Returns `true` if the file input accepts multiple files. */
   isMultiple(): boolean;
+  /** Returns the `accept` attribute of the file input (e.g. `'image/*'`). */
   accept(): string;
+  /** Sets the chosen files on the file input element, triggering a `change` event. */
   setFiles(files: File[]): void;
 }
 
 interface TxFrame {
+  /** Returns the URL of the frame's current document. */
   url(): string;
+  /** Returns the `name` attribute of the `<iframe>` element. */
   name(): string;
+  /** Returns `true` if this is the top-level (main) frame of the page. */
   isMainFrame(): boolean;
 }
 
 // ── FrameLocator ─────────────────────────────────────────────────────────────
 
 interface FrameLocator {
+  /** Returns a locator for elements inside this frame matching `selector`. */
   locator(selector: string): Locator;
+  /** Returns a locator for elements inside this frame that contain `text`. */
   getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator;
+  /** Returns a locator for elements inside this frame matching the given ARIA `role`. */
   getByRole(role: string, opts?: TxNameOptions): Locator;
+  /** Returns a locator for form elements inside this frame associated with a `<label>` whose text matches. */
   getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator;
+  /** Returns a locator for inputs inside this frame with matching placeholder text. */
   getByPlaceholder(text: string | RegExp): Locator;
+  /** Returns a locator for elements inside this frame with the given `data-testid` attribute. */
   getByTestId(id: string): Locator;
+  /** Returns a locator for elements inside this frame with a matching `alt` attribute. */
   getByAltText(text: string | RegExp): Locator;
+  /** Returns a locator for elements inside this frame with a matching `title` attribute. */
   getByTitle(text: string | RegExp): Locator;
+  /** Returns a `FrameLocator` for a nested `<iframe>` matching `selector` within this frame. */
   frameLocator(selector: string): FrameLocator;
 }
 
@@ -305,11 +415,17 @@ interface TxMouseClickOptions { button?: 'left' | 'right' | 'middle'; clickCount
 interface TxMouseButton { button?: 'left' | 'right' | 'middle'; }
 
 interface Mouse {
+  /** Moves the mouse to `(x, y)` and fires a click event. */
   click(x: number, y: number, opts?: TxMouseClickOptions): Promise<void>;
+  /** Moves the mouse to `(x, y)` and fires a double-click event. */
   dblclick(x: number, y: number, opts?: { button?: 'left' | 'right' | 'middle'; delay?: number }): Promise<void>;
+  /** Fires a `mousedown` event at the current mouse position. */
   down(opts?: TxMouseButton): Promise<void>;
+  /** Moves the mouse to `(x, y)`. Pass `steps` to interpolate intermediate `mousemove` events. */
   move(x: number, y: number, opts?: { steps?: number }): Promise<void>;
+  /** Fires a `mouseup` event at the current mouse position. */
   up(opts?: TxMouseButton): Promise<void>;
+  /** Dispatches a wheel event at the current mouse position with the given scroll deltas. */
   wheel(deltaX: number, deltaY: number): Promise<void>;
 }
 
@@ -317,27 +433,45 @@ interface Mouse {
 
 interface Page {
   // ── Navigation ───────────────────────────────────────────────────────────────
+  /** Navigates the page to `url` and waits for the load event. */
   goto(url: string): Promise<void>;
+  /** Reloads the current page. */
   reload(): Promise<void>;
+  /** Returns the current page URL. */
   url(): string;
+  /** Returns the current page title. */
   title(): Promise<string>;
 
   // ── Locator factories ─────────────────────────────────────────────────────────
+  /** Returns a locator for elements matching the CSS or XPath `selector`. */
   locator(selector: string): Locator;
+  /** Returns a locator for elements that contain `text` (substring match by default). */
   getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator;
+  /** Returns a locator for elements with the given ARIA `role`, optionally filtered by `name`. */
   getByRole(role: string, opts?: TxNameOptions): Locator;
+  /** Returns a locator for form elements associated with a `<label>` whose text matches. */
   getByLabel(text: string | RegExp, opts?: { exact?: boolean }): Locator;
+  /** Returns a locator for inputs with a matching placeholder attribute. */
   getByPlaceholder(text: string | RegExp): Locator;
+  /** Returns a locator for elements with the given `data-testid` attribute value. */
   getByTestId(id: string): Locator;
+  /** Returns a locator for elements with a matching `alt` attribute. */
   getByAltText(text: string | RegExp): Locator;
+  /** Returns a locator for elements with a matching `title` attribute or tooltip. */
   getByTitle(text: string | RegExp): Locator;
+  /** Returns a {@link FrameLocator} for a child `<iframe>` matching `selector`. */
   frameLocator(selector: string): FrameLocator;
 
   // ── Waits ─────────────────────────────────────────────────────────────────────
+  /** Waits until the page URL matches `url`. */
   waitForURL(url: string | RegExp, opts?: TxTimeoutOptions): Promise<void>;
+  /** Waits for an element matching `selector` to reach the given `state` and returns its locator. */
   waitForSelector(selector: string, opts?: { state?: 'visible' | 'attached'; timeout?: number }): Promise<Locator>;
+  /** Pauses test execution for `ms` milliseconds. */
   waitForTimeout(ms: number): Promise<void>;
+  /** Waits for a request whose URL (or predicate return value) matches, then returns it. */
   waitForRequest(urlOrPredicate: string | RegExp | ((req: TxRequest) => boolean | Promise<boolean>), opts?: TxTimeoutOptions): Promise<TxRequest>;
+  /** Waits for a response whose URL (or predicate return value) matches, then returns it. */
   waitForResponse(urlOrPredicate: string | RegExp | ((resp: TxResponse) => boolean | Promise<boolean>), opts?: TxTimeoutOptions): Promise<TxResponse>;
 
   // ── Keyboard ──────────────────────────────────────────────────────────────────
@@ -347,6 +481,7 @@ interface Page {
   mouse: Mouse;
 
   // ── Viewport ──────────────────────────────────────────────────────────────────
+  /** Sets the page viewport to the given `width` and `height` in CSS pixels. */
   setViewportSize(size: { width: number; height: number }): void;
 
   // ── Screenshot ────────────────────────────────────────────────────────────────
@@ -434,6 +569,7 @@ interface Page {
   ): Promise<void>;
 
   // ── Events ────────────────────────────────────────────────────────────────────
+  /** Registers an event listener. Returns `this` for chaining. */
   on(event: 'close',            fn: () => any): Page;
   on(event: 'console',          fn: (msg: TxConsoleMessage) => any): Page;
   on(event: 'dialog',           fn: (dialog: TxDialog) => any): Page;
@@ -452,9 +588,12 @@ interface Page {
   on(event: 'response',         fn: (res: TxResponse) => any): Page;
   on(event: string,             fn: (...args: any[]) => any): Page;
 
+  /** Removes a previously registered event listener. Returns `this` for chaining. */
   off(event: string, fn: (...args: any[]) => any): Page;
+  /** Registers a one-time event listener that auto-removes after the first invocation. Returns `this` for chaining. */
   once(event: string, fn: (...args: any[]) => any): Page;
 
+  /** Waits for the next occurrence of `event` and resolves with the event payload. */
   waitForEvent(event: 'dialog',        options?: { predicate?: (d: TxDialog)          => boolean | Promise<boolean>; timeout?: number } | ((d: TxDialog)          => boolean | Promise<boolean>)): Promise<TxDialog>;
   waitForEvent(event: 'popup',         options?: { predicate?: (p: Page)              => boolean | Promise<boolean>; timeout?: number } | ((p: Page)              => boolean | Promise<boolean>)): Promise<Page>;
   waitForEvent(event: 'console',       options?: { predicate?: (m: TxConsoleMessage)  => boolean | Promise<boolean>; timeout?: number } | ((m: TxConsoleMessage)  => boolean | Promise<boolean>)): Promise<TxConsoleMessage>;
@@ -478,6 +617,7 @@ interface Page {
    */
   resetSession(): Promise<void>;
 
+  /** Closes the current page (tab). */
   close(): Promise<void>;
 }
 
@@ -498,29 +638,67 @@ interface TxRouteContinueOptions {
   postData?: string;
 }
 
+interface TxRouteFetchOptions {
+  /** Override the URL for the upstream request. Defaults to the intercepted request URL. */
+  url?: string;
+  /** Override the HTTP method. Defaults to the intercepted request method. */
+  method?: string;
+  /** Headers merged on top of the intercepted request headers. */
+  headers?: Record<string, string>;
+  /** Override the request body. */
+  postData?: BodyInit;
+}
+
 interface Route {
+  /** Fulfills the intercepted request with the provided options (status, headers, body, etc.). */
   fulfill(options?: TxRouteFulfillOptions): Promise<void>;
+  /** Aborts the intercepted request with the given error code (e.g. `'failed'`, `'blockedbyclient'`). */
   abort(errorCode?: string): Promise<void>;
+  /** Continues the intercepted request, optionally overriding URL, method, headers, or body. */
   continue(options?: TxRouteContinueOptions): Promise<void>;
+  /**
+   * Fetch the actual upstream response from within a route handler without triggering
+   * route interception again. Use this to inspect or modify the real server response
+   * before fulfilling it.
+   *
+   * @example
+   * await page.route('**\/api/items', async route => {
+   *   const resp = await route.fetch();
+   *   const json = await resp.json();
+   *   json.push({ id: 999, name: 'injected' });
+   *   await route.fulfill({ json });
+   * });
+   */
+  fetch(options?: TxRouteFetchOptions): Promise<Response>;
+  /** Returns the {@link TxRequest} object for the intercepted request. */
   request(): TxRequest;
 }
 
 // ── APIResponse ───────────────────────────────────────────────────────────────
 
 interface APIResponse {
+  /** Returns `true` if the HTTP status code is in the 200–299 range. */
   ok(): boolean;
+  /** Returns the HTTP status code. */
   status(): number;
+  /** Returns the HTTP status text (e.g. `'OK'`). */
   statusText(): string;
+  /** Returns the response headers as a key-value map. */
   headers(): Record<string, string>;
+  /** Returns the response URL. */
   url(): string;
+  /** Parses the response body as JSON and returns the result. */
   json<T = unknown>(): Promise<T>;
+  /** Returns the response body as a string. */
   text(): Promise<string>;
+  /** Returns the raw response body as an `ArrayBuffer`. */
   body(): Promise<ArrayBuffer>;
 }
 
 // ── APIRequestContext ─────────────────────────────────────────────────────────
 
 interface APIRequestContext {
+  /** Sends an HTTP request to `url` with the given `options` and returns the response. */
   fetch(url: string, options?: RequestInit): Promise<APIResponse>;
 }
 
@@ -592,9 +770,24 @@ interface NodeContext {
 // ── TxExpect ──────────────────────────────────────────────────────────────────
 
 interface TxExpect<T extends object = {}> {
+  /** Creates an assertion wrapper for `actual`. Throws immediately on failure. */
+  (actual: null | undefined): TxAssertions<ValueAssertions, T>;
   (actual: Page): TxAssertions<PageAssertions, T>;
   (actual: Locator): TxAssertions<LocatorAssertions, T>;
   (actual: any): TxAssertions<ValueAssertions, T>;
+  /**
+   * Non-fatal assertion variant. Failures are collected rather than thrown immediately.
+   * All accumulated failures are reported together as a single aggregated error after
+   * the test body finishes. Supports all built-in matchers and negation.
+   *
+   * @example
+   * await expect.soft(page.locator('.error')).toBeVisible();
+   * expect.soft(value).toBe(expected);
+   */
+  soft(actual: null | undefined): TxAssertions<ValueAssertions, T>;
+  soft(actual: Page): TxAssertions<PageAssertions, T>;
+  soft(actual: Locator): TxAssertions<LocatorAssertions, T>;
+  soft(actual: any): TxAssertions<ValueAssertions, T>;
   /** Returns a new scoped expect with the given custom matchers merged in. */
   extend<M extends Record<string, (target: any, ...args: any[]) => CustomMatcherResult | Promise<CustomMatcherResult>>>(
     matchers: M
@@ -679,11 +872,21 @@ interface TxCommandHandle {
   success(duration?: number): void;
 
   /**
-   * Resolve the entry as failed.
+   * Resolve the entry as a hard failure (red ✗). The entry is marked failed
+   * and any surrounding group turns red.
    *
    * @param error Optional message appended to the log entry.
    */
   fail(error?: string): void;
+
+  /**
+   * Resolve the entry as a soft (non-fatal) failure (amber ⚠). Used by
+   * `expect.soft()` — the entry is visually distinct from a hard failure and
+   * any surrounding group turns amber rather than red.
+   *
+   * @param error Optional message appended to the log entry.
+   */
+  warn(error?: string): void;
 }
 
 /**
@@ -761,7 +964,7 @@ declare module '@qavajs/tx' {
   export { Keyboard };
   export { Mouse, TxMouseClickOptions, TxMouseButton };
   export { APIResponse, APIRequestContext };
-  export { Route, TxRouteFulfillOptions, TxRouteContinueOptions };
+  export { Route, TxRouteFulfillOptions, TxRouteContinueOptions, TxRouteFetchOptions };
 
   export const page: Page;
   export const browser: Browser;

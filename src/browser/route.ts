@@ -1,5 +1,10 @@
 // ── Route interception ────────────────────────────────────────────────────────
 
+// Fallback fetch for XHR-originated route.fetch() calls where no per-dispatch
+// fetch function is available (set once per bridge installation).
+let _routeOrigFetch: typeof fetch | null = null;
+export function _setRouteOrigFetch(fn: typeof fetch): void { _routeOrigFetch = fn; }
+
 function _globToRegex(pattern: string): RegExp {
   const reStr = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
@@ -22,6 +27,8 @@ export interface RouteDecision {
   continueOpts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit };
 }
 
+type RouteFetchFn = (opts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit }) => Promise<Response>;
+
 export class Route {
   private _decided = false;
   private _resolve!: (d: RouteDecision) => void;
@@ -31,7 +38,8 @@ export class Route {
     private readonly _req: {
       url(): string; method(): string; headers(): Record<string, string>;
       postData(): any; isNavigationRequest(): boolean; resourceType(): string;
-    }
+    },
+    private readonly _fetchFn?: RouteFetchFn,
   ) {
     this._promise = new Promise(r => { this._resolve = r; });
   }
@@ -65,6 +73,21 @@ export class Route {
     this._decide({ action: 'continue', continueOpts: opts });
   }
 
+  async fetch(opts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit }): Promise<Response> {
+    if (this._fetchFn) return this._fetchFn(opts);
+    // Fallback for XHR-originated dispatches (no per-dispatch fetch function)
+    if (!_routeOrigFetch) throw new Error('route.fetch() unavailable: no active page');
+    const url = opts?.url ?? this._req.url();
+    const method = opts?.method ?? this._req.method();
+    const headers = { ...this._req.headers(), ...opts?.headers };
+    const postData = opts?.postData !== undefined ? opts.postData : this._req.postData();
+    return _routeOrigFetch(url, {
+      method,
+      headers,
+      ...(postData != null ? { body: postData } : {}),
+    });
+  }
+
   request() { return this._req; }
 
   /** @internal */
@@ -82,11 +105,12 @@ export const routeHandlers: RouteHandlerEntry[] = [];
 
 export async function dispatchRoute(
   url: string,
-  req: { url(): string; method(): string; headers(): Record<string, string>; postData(): any; isNavigationRequest(): boolean; resourceType(): string }
+  req: { url(): string; method(): string; headers(): Record<string, string>; postData(): any; isNavigationRequest(): boolean; resourceType(): string },
+  fetchFn?: RouteFetchFn,
 ): Promise<RouteDecision | null> {
   for (let i = routeHandlers.length - 1; i >= 0; i--) {
     if (matchesRoutePattern(routeHandlers[i].pattern, url)) {
-      const route = new Route(req);
+      const route = new Route(req, fetchFn);
       try { await Promise.resolve(routeHandlers[i].handler(route, req)); } catch { /* ignore handler errors */ }
       if (!route._isDecided()) await route.continue();
       return route._getDecision();

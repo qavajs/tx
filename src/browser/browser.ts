@@ -294,7 +294,6 @@ export function createTab(url?: string) {
   // Resolve src BEFORE switching active tab so toProxiedUrl can use the origin tab's URL as base
   iframeEl.src = url ? toProxiedUrl(url) : API_BASE + '/about-blank';
   setActiveTab(tabId);
-  log('new tab');
   _onTabsChanged?.();
   return page;
 }
@@ -799,13 +798,15 @@ export const page = {
       times: options?.times ?? 0,
       invocations: 0,
     });
-    log('handler registered', { cmd: 'addLocatorHandler' });
+    const entry = logCommand(`page.addLocatorHandler(${locator._desc})`, 'addLocatorHandler');
+    entry.success();
   },
 
   removeLocatorHandler(locator: Locator): void {
     const i = _locatorHandlers.findIndex(h => h.locator === locator);
     if (i >= 0) _locatorHandlers.splice(i, 1);
-    log(locator._desc, { cmd: 'removeLocatorHandler' });
+    const entry = logCommand(`page.removeLocatorHandler(${locator._desc})`, 'removeLocatorHandler');
+    entry.success();
   },
 
   async resetSession(): Promise<void> {
@@ -866,26 +867,31 @@ export const page = {
     pattern: string | RegExp | ((url: string) => boolean),
     handler: (route: Route, request: any) => void | Promise<void>
   ): Promise<void> {
-    _routeHandlers.push({ pattern, handler });
-    log(typeof pattern === 'string' ? pattern : String(pattern), { cmd: 'route' });
+    const desc = typeof pattern === 'string' ? JSON.stringify(pattern) : String(pattern);
+    return _withCommand(`page.route(${desc})`, 'route', async () => {
+      _routeHandlers.push({ pattern, handler });
+    });
   },
 
   async unroute(
     pattern: string | RegExp | ((url: string) => boolean),
     handler?: (route: Route, request: any) => void | Promise<void>
   ): Promise<void> {
-    for (let i = _routeHandlers.length - 1; i >= 0; i--) {
-      if (_routeHandlers[i].pattern === pattern && (!handler || _routeHandlers[i].handler === handler)) {
-        _routeHandlers.splice(i, 1);
+    const desc = typeof pattern === 'string' ? JSON.stringify(pattern) : String(pattern);
+    return _withCommand(`page.unroute(${desc})`, 'unroute', async () => {
+      for (let i = _routeHandlers.length - 1; i >= 0; i--) {
+        if (_routeHandlers[i].pattern === pattern && (!handler || _routeHandlers[i].handler === handler)) {
+          _routeHandlers.splice(i, 1);
+        }
       }
-    }
-    log(typeof pattern === 'string' ? pattern : String(pattern), { cmd: 'unroute' });
+    });
   },
 
   async close(): Promise<void> {
-    _emitPage('close');
-    closeTab(_activeTabId ?? '');
-    log('page closed');
+    return _withCommand('page.close()', 'close', async () => {
+      _emitPage('close');
+      closeTab(_activeTabId ?? '');
+    });
   },
 
   async screenshot(opts?: { path?: string }): Promise<string> {
@@ -1209,7 +1215,6 @@ export function createWindow(url?: string) {
 
   _tabs.push(tab);
   setActiveTab(tabId);
-  log('new window');
   _onTabsChanged?.();
   return page;
 }
@@ -1219,14 +1224,16 @@ export function createWindow(url?: string) {
 export const browser = {
   /** Open a new tab, make it active, and return the global page object */
   async newPage(): Promise<void> {
-    createTab();
-    log('new tab', { cmd: 'newPage' });
+    return _withCommand('browser.newPage()', 'newPage', async () => {
+      createTab();
+    });
   },
 
   /** Open a new window, make it active, and return the global page object */
   async newWindow(url?: string): Promise<void> {
-    createWindow(url);
-    log(url ?? '', { cmd: 'newWindow' });
+    return _withCommand(`browser.newWindow(${url ? JSON.stringify(url) : ''})`, 'newWindow', async () => {
+      createWindow(url);
+    });
   },
 
   /** Return a snapshot of all open tabs. */
@@ -1237,10 +1244,10 @@ export const browser = {
   /** Switch the active tab by matching against tab snapshot fields (id, title, url, active) */
   switchTab(predicate: (tab: ReturnType<typeof getTabsSnapshot>[number]) => boolean): void {
     const tab = getTabsSnapshot().find(predicate);
-    if (tab) {
-      setActiveTab(tab.id);
-      log(tab.title ?? tab.url ?? tab.id, { cmd: 'switchTab' });
-    }
+    if (!tab) return;
+    const entry = logCommand(`browser.switchTab()`, 'switchTab');
+    setActiveTab(tab.id);
+    entry.success();
   },
 
   async storageState(opts?: { path?: string }): Promise<StorageState> {

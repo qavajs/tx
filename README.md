@@ -9,6 +9,8 @@ The API is modelled after Playwright (`page`, `expect`, `browser`, `request`, fi
 - **No browser driver** — runs in any browser (including Safari) via a proxy iframe; no WebDriver or CDP required
 - **Playwright-compatible API** — `page`, `locator`, `expect`, `browser`, `request`, hooks, `test.extend()` fixtures
 - **Multi-window / popup support** — open and control native browser popup windows via `browser.newWindow()` or intercept `window.open()` / `target="_blank"` links via the `popup` event
+- **Route interception** — mock, modify, or abort requests with `page.route()`; use `route.fetch()` to proxy the real response and mutate it before returning
+- **Soft assertions** — `expect.soft()` collects non-fatal failures and reports all of them together at the end of the test
 - **Interactive control panel** — live browser view, network inspector, console panel, and CSS selector playground in one UI
 - **Node.js bridge** — call file-system, database, or any Node.js task from browser-side test code via `node.task()`
 - **TypeScript first** — spec files written in TypeScript, compiled on the fly with esbuild
@@ -790,6 +792,34 @@ await route.continue(opts?: {
 Pass the request through, optionally modifying it.
 
 ```ts
+await route.fetch(opts?: {
+  url?:      string;
+  method?:   string;
+  headers?:  Record<string, string>;
+  postData?: BodyInit;
+}): Promise<Response>
+```
+Fetch the actual upstream response from within a route handler without triggering route interception again. Useful for intercepting a request, inspecting or modifying the response, and re-fulfilling it. Options override the corresponding properties of the original request; omitted properties fall through from the intercepted request.
+
+```ts
+// Intercept, modify, and re-fulfill a JSON response
+await page.route('**/api/products', async route => {
+  const resp = await route.fetch();
+  const json = await resp.json();
+  json.push({ id: 999, name: 'Mock Product', price: 0 });
+  await route.fulfill({ json });
+});
+
+// Modify a request header before forwarding
+await page.route('**/api/**', async route => {
+  const resp = await route.fetch({
+    headers: { ...route.request().headers(), 'X-Test': 'true' },
+  });
+  await route.fulfill({ response: resp });
+});
+```
+
+```ts
 route.request(): object
 ```
 Returns the original request object. Supports `.url()`, `.method()`, `.headers()`, `.postData()`, `.resourceType()`, `.isNavigationRequest()`.
@@ -870,10 +900,12 @@ await locator.selectOption(value: string | string[], opts?: { timeout?: number }
 await locator.check(opts?: { timeout?: number }): Promise<void>
 await locator.uncheck(opts?: { timeout?: number }): Promise<void>
 await locator.focus(opts?: { timeout?: number }): Promise<void>
+await locator.blur(opts?: { timeout?: number }): Promise<void>
 await locator.hover(opts?: { timeout?: number }): Promise<void>
 await locator.scrollIntoViewIfNeeded(opts?: { timeout?: number }): Promise<void>
 await locator.setInputFiles(files: string | string[] | { name: string; mimeType: string; buffer: Buffer }, opts?: { timeout?: number }): Promise<void>
 await locator.evaluate(fn: Function, arg?: any): Promise<any>
+await locator.boundingBox(opts?: { timeout?: number }): Promise<{ x: number; y: number; width: number; height: number } | null>
 ```
 
 #### Queries
@@ -929,6 +961,7 @@ await expect(locator).toHaveValue(value: string | RegExp, opts?: { timeout?: num
 await expect(locator).toHaveAttribute(name: string, value: string | RegExp, opts?: { timeout?: number }): Promise<void>
 await expect(locator).toHaveCount(count: number, opts?: { timeout?: number }): Promise<void>
 await expect(locator).toHaveClass(cls: string | RegExp, opts?: { timeout?: number }): Promise<void>
+await expect(locator).toHaveCSS(property: string, value: string | RegExp, opts?: { timeout?: number }): Promise<void>
 ```
 
 #### Page-level matchers (async, auto-retry)
@@ -973,6 +1006,26 @@ All matchers are available under `.not`:
 await expect(locator).not.toBeVisible();
 expect(value).not.toBe(expected);
 ```
+
+#### Soft assertions — `expect.soft`
+
+`expect.soft(target)` works like `expect(target)` but **does not throw on failure**. Instead, each failure is collected. After the test body finishes, all accumulated soft failures are thrown together as a single aggregated error. This lets a test report multiple issues in one run rather than stopping at the first failed assertion.
+
+```ts
+test('form validation errors', async ({ page }) => {
+  await page.goto('https://example.com/form');
+  await page.getByRole('button', { name: 'Submit' }).click();
+
+  // Check all error messages without stopping on the first failure
+  await expect.soft(page.getByTestId('name-error')).toHaveText('Name is required');
+  await expect.soft(page.getByTestId('email-error')).toHaveText('Email is required');
+  await expect.soft(page.getByTestId('phone-error')).toHaveText('Phone is required');
+
+  // If any of the above soft assertions failed, the test fails here with all errors listed
+});
+```
+
+Soft assertions support negation, all built-in matchers, and the full auto-retry behaviour. They are cleared automatically at the start of each test attempt.
 
 #### Custom matchers — `expect.extend`
 

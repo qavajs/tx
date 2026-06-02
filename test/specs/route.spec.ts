@@ -32,4 +32,31 @@ test.describe('route', () => {
         await calculateCost.click();
         await expect(page.locator('#result')).toHaveText('An error occurred while processing your request.');
     });
+
+    test('fetch: intercept, modify response, fulfill', async ({ page }) => {
+        await page.goto('https://practice.expandtesting.com/webpark');
+        await page.route(/\/webpark\/calculate-cost/, async route => {
+            const resp = await route.fetch();
+            const json = await resp.json();
+            json.cost = 777;
+            await route.fulfill({ json });
+        });
+        await page.locator('#calculateCost').click();
+        await expect(page.locator('#result')).toContainText('777');
+    });
+
+    test('continue: modifies request headers before forwarding', async ({ page }) => {
+        await page.goto('https://practice.expandtesting.com/webpark');
+        let intercepted = false;
+        await page.route(/\/webpark\/calculate-cost/, async (route, req) => {
+            intercepted = true;
+            await route.continue({
+                headers: { ...req.headers(), 'x-test-header': 'tx-test' },
+            });
+        });
+        await page.locator('#calculateCost').click();
+        // The page resolves normally (continue forwarded the request)
+        await expect(page.locator('#result')).toBeVisible();
+        expect(intercepted).toBe(true);
+    });
 });
