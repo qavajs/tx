@@ -19,7 +19,7 @@ test.describe('locator.boundingBox', () => {
     });
 
     test('width and height are positive for a rendered button', async ({ page }) => {
-        const box = await page.getByRole('button').first().boundingBox();
+        const box = await page.getByRole('button').filter({ visible: true }).first().boundingBox();
         expect(box).not.toBeNull();
         expect(box!.width).toBeGreaterThan(0);
         expect(box!.height).toBeGreaterThan(0);

@@ -457,12 +457,10 @@ export class Locator {
   async evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T> {
     return _withCommand(`${this._desc}.evaluate(...)`, 'evaluate', async () => {
       const el = await this._waitForEl();
-      if (typeof pageFunction === 'function') {
-        return Promise.resolve(arg !== undefined ? pageFunction(el, arg) : pageFunction(el));
-      }
       const win = iframeWin() as any;
       if (!win) throw new Error('no active page');
-      const fn = win.eval(`(${pageFunction})`);
+      const src = typeof pageFunction === 'function' ? pageFunction.toString() : pageFunction;
+      const fn = win.eval(`(${src})`);
       return Promise.resolve(arg !== undefined ? fn(el, arg) : fn(el));
     });
   }

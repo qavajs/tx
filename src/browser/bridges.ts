@@ -106,7 +106,15 @@ function _bridgeFetch(win: any): void {
     const reqHeaders = _normalizeHeaders(init?.headers ?? (isReqObj ? (input as any).headers : undefined));
     const req = { url: () => url, method: () => method, headers: () => reqHeaders, postData: () => init?.body ?? null, isNavigationRequest: () => false, resourceType: () => 'fetch' };
 
-    const decision = await dispatchRoute(url, req);
+    const routeFetchFn = (opts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit }) => {
+      if (!opts) return origFetch(input, init);
+      const fetchUrl = opts.url ?? url;
+      const fetchMethod = opts.method ?? method;
+      const fetchHeaders = { ...reqHeaders, ...opts.headers };
+      const fetchBody = opts.postData !== undefined ? opts.postData : (init?.body ?? null);
+      return origFetch(fetchUrl, { method: fetchMethod, headers: fetchHeaders, ...(fetchBody != null ? { body: fetchBody } : {}) });
+    };
+    const decision = await dispatchRoute(url, req, routeFetchFn);
     _emitPage('request', req);
 
     if (decision?.action === 'abort') {
@@ -160,8 +168,10 @@ function _bridgeXHR(win: any): void {
   const proto = win.XMLHttpRequest.prototype as any;
   const origOpen = proto.open as Function;
   const origSend = proto.send as Function;
+  const origSetRequestHeader = proto.setRequestHeader as Function;
   proto.open = function (method: string, url: string | URL, ...rest: any[]) {
     (this as any)._xMethod = method;
+    (this as any)._xHeaders = {};
     let xUrl = String(url);
     if (xUrl && !/^https?:\/\//.test(xUrl)) {
       try {
@@ -172,16 +182,39 @@ function _bridgeXHR(win: any): void {
     (this as any)._xUrl = xUrl;
     return origOpen.call(this, method, url, ...rest);
   };
+  proto.setRequestHeader = function (name: string, value: string) {
+    if (!(this as any)._xHeaders) (this as any)._xHeaders = {};
+    (this as any)._xHeaders[name.toLowerCase()] = value;
+    return origSetRequestHeader.call(this, name, value);
+  };
   proto.send = function (body?: XMLHttpRequestBodyInit | Document | null) {
     const self = this as any;
     const xUrl = self._xUrl ?? '';
     const xMethod = (self._xMethod ?? 'GET').toUpperCase();
-    const req = { url: () => xUrl, method: () => xMethod, headers: () => ({}), postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
+    const xHeaders: Record<string, string> = self._xHeaders ?? {};
+    const req = { url: () => xUrl, method: () => xMethod, headers: () => xHeaders, postData: () => body ?? null, isNavigationRequest: () => false, resourceType: () => 'xhr' };
 
     const routeEntry = routeHandlers.slice().reverse().find(h => matchesRoutePattern(h.pattern, xUrl));
     if (routeEntry) {
       (async () => {
-        const route = new Route(req);
+        const xhrFetchFn = (opts?: { url?: string; method?: string; headers?: Record<string, string>; postData?: BodyInit }) =>
+          new Promise<Response>((resolve, reject) => {
+            const fetchUrl = opts?.url ?? xUrl;
+            const fetchMethod = opts?.method ?? xMethod;
+            const fetchHeaders = { ...xHeaders, ...opts?.headers };
+            const fetchBody = opts?.postData !== undefined ? opts.postData : (body ?? null);
+            const tempXhr = new (win.XMLHttpRequest as any)();
+            origOpen.call(tempXhr, fetchMethod, fetchUrl);
+            for (const [k, v] of Object.entries(fetchHeaders)) origSetRequestHeader.call(tempXhr, k, v);
+            tempXhr.onload = () => {
+              const hdrs: Record<string, string> = {};
+              try { const raw: string = tempXhr.getAllResponseHeaders() ?? ''; for (const line of raw.trim().split('\r\n')) { const i = line.indexOf(':'); if (i > 0) hdrs[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim(); } } catch { /* ignore */ }
+              resolve(new Response(tempXhr.responseText, { status: tempXhr.status, statusText: tempXhr.statusText, headers: hdrs }));
+            };
+            tempXhr.onerror = () => reject(new Error('route.fetch() request failed'));
+            origSend.call(tempXhr, fetchBody as XMLHttpRequestBodyInit | null);
+          });
+        const route = new Route(req, xhrFetchFn);
         try { await Promise.resolve(routeEntry.handler(route, req)); } catch { /* ignore */ }
         if (!route._isDecided()) await route.continue();
         const decision = await route._getDecision();
