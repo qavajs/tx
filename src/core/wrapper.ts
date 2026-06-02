@@ -153,6 +153,24 @@ type TxWrapperConfig = Omit<TxConfig, 'reporters' | 'profiles' | 'shard' | 'grep
   grep?: RegExp;
 };
 
+function checkPortAvailable(port: number, host: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        reject(new Error(
+          `Port ${port} is already in use on ${host}. ` +
+          `Set a different port in your config (port1, port2, controlPanelPort).`
+        ));
+      } else {
+        reject(err);
+      }
+    });
+    srv.once('listening', () => { srv.close(); resolve(); });
+    srv.listen(port, host);
+  });
+}
+
 function waitForPort(port: number, host: string, timeoutMs = 5000): Promise<void> {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
@@ -240,6 +258,14 @@ export class TxWrapper {
     console.log('\n🚀 Starting Tx Wrapper...');
 
     try {
+      // Check ports before starting proxy — fail fast with a clear message
+      const host = this.config.proxyHost ?? 'localhost';
+      await Promise.all([
+        checkPortAvailable(this.config.port1!, host),
+        checkPortAvailable(this.config.port2!, host),
+        checkPortAvailable(this.config.controlPanelPort!, 'localhost'),
+      ]);
+
       // Initialize proxy
       this.initializeProxy();
       console.log(`✅ Proxy initialized at ${this.proxyUrl}`);

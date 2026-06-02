@@ -580,6 +580,19 @@ function openSnapshot(id: number) {
 
 // ── Filter ────────────────────────────────────────────────────────────────────
 
+function parseStatusFilter(query: string): { statusFilter: 'pass' | 'fail' | null; remainingQuery: string } {
+  let statusFilter: 'pass' | 'fail' | null = null;
+  let remaining = query;
+  if (/:passed\b/.test(remaining)) {
+    statusFilter = 'pass';
+    remaining = remaining.replace(/:passed\b/, '').trim();
+  } else if (/:failed\b/.test(remaining)) {
+    statusFilter = 'fail';
+    remaining = remaining.replace(/:failed\b/, '').trim();
+  }
+  return { statusFilter, remainingQuery: remaining };
+}
+
 function buildFilterMatcher(query: string): ((name: string) => boolean) | null {
   const q = query.trim();
   if (!q) return null;
@@ -595,9 +608,11 @@ function buildFilterMatcher(query: string): ((name: string) => boolean) | null {
 }
 
 window.applyFilter = (query: string) => {
-  const matcher = buildFilterMatcher(query);
+  const { statusFilter, remainingQuery } = parseStatusFilter(query);
+  const matcher = buildFilterMatcher(remainingQuery);
+  const hasFilter = !!(matcher || statusFilter);
   const runBtn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
-  if (runBtn) runBtn.classList.toggle('tx-hidden', !matcher);
+  if (runBtn) runBtn.classList.toggle('tx-hidden', !hasFilter);
 
   for (const card of document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]')) {
     let cardHasMatch = false;
@@ -606,7 +621,9 @@ window.applyFilter = (query: string) => {
       const name = item.querySelector('.tx-test-name')?.textContent ?? '';
       const fullName = item.dataset.fullname ?? name;
       const itemTags = (item.dataset.tags ?? '').split(/\s+/).filter(Boolean);
-      const matches = !matcher || matcher(name) || matcher(fullName) || itemTags.some(t => matcher(t));
+      const nameMatches = !matcher || matcher(name) || matcher(fullName) || itemTags.some(t => matcher!(t));
+      const statusMatches = !statusFilter || item.classList.contains(statusFilter);
+      const matches = nameMatches && statusMatches;
       item.style.display = matches ? '' : 'none';
       const logEl = item.nextElementSibling as HTMLElement | null;
       if (logEl?.classList.contains('tx-test-log')) logEl.style.display = matches ? '' : 'none';
@@ -617,11 +634,11 @@ window.applyFilter = (query: string) => {
       const suiteName = suiteRow.querySelector<HTMLElement>('.tx-suite-name')?.textContent ?? '';
       const hasSuiteVisible = Array.from(card.querySelectorAll<HTMLElement>('.tx-test-item'))
         .some(item => item.dataset.suite === suiteName && item.style.display !== 'none');
-      suiteRow.style.display = !matcher || hasSuiteVisible ? '' : 'none';
+      suiteRow.style.display = !hasFilter || hasSuiteVisible ? '' : 'none';
     }
 
-    card.style.display = !matcher || cardHasMatch ? '' : 'none';
-    if (matcher && cardHasMatch) card.classList.add('open');
+    card.style.display = !hasFilter || cardHasMatch ? '' : 'none';
+    if (hasFilter && cardHasMatch) card.classList.add('open');
   }
 };
 

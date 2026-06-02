@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type HookFn = (...args: any[]) => any;
 export type HookEntry = { fn: HookFn; fixtureDefs: FixtureDefs };
 export type HookScope = { beforeEachs: HookEntry[]; afterEachs: HookEntry[]; beforeAlls: HookFn[]; afterAlls: HookFn[] };
@@ -10,10 +11,14 @@ export type QueueItem = {
 };
 
 type UseCallback<T> = (value: T) => Promise<void>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FixtureFn<T> = (fixtures: Record<string, any>, use: UseCallback<T>) => Promise<void>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type FixtureDefs = Record<string, FixtureFn<any>>;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function parseFixtureDeps(fn: FixtureFn<any>): string[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((fn as any)._deps) return (fn as any)._deps as string[];
   try {
     const m = fn.toString().match(/\(\s*\{\s*([^}]*?)\s*\}/);
@@ -22,18 +27,26 @@ export function parseFixtureDeps(fn: FixtureFn<any>): string[] {
   } catch { return []; }
 }
 
+// window.tx is injected by the browser-side controller bundle — these stubs bridge
+// the Node-authored fixture API to the live browser globals at test runtime.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const tx = (): any => (window as any).tx;
+
 export const defaultFixtureDefs: FixtureDefs = {
-  page:    async (_f, use) => { await use((window as any).tx.page); },
-  browser: async (_f, use) => { await use((window as any).tx.browser); },
-  node:    async (_f, use) => { await use((window as any).tx.node); },
-  expect:  async (_f, use) => { await use((window as any).tx.expect); },
-  request: async (_f, use) => { await use((window as any).tx.request); },
-  log:     async (_f, use) => { await use((window as any).tx.log); },
-  attach:  async (_f, use) => { await use((window as any).tx.attach); },
+  page:    async (_f, use) => { await use(tx().page); },
+  browser: async (_f, use) => { await use(tx().browser); },
+  node:    async (_f, use) => { await use(tx().node); },
+  expect:  async (_f, use) => { await use(tx().expect); },
+  request: async (_f, use) => { await use(tx().request); },
+  log:     async (_f, use) => { await use(tx().log); },
+  attach:  async (_f, use) => { await use(tx().attach); },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   testInfo: async (_f, use) => { await use((window as any).__CURRENT_TEST_INFO__); },
   step:    async (_f, use) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await use((title: string, fn: () => any): any => {
-      const g = (window as any).tx.log.group(title, 'step');
+      const g = tx().log.group(title, 'step');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let result: any;
       try {
         result = fn();
@@ -43,7 +56,9 @@ export const defaultFixtureDefs: FixtureDefs = {
       }
       if (result instanceof Promise) {
         return result.then(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (v: any) => { g.end(); return v; },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (e: any) => { g.end(); throw e; },
         );
       }
@@ -63,6 +78,7 @@ export interface RegistrationCtx {
   filterTests?: string[];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function buildTestRegistrar(ctx: RegistrationCtx, fixtureDefs: FixtureDefs = defaultFixtureDefs): any {
   const { queue, stack, tagStack, hookStack } = ctx;
 
@@ -88,7 +104,9 @@ export function buildTestRegistrar(ctx: RegistrationCtx, fixtureDefs: FixtureDef
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const makeTestFn = (defs: FixtureDefs): any => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const testFn: any = (name: string, optsOrFn: HookFn | { tag?: string[] }, maybeFn?: HookFn) => {
       const opts = typeof optsOrFn === 'object' ? optsOrFn : undefined;
       const fn = (typeof optsOrFn === 'function' ? optsOrFn : maybeFn) as HookFn;
@@ -115,8 +133,10 @@ export function buildTestRegistrar(ctx: RegistrationCtx, fixtureDefs: FixtureDef
           // Playwright-style override: fixture uses its own name to receive base value
           const baseName = '\x00' + name;
           merged[baseName] = baseFn;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const wrapper = (fixtures: Record<string, any>, use: (v: any) => Promise<void>) =>
             newFn({ ...fixtures, [name]: fixtures[baseName] }, use);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (wrapper as any)._deps = [...parseFixtureDeps(newFn).filter(d => d !== name), baseName];
           merged[name] = wrapper;
         } else {

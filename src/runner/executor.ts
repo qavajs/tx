@@ -13,8 +13,10 @@ import type { LogEntry } from '../browser/browser';
 
 export async function runWithFixtures(
   fixtureDefs: FixtureDefs,
-  testFn: (fixtures: Record<string, any>) => any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  testFn: (fixtures: Record<string, any>) => unknown,
 ): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resolved: Record<string, any> = {};
   const ordered: string[] = [];
   const visiting = new Set<string>();
@@ -32,10 +34,18 @@ export async function runWithFixtures(
   for (const name of Object.keys(fixtureDefs)) visit(name);
   const run = ordered.reduceRight(
     (inner: () => Promise<void>, name) => async () => {
+      let innerErr: unknown;
+      let innerFailed = false;
       await fixtureDefs[name](resolved, async (value) => {
         resolved[name] = value;
-        await inner();
+        try {
+          await inner();
+        } catch (e: unknown) {
+          innerErr = e;
+          innerFailed = true;
+        }
       });
+      if (innerFailed) throw innerErr;
     },
     async () => { await testFn(resolved); },
   );
@@ -62,8 +72,9 @@ export function buildTestQueue(
   try {
     // @ts-ignore
     new window['%hammerhead%'].nativeMethods.Function(code)();
-  } catch (e: any) {
-    return { parseError: e.stack || e.message };
+  } catch (e: unknown) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    return { parseError: err.stack || err.message };
   }
   return queue;
 }

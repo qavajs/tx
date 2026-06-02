@@ -1,6 +1,6 @@
 {
   "name": "@qavajs/tx",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "@qavajs/tx — testing framework via Hammerhead proxy",
   "license": "MIT",
   "author": "Oleksandr Halichenko",
@@ -42,17 +42,20 @@
     "test": "node build.mjs && node dist/index.js --config test/tx.config.js --test",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit --project test/tsconfig.json",
-    "lint": "eslint --fix src"
+    "lint": "eslint --fix src",
+    "test:unit": "node --require ts-node/register --test test/unit/glob.test.ts test/unit/testRegistrer.test.ts test/unit/runner.test.ts test/unit/locator.test.ts test/unit/executor.test.ts"
   },
   "dependencies": {
+    "esbuild": "^0.28.0",
     "modern-screenshot": "^4.7.0",
+    "picomatch": "^3.0.2",
     "source-map-js": "^1.2.1",
     "testcafe-hammerhead": "^31.7.8",
-    "ws": "^8.21.0",
-    "esbuild": "^0.28.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "@types/picomatch": "^4.0.3",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",

@@ -1478,7 +1478,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         <nav class="tx-specs">
             <div class="tx-panel-hdr">Specs<div id="testRunnerStatus"></div></div>
             <div class="tx-filter-bar">
-                <input type="text" id="testFilter" class="tx-filter-input" placeholder="Filter tests…" oninput="window.applyFilter && window.applyFilter(this.value)" autocomplete="off" spellcheck="false">
+                <input type="text" id="testFilter" class="tx-filter-input" placeholder="Filter tests… (:passed :failed)" oninput="window.applyFilter && window.applyFilter(this.value)" autocomplete="off" spellcheck="false">
                 <button class="tx-filter-run-btn tx-hidden" id="filterRunBtn" onclick="window.runFiltered && window.runFiltered()" title="Run filtered tests" aria-label="Run filtered tests">&#9654;</button>
             </div>
             <div class="tx-specs-scroll" id="testList">
