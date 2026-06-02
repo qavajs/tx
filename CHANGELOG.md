@@ -4,7 +4,7 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.9]
 
 ### Added
 - `expect.soft(target)` — non-fatal assertion variant; soft assertion failures are collected rather than thrown immediately. All accumulated failures are reported as a single aggregated error after the test body finishes (including `afterEach` hooks). Cleared automatically at the start of each attempt (including retries). Supports negation (`expect.soft(loc).not.toBeVisible()`) and all built-in matchers.
