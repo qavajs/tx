@@ -21,7 +21,7 @@ export { setTestAbort, _awaitOrAbort } from './abort';
 import { _emitPage, _addPageListener, _removePageListener, addPermanentPageListener, clearPageListeners } from './page-events';
 export { _emitPage } from './page-events';
 
-import { logCommand, log, _withCommand, setLogContainer, stopCollectingLogs, setSnapshotCaptureFn } from './log';
+import { logCommand, _withCommand, setLogContainer, stopCollectingLogs, setSnapshotCaptureFn } from './log';
 export { LogEntry, TxCommandHandle, TxGroupHandle, logCommand, log, attach, _withCommand, setLogContainer, startCollectingLogs, stopCollectingLogs } from './log';
 
 // ── Global types ──────────────────────────────────────────────────────────────
