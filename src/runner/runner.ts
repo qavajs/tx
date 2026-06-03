@@ -133,12 +133,16 @@ export function parseTestFile(filePath: string): ParsedFile {
     const cached = _parseCache.get(filePath);
     if (cached?.hash === hash) return cached.result;
 
-    const { code } = esbuild.transformSync(source, {
-      loader: 'ts',
-      target: 'node22',
+    const buildResult = esbuild.buildSync({
+      stdin: { contents: source, resolveDir: path.dirname(filePath), sourcefile: filePath, loader: 'ts' },
+      bundle: true,
+      platform: 'node',
       format: 'cjs',
-      sourcefile: filePath,
+      write: false,
+      logLevel: 'silent',
+      external: ['@qavajs/tx'],
     });
+    const code = buildResult.outputFiles[0].text;
     const result: ParsedFile = { filename, tests: parseTestCode(code) };
     _parseCache.set(filePath, { hash, result });
     return result;
