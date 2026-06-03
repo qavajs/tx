@@ -4,7 +4,10 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.11]
+
+### Fixed
+- Test discovery now works correctly when spec files import `test` from a local fixture file (e.g. `import { test } from './fixtures'`) — `parseTestFile` previously used `esbuild.transformSync` (transpile only), so `require('./fixtures')` resolved to a no-op stub in the VM sandbox and no tests were registered; switched to `esbuild.buildSync` with `bundle: true` and `external: ['@qavajs/tx']` so local imports are inlined before parsing
 
 ### Added
 - `defineConfig(config)` — helper exported from `'@qavajs/tx'` that returns its argument unchanged; gives full TypeScript IntelliSense on all config fields when used in `tx.config.ts`
@@ -14,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Inline attachments in the command log — `attach(label, body, contentType)` now renders directly in the log panel: images (`image/*`) appear as inline thumbnails; HTML attachments (`text/html`) get a "⊞ View HTML" button that opens the content in the snapshot viewer pane
 
 ### Changed
+- Added `--disable-features=PasswordLeakDetection` to default Chromium launch args to suppress the "change this password" popup during test runs
 - Profile deep merge — `--profile <name>` values are now deep-merged on top of the base config (nested objects like `viewport` are merged field-by-field instead of replaced wholesale)
 - `ConsoleReporter` now prints `[retry N]` in yellow next to the test title when a test passed after one or more retries
 - `window.runAll` now delegates to `window.runFiltered()` when a filter is active, and `runFiltered` now returns `{ passed, failed }` consistent with `runAll`; internal `_runMultiFile` helper extracted to deduplicate the run loop

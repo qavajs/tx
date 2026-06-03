@@ -362,6 +362,7 @@ export class TxWrapper {
             '--no-default-browser-check',
             '--enable-automation',
             '--disable-popup-blocking',
+            '--disable-features=PasswordLeakDetection',
             ...(this.config.headless ? headlessArgs(exePath) : []),
             this.controlPanelProxyUrl,
           ];
