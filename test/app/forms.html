@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forms</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; background: #f5f5f5; }
+    label { display: block; margin: 8px 0 4px; }
+    input { display: block; margin: 4px 0 16px; padding: 8px; }
+    button { padding: 8px 16px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Forms</h1>
+  <form>
+    <label for="text-input">Text Input</label>
+    <input type="text" id="text-input" placeholder="Enter text" />
+
+    <label for="range-slider">Range Slider</label>
+    <input type="range" id="range-slider" min="0" max="100" />
+
+    <label for="color-picker">Color Picker</label>
+    <input type="color" id="color-picker" value="#000000" />
+
+    <label for="disabled-input">Disabled Input</label>
+    <input type="text" id="disabled-input" disabled value="Disabled" />
+
+    <button type="button">Submit</button>
+  </form>
+</body>
+</html>

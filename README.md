@@ -16,7 +16,7 @@ The API is modelled after Playwright (`page`, `expect`, `browser`, `request`, fi
 - **TypeScript first** — spec files written in TypeScript, compiled on the fly with esbuild
 - **Snapshot mode** — captures computed-style DOM snapshots after each command for visual debugging
 - **Pluggable reporters** — console and HTML reporters included; custom reporters are a single class
-- **CI-ready** — headless mode, `--test` exit-on-finish flag, and `--shard` for parallel workers
+- **CI-ready** — headless mode, `--test` exit-on-finish flag, `--workers N` for single-machine parallelism, and `--shard` for multi-machine distribution
 
 ## Installation
 
@@ -162,6 +162,7 @@ All fields are optional. CLI flags override the config file.
 | `profiles`         | `Record<string, Omit<TxConfig, 'profiles'>>` | —      | Named config profiles selected at runtime with `--profile <name>`; merged on top of base config, before CLI args |
 | `retries`          | `number`                                | `0`           | Number of times to retry a failing test before marking it failed. Each retry re-runs the full test including `beforeEach`/`afterEach` hooks. |
 | `testMode`         | `boolean`                               | `false`       | Run all tests automatically on startup, then exit — exit code `0` if all passed, `1` if any failed |
+| `workers`          | `number`                                | `1`           | Number of parallel browser workers when `testMode` is true. Each worker gets its own browser, proxy, and server and runs a round-robin subset of spec files. Has no effect in interactive mode. |
 | `snapshot`         | `boolean`                               | `false`       | Capture a DOM snapshot after each command and show it in the Snapshots panel |
 | `actionTimeout`    | `number`                                | `5000`        | Default timeout in ms for locator actions (`click`, `fill`, `waitFor`, etc.) |
 | `expectTimeout`    | `number`                                | `5000`        | Default timeout in ms for `expect()` assertion retry loops |
@@ -182,6 +183,7 @@ All config-file fields can be overridden at the command line. CLI values take pr
 | `--browser <name>` | Browser to open (`chrome`, `firefox`, `edge`, `safari`, or an absolute path) |
 | `--port <n>` | Control panel port |
 | `--headless` | Run the browser in headless mode |
+| `--workers <n>` | Number of parallel browser workers (testMode only) |
 | `--shard <n>/<total>` | Run only the nth shard of total (e.g. `--shard 2/4`) |
 | `--retries <n>` | Number of retry attempts for failing tests |
 | `--port1 <n>` | Proxy port 1 |
@@ -1937,6 +1939,63 @@ module.exports = {
 
 ---
 
+## Parallel Execution
+
+Pass `--workers N` (or set `workers: N` in config) to run spec files across N independent browser workers in parallel within a single machine. Each worker launches its own browser, Hammerhead proxy, and server, so there is no shared state between them.
+
+```bash
+# Run with 4 parallel workers
+npx tx --config tx.config.js --test --workers 4
+```
+
+Or via `package.json`:
+
+```json
+{
+  "scripts": {
+    "test:parallel": "npx tx --config tx.config.js --test --workers 4"
+  }
+}
+```
+
+Or in `tx.config.js`:
+
+```js
+module.exports = {
+  testFiles: ['./specs/**/*.spec.ts'],
+  testMode: true,
+  workers: 4,
+  headless: true,
+};
+```
+
+**How it works:**
+
+- Spec files are distributed round-robin across workers (worker 0 gets files 0, N, 2N, …; worker 1 gets files 1, N+1, 2N+1, …).
+- Workers always run in headless mode regardless of the `headless` config setting.
+- Reporter events stream in real time as each worker's tests complete — reporters receive individual `onTestEnd` events as they arrive, not batched at the end.
+- Port allocation is automatic: worker `i` uses `port1 + i*10`, `port2 + i*10`, `controlPanelPort + i*10`.
+
+**Limitations:**
+
+- Only applies in `testMode: true`. Interactive mode always uses a single worker.
+- Safari is not supported for parallel mode — `open -a Safari` reuses an existing window. Use Chrome, Firefox, or Edge.
+- Artifact attachments (screenshots, DOM snapshots) are written to disk by each worker but are not linked in the HTML report, because the streaming reporter does not forward attachment events across workers.
+- File distribution is round-robin and does not account for test duration. Pre-sort slow spec files to the front of `testFiles` for better load balance.
+
+**Comparison with `--shard`:**
+
+| | `--workers N` | `--shard n/N` |
+|---|---|---|
+| Scope | Single machine | Multiple CI jobs |
+| Browsers | N browsers, 1 process | 1 browser per job |
+| Orchestration | Automatic | Manual (matrix jobs) |
+| Port allocation | Automatic | Manual (or defaults) |
+
+Use `--workers` when you have spare CPU cores on one machine. Use `--shard` to distribute across separate CI runners (e.g. GitHub Actions matrix).
+
+---
+
 ## Architecture
 
 ```
@@ -2125,7 +2184,7 @@ Assert.less(actual, threshold, message?)
 
 ## Limitations
 
-- Runs in a single browser window. The browser is spawned directly by the process and killed on `stop()`.
+- Interactive mode runs in a single browser window. In `testMode` with `workers > 1`, N headless browsers are spawned concurrently.
 - Cross-origin sub-frames inside the target site are not accessible (sandboxed by the browser).
 - No PDF capture. `page.screenshot()` captures a rasterized PNG; `page.snapshot()` produces a self-contained HTML file with all CSS, images, and fonts inlined.
 - Hammerhead proxies HTTP/HTTPS; WebSocket traffic passes through but is not interceptable at the network level.

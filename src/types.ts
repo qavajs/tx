@@ -106,5 +106,14 @@ export interface TxConfig {
    */
   shard?: { current: number; total: number };
 
+  /**
+   * Number of parallel browser workers to use when `testMode` is true.
+   * Each worker gets its own browser, proxy, and server and runs an independent
+   * subset of spec files. Default: 1 (sequential, current behaviour).
+   * Use `--workers N` on the CLI, e.g. `--workers 4`.
+   * Has no effect in interactive mode (testMode: false).
+   */
+  workers?: number;
+
 }
 

@@ -1,3 +1,31 @@
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+const APP_PORT = 3000;
+const APP_DIR = path.join(__dirname, 'app');
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js':   'application/javascript; charset=utf-8',
+  '.css':  'text/css; charset=utf-8',
+};
+
+const appServer = http.createServer((req, res) => {
+  const urlPath = (req.url || '/').split('?')[0];
+  const filePath = path.join(APP_DIR, urlPath === '/' ? 'index.html' : urlPath);
+  if (!filePath.startsWith(APP_DIR + path.sep) && filePath !== APP_DIR) {
+    res.writeHead(403); res.end('Forbidden'); return;
+  }
+  fs.readFile(filePath, (err, data) => {
+    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return; }
+    const mime = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+    res.writeHead(200, { 'Content-Type': mime });
+    res.end(data);
+  });
+});
+appServer.on('error', err => { if (err.code !== 'EADDRINUSE') console.error('[app-server]', err.message); });
+appServer.listen(APP_PORT, 'localhost');
+
 module.exports = {
   proxyHost: 'localhost',
   retries: 0,
