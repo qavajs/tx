@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Inline attachments in the command log — `attach(label, body, contentType)` now renders directly in the log panel: images (`image/*`) appear as inline thumbnails; HTML attachments (`text/html`) get a "⊞ View HTML" button that opens the content in the snapshot viewer pane
 
 ### Changed
-- Added `--disable-features=PasswordLeakDetection` to default Chromium launch args to suppress the "change this password" popup during test runs
+- Chromium launches now write a `Default/Preferences` file to the temp user data dir with `credentials_enable_service` and `password_manager_leak_detection` disabled, suppressing the "change this password" popup during test runs
 - Profile deep merge — `--profile <name>` values are now deep-merged on top of the base config (nested objects like `viewport` are merged field-by-field instead of replaced wholesale)
 - `ConsoleReporter` now prints `[retry N]` in yellow next to the test title when a test passed after one or more retries
 - `window.runAll` now delegates to `window.runFiltered()` when a filter is active, and `runFiltered` now returns `{ passed, failed }` consistent with `runAll`; internal `_runMultiFile` helper extracted to deduplicate the run loop
