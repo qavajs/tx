@@ -31,7 +31,6 @@ const hammerhead = require('testcafe-hammerhead');
     return src.split(', ').filter(e => e !== 'zstd').join(', ')
   }
 }
-import { IframeInjector } from '../panel/iframeInjector';
 
 // ── Browser launch helpers ─────────────────────────────────────────────────────
 
@@ -137,13 +136,13 @@ function headlessArgs(exePath: string): string[] {
   return ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'];
 }
 
-import { TestApi } from '../runner/api';
 import { TestServer } from './server';
 import { startWatcher } from '../runner/watcher';
 import { setPreprocessor } from '../runner/runner';
 import { ProxyCollector } from '../proxy/collector';
 import type { Reporter } from '../runner/reporter';
 import type { TxConfig } from '../types';
+import { DEFAULT_PROXY_PORT_1, DEFAULT_PROXY_PORT_2, DEFAULT_CONTROL_PANEL_PORT } from '../constants';
 
 type TxWrapperConfig = Omit<TxConfig, 'reporters' | 'profiles' | 'shard' | 'grep' | 'testFiles'> & {
   reporters?: Reporter[];
@@ -194,18 +193,16 @@ export class TxWrapper {
   private _collector: ProxyCollector | null = null;
   private proxyUrl: string = '';
   private controlPanelProxyUrl: string = '';
-  private testApi: TestApi | null = null;
   private server: TestServer | null = null;
-  private injector: IframeInjector | null = null;
   private _browserChild: ChildProcess | null = null;
   private _isSafariBrowser = false;
   private _tempUserDataDir: string | null = null;
 
   constructor(private config: TxWrapperConfig = {}) {
     config.proxyHost = config.proxyHost || 'localhost';
-    config.port1 = config.port1 || 11337;
-    config.port2 = config.port2 || 11338;
-    config.controlPanelPort = config.controlPanelPort || 11339;
+    config.port1 = config.port1 || DEFAULT_PROXY_PORT_1;
+    config.port2 = config.port2 || DEFAULT_PROXY_PORT_2;
+    config.controlPanelPort = config.controlPanelPort || DEFAULT_CONTROL_PANEL_PORT;
   }
 
   /**
@@ -233,8 +230,8 @@ export class TxWrapper {
 
     this.proxy.start({
       hostname: this.config.proxyHost || 'localhost',
-      port1: this.config.port1 || 11337,
-      port2: this.config.port2 || 11338,
+      port1: this.config.port1 || DEFAULT_PROXY_PORT_1,
+      port2: this.config.port2 || DEFAULT_PROXY_PORT_2,
     });
 
     // @ts-ignore
@@ -254,7 +251,7 @@ export class TxWrapper {
   /**
    * Start the wrapper
    */
-  async start(): Promise<TestApi> {
+  async start(): Promise<void> {
     console.log('\n🚀 Starting Tx Wrapper...');
 
     try {
@@ -271,14 +268,6 @@ export class TxWrapper {
       console.log(`✅ Proxy initialized at ${this.proxyUrl}`);
 
       await waitForPort(this.config.port1!, this.config.proxyHost ?? 'localhost');
-
-      // Create iframe injector (for compatibility, though browser handles it)
-      this.injector = new IframeInjector({
-        proxyUrl: this.proxyUrl,
-      });
-
-      // Create test API
-      this.testApi = new TestApi(this.injector);
 
       // Start control panel server (on localhost:11339)
       const cpSession = this.controlPanelSession;
@@ -392,7 +381,6 @@ export class TxWrapper {
       console.log(`\n💡 Open via proxy: ${this.controlPanelProxyUrl}`);
       console.log(`💡 Or locally: http://localhost:${this.config.controlPanelPort}\n`);
 
-      return this.testApi;
     } catch (error) {
       console.error('❌ Failed to start wrapper:', error);
       await this.stop();
@@ -438,10 +426,6 @@ export class TxWrapper {
       this._isSafariBrowser = false;
     }
 
-    if (this.injector) {
-      this.injector.remove();
-    }
-
     if (this.server) {
       await this.server.stop();
     }
@@ -451,16 +435,6 @@ export class TxWrapper {
     }
 
     console.log('✅ Wrapper stopped');
-  }
-
-  /**
-   * Get the test API
-   */
-  getTestApi(): TestApi {
-    if (!this.testApi) {
-      throw new Error('Wrapper not started. Call start() first.');
-    }
-    return this.testApi;
   }
 
   /**

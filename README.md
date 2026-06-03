@@ -2095,7 +2095,7 @@ The control panel server exposes these endpoints:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET`  | `/` | Control panel HTML |
-| `GET`  | `/panel.js` | Bundled browser-side JS (page, Locator, expect, testApi) |
+| `GET`  | `/panel.js` | Bundled browser-side JS (page, Locator, expect) |
 | `GET`  | `/api/tests` | `ParsedFile[]` — list of all loaded test files with their tests |
 | `GET`  | `/api/test-source?file=<name>` | Raw bundled JS source for a test file (by basename) |
 | `GET`  | `/api/version` | `{ version: number }` — increments on each file-change |
@@ -2131,10 +2131,9 @@ const wrapper = new TxWrapper({
   viewport:         { width: 1920, height: 1080 },
 });
 
-const testApi = await wrapper.start();   // boots proxy + server + watcher, opens browser
+await wrapper.start();   // boots proxy + server + watcher, opens browser
 await wrapper.stop();
 
-wrapper.getTestApi(): TestApi
 wrapper.getProxyUrl(): string
 ```
 

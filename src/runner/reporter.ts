@@ -31,6 +31,7 @@ export interface TestResult {
   duration: number;
   error?: string;
   logs?: LogEntry[];
+  retry?: number;
 }
 
 export interface Suite {

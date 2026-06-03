@@ -11,8 +11,36 @@ import { ReporterEmitter, type Reporter, type TestCase } from './runner/reporter
 import { parseTestFile } from './runner/runner';
 import { register as registerTsLoader } from './core/tsLoader';
 import { matchGlob } from './utils/glob';
+import { DEFAULT_PROXY_PORT_1, DEFAULT_PROXY_PORT_2, DEFAULT_CONTROL_PANEL_PORT } from './constants';
 
 registerTsLoader();
+
+// ── defineConfig helper ────────────────────────────────────────────────────────
+
+export function defineConfig(config: TxConfig): TxConfig {
+  return config;
+}
+
+// ── Deep merge ────────────────────────────────────────────────────────────────
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function deepMerge<T extends Record<string, unknown>>(base: T, overrides: Partial<T>): T {
+  const result = { ...base } as T;
+  for (const key of Object.keys(overrides) as (keyof T)[]) {
+    const val = overrides[key];
+    if (val === undefined) continue;
+    const baseVal = result[key];
+    if (isPlainObject(val) && isPlainObject(baseVal)) {
+      result[key] = deepMerge(baseVal as Record<string, unknown>, val as Record<string, unknown>) as T[typeof key];
+    } else {
+      result[key] = val as T[typeof key];
+    }
+  }
+  return result;
+}
 
 // ── Reporter loading ───────────────────────────────────────────────────────────
 
@@ -236,9 +264,9 @@ async function runParallel(
   emitter.emitBegin({ testFiles }, { title: '', tests: allCases, allTests: () => allCases });
 
   const t0 = Date.now();
-  const port1 = baseConfig.port1 ?? 11337;
-  const port2 = baseConfig.port2 ?? 11338;
-  const controlPanelPort = baseConfig.controlPanelPort ?? 11339;
+  const port1 = baseConfig.port1 ?? DEFAULT_PROXY_PORT_1;
+  const port2 = baseConfig.port2 ?? DEFAULT_PROXY_PORT_2;
+  const controlPanelPort = baseConfig.controlPanelPort ?? DEFAULT_CONTROL_PANEL_PORT;
 
   const wrappers = groups.map((files, i) => {
     const streamingReporter: Reporter = {
@@ -302,16 +330,16 @@ async function main() {
       console.warn(`⚠️  Unknown profile: "${profile}".${available.length ? ` Available: ${available.join(', ')}` : ' No profiles defined.'}`);
     } else {
       console.log(`🔖 Using profile: ${profile}`);
-      fileConfig = { ...fileConfig, ...profileConfig };
+      fileConfig = deepMerge(fileConfig as Record<string, unknown>, profileConfig as Record<string, unknown>) as Partial<TxConfig>;
     }
   }
 
   // Merge: defaults < config file < CLI args
   const mergedConfig: TxConfig = {
     proxyHost:        cliConfig.proxyHost ?? fileConfig.proxyHost ?? 'localhost',
-    port1:            cliConfig.port1 ?? fileConfig.port1 ?? 11337,
-    port2:            cliConfig.port2 ?? fileConfig.port2 ?? 11338,
-    controlPanelPort: cliConfig.controlPanelPort ?? fileConfig.controlPanelPort ?? 11339,
+    port1:            cliConfig.port1 ?? fileConfig.port1 ?? DEFAULT_PROXY_PORT_1,
+    port2:            cliConfig.port2 ?? fileConfig.port2 ?? DEFAULT_PROXY_PORT_2,
+    controlPanelPort: cliConfig.controlPanelPort ?? fileConfig.controlPanelPort ?? DEFAULT_CONTROL_PANEL_PORT,
     headless:         cliConfig.headless ?? fileConfig.headless ?? (process.env.HEADLESS === 'true'),
     browser:          cliConfig.browser ?? fileConfig.browser,
     viewport:         fileConfig.viewport,
@@ -416,4 +444,6 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+if (require.main === module) {
+  main().catch(console.error);
+}

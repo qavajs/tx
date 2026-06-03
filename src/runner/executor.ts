@@ -7,6 +7,7 @@ export interface TestResult {
   error?: string;
   duration: number;
   logs: LogEntry[];
+  retry?: number;
 }
 
 import type { LogEntry } from '../browser/browser';
