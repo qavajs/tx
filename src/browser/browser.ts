@@ -6,6 +6,7 @@ export { Route };
 import { installEventBridges as _installEventBridges, installWindowBridges as _installWindowBridges } from './bridges';
 import { Locator, textMatches, resolveSelector, _locatorHandlers } from './locator';
 import { makeLocatorQueries } from './locator-queries';
+import { ariaSnapshot as _ariaSnapshot } from './aria';
 import { Mouse } from './mouse';
 import { Keyboard } from './keyboard';
 import { wsConnect, wsOnMessage, wsSend, wsRequest } from './ws';
@@ -911,6 +912,14 @@ export const page = {
       const html = await captureFullSnapshot();
       if (opts?.path) saveArtifact(opts.path, html, 'html');
       return html;
+    });
+  },
+
+  async ariaSnapshot(): Promise<string> {
+    return _withCommand('page.ariaSnapshot()', 'ariaSnapshot', async () => {
+      const doc = iframeDoc();
+      if (!doc) throw new Error('no active tab');
+      return _ariaSnapshot(doc.body ?? doc.documentElement);
     });
   },
 };

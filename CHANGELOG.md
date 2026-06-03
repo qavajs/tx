@@ -4,9 +4,11 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.10]
 
 ### Added
+- `page.ariaSnapshot()` — returns a YAML string of the full-page ARIA accessibility tree rooted at `<body>`. Uses a Playwright-compatible format: `- heading "Title" [level=1]`, `- button "Submit" [disabled]`, `- textbox "Email": "user@example.com"`, etc. Hidden elements (`display:none`, `visibility:hidden`), `aria-hidden="true"` subtrees, and `role="none/presentation"` wrappers are excluded (children of `role="none"` wrappers bubble up). Generic/anonymous elements (`<div>`, `<span>`) are flattened out. Implemented in the standalone `src/browser/aria.ts` module which computes implicit roles, accessible names (aria-labelledby → aria-label → label association → text content), and ARIA state attributes (checked, expanded, disabled, required, selected, level, value).
+- `locator.ariaSnapshot(opts?)` — same accessibility tree snapshot as `page.ariaSnapshot()` but rooted at the matched element. Waits for the element to be present, respecting the `timeout` option. Useful for asserting accessible structure of a specific widget or region.
 - `workers` config option — splits spec files across N independent browser workers running in parallel when `testMode` is true. Each worker gets its own browser process, Hammerhead proxy, and HTTP/WebSocket server; they share no mutable state. Test events stream to a single shared `ReporterEmitter` in real time so reporters receive results as they arrive. Workers always run headless; Safari is not supported (it reuses an existing window). File distribution is round-robin across workers; port allocation is automatic (base ports + worker index × 10).  Activate with `--workers <n>` on the CLI or `workers: N` in the config file.
 
 ## [0.0.9]

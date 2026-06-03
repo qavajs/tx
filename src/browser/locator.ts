@@ -3,6 +3,7 @@ import { actionTimeout } from './config';
 export { textMatches, resolveSelector } from './locator-utils';
 import { textMatches, resolveSelector } from './locator-utils';
 import { makeLocatorQueries } from './locator-queries';
+import { ariaSnapshot } from './aria';
 
 export const ROLE_SELECTORS: Record<string, string> = {
   button:      'button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]',
@@ -487,6 +488,13 @@ export class Locator {
       const el = await this._waitForEl(opts?.timeout);
       const r = el.getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+  }
+
+  async ariaSnapshot(opts?: { timeout?: number }): Promise<string> {
+    return _withCommand(`${this._desc}.ariaSnapshot()`, 'ariaSnapshot', async () => {
+      const el = await this._waitForEl(opts?.timeout);
+      return ariaSnapshot(el);
     });
   }
 }
