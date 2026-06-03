@@ -178,6 +178,8 @@ interface Locator {
   waitFor(opts?: { state?: 'visible' | 'hidden' | 'attached' | 'detached'; timeout?: number }): Promise<void>;
   /** Returns the bounding box of the element in the iframe viewport coordinate space, or `null` if the element is not found. */
   boundingBox(opts?: TxTimeoutOptions): Promise<{ x: number; y: number; width: number; height: number } | null>;
+  /** Returns a YAML string representing the ARIA accessibility tree rooted at the matched element. */
+  ariaSnapshot(opts?: TxTimeoutOptions): Promise<string>;
 }
 
 // ── Assertions ────────────────────────────────────────────────────────────────
@@ -496,6 +498,20 @@ interface Page {
    * inlined as data URLs. Pass `path` to also save to `<path>.html` relative to the working directory.
    */
   snapshot(opts?: { path?: string }): Promise<string>;
+
+  /**
+   * Returns a YAML string representing the ARIA accessibility tree of the current page.
+   * Uses a Playwright-compatible format, e.g.:
+   * ```yaml
+   * - heading "Page Title" [level=1]
+   * - navigation:
+   *   - link "Home"
+   *   - link "About"
+   * - button "Submit" [disabled]
+   * - textbox "Email": "user@example.com"
+   * ```
+   */
+  ariaSnapshot(): Promise<string>;
 
   // ── Script evaluation ─────────────────────────────────────────────────────────
   /**

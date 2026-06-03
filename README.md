@@ -11,6 +11,7 @@ The API is modelled after Playwright (`page`, `expect`, `browser`, `request`, fi
 - **Multi-window / popup support** — open and control native browser popup windows via `browser.newWindow()` or intercept `window.open()` / `target="_blank"` links via the `popup` event
 - **Route interception** — mock, modify, or abort requests with `page.route()`; use `route.fetch()` to proxy the real response and mutate it before returning
 - **Soft assertions** — `expect.soft()` collects non-fatal failures and reports all of them together at the end of the test
+- **Accessibility tree snapshots** — `page.ariaSnapshot()` and `locator.ariaSnapshot()` return the ARIA tree as YAML for asserting accessible structure
 - **Interactive control panel** — live browser view, network inspector, console panel, and CSS selector playground in one UI
 - **Node.js bridge** — call file-system, database, or any Node.js task from browser-side test code via `node.task()`
 - **TypeScript first** — spec files written in TypeScript, compiled on the fly with esbuild
@@ -719,6 +720,71 @@ attach('checkout snapshot', await page.snapshot(), 'text/html');
 
 The HTML reporter renders `text/html` attachments in an embedded `<iframe>` and adds an **↗** button that opens the snapshot in a new browser tab for full-page inspection.
 
+#### Accessibility tree snapshot
+
+Returns the ARIA accessibility tree of the current page (or a locator's subtree) as a YAML string. Uses a Playwright-compatible format: roles, accessible names, and state attributes on each line; container roles produce an indented child list.
+
+```ts
+await page.ariaSnapshot(): Promise<string>
+await locator.ariaSnapshot(opts?: { timeout?: number }): Promise<string>
+```
+
+**Output format:**
+
+```yaml
+- heading "Page Title" [level=1]
+- navigation "Site Nav":
+  - link "Home"
+  - link "About"
+- main:
+  - heading "Form Section" [level=2]
+  - form "Login":
+    - textbox "Email"
+    - textbox "Password"
+    - checkbox "Remember me" [unchecked]
+    - button "Sign in"
+    - button "Cancel" [disabled]
+  - list:
+    - listitem:
+      - link "Dashboard"
+    - listitem:
+      - link "Settings"
+```
+
+**What is included / excluded:**
+
+| Element | Behaviour |
+|---|---|
+| `display:none` or `visibility:hidden` | excluded |
+| `aria-hidden="true"` subtrees | excluded |
+| `role="none"` / `role="presentation"` | excluded; children bubble up |
+| Anonymous containers (`<div>`, `<span>`) | excluded; children bubble up |
+| Semantic landmarks, headings, controls | included |
+
+**Accessible name resolution order:** `aria-labelledby` → `aria-label` → associated `<label>` (or wrapping label) → `placeholder` / `alt` → text content (for buttons, links, headings, etc.) → `title`.
+
+**State attributes:** `[level=N]` for headings; `[checked]` / `[unchecked]` for checkboxes and radios; `[disabled]`, `[required]`, `[expanded]`, `[collapsed]`, `[selected]` where applicable; `: "value"` for filled text inputs.
+
+```ts
+// Full-page accessibility tree
+const yaml = await page.ariaSnapshot();
+console.log(yaml);
+
+// Assert accessible structure of a specific widget
+const nav = await page.locator('nav').ariaSnapshot();
+expect(nav).toContain('- link "Home"');
+expect(nav).toContain('- link "About"');
+
+// Assert a form is accessible after filling
+await page.getByLabel('Email').fill('alice@example.com');
+const form = await page.locator('form').ariaSnapshot();
+expect(form).toContain('"alice@example.com"');
+
+// Assert no disabled submit button remains after loading
+const yaml2 = await page.ariaSnapshot();
+expect(yaml2).not.toContain('button "Submit" [disabled]');
+```
+
 ---
 
 ### `page.route` / `page.unroute`
@@ -924,6 +990,7 @@ await locator.isDisabled(): Promise<boolean>
 await locator.isChecked(): Promise<boolean>
 await locator.isEditable(): Promise<boolean>
 await locator.count(): Promise<number>
+await locator.ariaSnapshot(opts?: { timeout?: number }): Promise<string>
 ```
 
 #### Waiting
