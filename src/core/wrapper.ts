@@ -356,13 +356,21 @@ export class TxWrapper {
           // (without this, Chrome reuses an existing window and the launcher exits immediately,
           // making _browserChild.kill() a no-op on the already-gone launcher process)
           this._tempUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tx-chrome-'));
+          const defaultProfileDir = path.join(this._tempUserDataDir, 'Default');
+          fs.mkdirSync(defaultProfileDir, { recursive: true });
+          fs.writeFileSync(
+            path.join(defaultProfileDir, 'Preferences'),
+            JSON.stringify({
+              credentials_enable_service: false,
+              profile: { password_manager_enabled: false, password_manager_leak_detection: false },
+            }),
+          );
           args = [
             `--user-data-dir=${this._tempUserDataDir}`,
             '--no-first-run',
             '--no-default-browser-check',
             '--enable-automation',
             '--disable-popup-blocking',
-            '--disable-features=PasswordLeakDetection',
             ...(this.config.headless ? headlessArgs(exePath) : []),
             this.controlPanelProxyUrl,
           ];
