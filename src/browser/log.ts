@@ -105,6 +105,25 @@ export function attach(label: string, body: string, contentType = 'text/plain'):
     _collectedLogs.push({ cmd: 'attach', message: label, state: 'info', attachment: { body, contentType } });
   }
   createLogEntry(label, 'info', 'attach');
+
+  const container = _logContainer ?? document.getElementById('console');
+  if (!container) return;
+
+  if (contentType.startsWith('image/')) {
+    const img = document.createElement('img');
+    img.src = body.startsWith('data:') ? body : `data:${contentType};base64,${body}`;
+    img.className = 'tx-attachment-img';
+    img.title = label;
+    container.appendChild(img);
+    container.scrollTop = container.scrollHeight;
+  } else if (contentType === 'text/html') {
+    const btn = document.createElement('button');
+    btn.className = 'tx-attachment-html-btn';
+    btn.textContent = '⊞ View HTML';
+    btn.onclick = () => (window as any).openHtmlAttachment?.(body, label);
+    container.appendChild(btn);
+    container.scrollTop = container.scrollHeight;
+  }
 }
 
 export interface TxCommandHandle {

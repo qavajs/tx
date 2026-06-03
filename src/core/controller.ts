@@ -1,4 +1,4 @@
-import { log, attach, setLogContainer, testApi, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsRequest, wsOnMessage } from '../browser/browser';
+import { log, attach, setLogContainer, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsRequest, wsOnMessage } from '../browser/browser';
 import { escHtml, escAttr, jsq } from '../utils/htmlUtils';
 import { type TestResult } from '../runner/executor';
 import { executeTests } from '../runner/testRunner';
@@ -6,7 +6,6 @@ import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
 
 declare global {
   interface Window {
-    testApi: typeof testApi;
     runSuite: (filename: string, suiteName: string) => void;
     runTest: (filename: string, fullName: string) => void;
     toggleCard: (filename: string) => void;
@@ -14,25 +13,31 @@ declare global {
     runTestByFilename:(filename: string) => void;
     runAll: () => Promise<{ passed: number; failed: number }>;
     applyFilter: (query: string) => void;
-    runFiltered: () => Promise<void>;
+    runFiltered: () => Promise<{ passed: number; failed: number }>;
     stopExecution: () => void;
   }
 }
 
-window.testApi = testApi;
-
-(window as any).tx = { page, expect, browser, node, request, log, attach, ...testApi };
+(window as any).tx = { page, expect, browser, node, request, log, attach };
 
 // ── Inline test log ───────────────────────────────────────────────────────────
 
 let _activeTestLog: HTMLElement | null = null;
 
-function activateTestLog(filename: string, fullName: string) {
+function activateTestLog(filename: string, fullName: string, attempt = 0) {
   const key = escAttr(filename + '\x01' + fullName);
   const el = document.getElementById('tlog-' + key) as HTMLElement | null;
   if (!el) return;
   el.innerHTML = '';
   el.classList.add('open');
+  if (attempt > 0) {
+    const banner = document.createElement('div');
+    banner.className = 'tx-cmd info';
+    banner.innerHTML =
+      '<span class="tx-cmd-icon" style="color:var(--warn)">↻</span>' +
+      '<span class="tx-cmd-msg" style="color:var(--warn);font-style:italic">Retry ' + attempt + '</span>';
+    el.appendChild(banner);
+  }
   _activeTestLog = el;
   setLogContainer(el);
 }
@@ -72,7 +77,7 @@ function updateCardStatus(filename: string, passed: number, failed: number) {
               + (failed > 0 ? `<span class="tx-badge tx-badge--fail">${failed}</span>` : '');
 }
 
-function setTestItemStatus(filename: string, fullName: string, state: 'running'|'pass'|'fail', duration?: number) {
+function setTestItemStatus(filename: string, fullName: string, state: 'running'|'pass'|'fail', duration?: number, retry?: number) {
   const key = escAttr(filename + '\x01' + fullName);
   const item = document.querySelector<HTMLElement>(`[data-testkey="${key}"]`);
   if (!item) return;
@@ -87,7 +92,8 @@ function setTestItemStatus(filename: string, fullName: string, state: 'running'|
       badge.textContent = '';
     } else {
       badge.classList.add(state);
-      badge.textContent = duration != null ? duration + 'ms' : (state === 'pass' ? 'PASS' : 'FAIL');
+      const label = duration != null ? duration + 'ms' : (state === 'pass' ? 'PASS' : 'FAIL');
+      badge.textContent = state === 'pass' && retry ? label + ` ↺${retry}` : label;
     }
   }
   refreshSuiteBadge(filename, item.dataset.suite ?? '');
@@ -349,12 +355,8 @@ async function fetchAndRun(
     isStopRequested: () => _stopRequested,
     setCancelFn: (fn) => { _currentTestCancel = fn; },
     onAttemptBegin: opts?.filename ? (testName, attempt) => {
-      if (attempt > 0) {
-        const logEl = document.getElementById('tlog-' + escAttr(opts.filename! + '\x01' + testName));
-        if (logEl) { logEl.innerHTML = ''; logEl.classList.add('open'); }
-      }
       setTestItemStatus(opts.filename!, testName, 'running');
-      activateTestLog(opts.filename!, testName);
+      activateTestLog(opts.filename!, testName, attempt);
     } : undefined,
     onAttemptError: opts?.filename ? appendErrorToLog : undefined,
     onAttemptFinally: opts?.filename ? (testName, passed, attemptsLeft) => {
@@ -364,12 +366,54 @@ async function fetchAndRun(
     } : undefined,
     onTestEnd: (r) => {
       wsSend('report', { filename, tests: [r] } as Record<string, unknown>);
-      if (opts?.filename) setTestItemStatus(opts.filename, r.name, r.passed ? 'pass' : 'fail', r.duration);
+      if (opts?.filename) setTestItemStatus(opts.filename, r.name, r.passed ? 'pass' : 'fail', r.duration, r.retry);
       if (_runTotal > 0) showProgress(++_runDone, _runTotal);
     },
   });
   renderTestResults(results, filename);
   return results;
+}
+
+async function _runMultiFile(
+  byFile: Map<string, string[] | null>,
+  specs: Array<{ file: string; tests: string[] | null }>,
+  total: number,
+): Promise<{ passed: number; failed: number }> {
+  _stopRequested = false;
+  _isTestRunning = true;
+  setStopBtnVisible(true);
+  _runDone = 0;
+  _runTotal = total;
+  if (total > 0) showProgress(0, total);
+  setTopbarStatus('running', 'Running…');
+  notifyRunBegin(specs);
+  let totalPass = 0, totalFail = 0, totalDuration = 0;
+  for (const [filename, tests] of byFile) {
+    if (_stopRequested) break;
+    openAndResetCard(filename);
+    log(`run  ${filename}`);
+    try {
+      const { passed, failed, duration } = countResults(
+        await fetchAndRun(filename, tests ? { filename, filterTests: tests } : { filename })
+      );
+      totalPass += passed; totalFail += failed; totalDuration += duration;
+    } catch (e: any) {
+      log('Error: ' + e.message, { type: 'error' });
+      updateCardStatus(filename, 0, 1);
+      totalFail++;
+    }
+  }
+  notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
+  _isTestRunning = false;
+  hideProgress();
+  setStopBtnVisible(false);
+  setTopbarStatus(
+    _stopRequested ? 'ready' : (totalFail === 0 ? 'passed' : 'failed'),
+    _stopRequested
+      ? `Stopped — ${totalPass} passed, ${totalFail} failed`
+      : `${totalPass} passed, ${totalFail} failed`,
+  );
+  return { passed: totalPass, failed: totalFail };
 }
 
 // ── Window actions ────────────────────────────────────────────────────────────
@@ -431,47 +475,16 @@ window.runTest = async (filename: string, fullName: string) => {
 
 window.runAll = async (): Promise<{ passed: number; failed: number }> => {
   const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
-  if (filterInput?.value.trim()) {
-    await window.runFiltered();
-    return { passed: 0, failed: 0 };
-  }
+  if (filterInput?.value.trim()) return window.runFiltered();
   const btn = document.getElementById('runAllBtn') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
-  _stopRequested = false;
-  _isTestRunning = true;
-  setStopBtnVisible(true);
-  _runDone = 0;
-  _runTotal = document.querySelectorAll('.tx-test-item').length;
-  showProgress(0, _runTotal);
-  setTopbarStatus('running', 'Running…');
   const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'));
-  notifyRunBegin(allCards.map(c => ({ file: c.dataset.filename!, tests: null })));
-  let totalPass = 0, totalFail = 0, totalDuration = 0;
-  for (const card of allCards) {
-    if (_stopRequested) break;
-    const filename = card.dataset.filename!;
-    openAndResetCard(filename);
-    log(`run  ${filename}`);
-    try {
-      const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filename }));
-      totalPass += passed; totalFail += failed; totalDuration += duration;
-    } catch (e: any) {
-      log('Error: ' + e.message, { type: 'error' });
-      updateCardStatus(filename, 0, 1);
-      totalFail++;
-    }
-  }
-  notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
-  _isTestRunning = false;
-  hideProgress();
-  setStopBtnVisible(false);
-  if (_stopRequested) {
-    setTopbarStatus('ready', `Stopped — ${totalPass} passed, ${totalFail} failed`);
-  } else {
-    setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
-  }
+  const byFile = new Map(allCards.map(c => [c.dataset.filename!, null] as [string, null]));
+  const specs = allCards.map(c => ({ file: c.dataset.filename!, tests: null }));
+  const total = document.querySelectorAll('.tx-test-item').length;
+  const result = await _runMultiFile(byFile, specs, total);
   if (btn) btn.disabled = false;
-  return { passed: totalPass, failed: totalFail };
+  return result;
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -608,6 +621,17 @@ function openSnapshot(id: number) {
 
 (window as any).setBrowserView = setBrowserView;
 
+(window as any).openHtmlAttachment = (html: string, label: string) => {
+  const titleEl = document.getElementById('snapshotTitle');
+  const urlEl = document.getElementById('snapshotUrl');
+  const frame = document.getElementById('snapshotFrame') as HTMLIFrameElement | null;
+  if (titleEl) titleEl.textContent = label || 'Attachment';
+  if (urlEl) urlEl.textContent = '';
+  if (frame) frame.srcdoc = html;
+  _selectedSnapshotId = null;
+  setBrowserView('snapshot');
+};
+
 // ── Filter ────────────────────────────────────────────────────────────────────
 
 function parseStatusFilter(query: string): { statusFilter: 'pass' | 'fail' | null; remainingQuery: string } {
@@ -672,14 +696,9 @@ window.applyFilter = (query: string) => {
   }
 };
 
-window.runFiltered = async () => {
+window.runFiltered = async (): Promise<{ passed: number; failed: number }> => {
   const btn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
-  _stopRequested = false;
-  _isTestRunning = true;
-  setStopBtnVisible(true);
-  let totalPass = 0, totalFail = 0, totalDuration = 0;
-
   const byFile = new Map<string, string[]>();
   for (const item of document.querySelectorAll<HTMLElement>('.tx-test-item')) {
     if (item.style.display === 'none') continue;
@@ -689,38 +708,63 @@ window.runFiltered = async () => {
     list.push(item.dataset.fullname!);
     byFile.set(card.dataset.filename, list);
   }
+  const specs = Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests }));
+  const total = Array.from(byFile.values()).reduce((sum, arr) => sum + arr.length, 0);
+  const result = await _runMultiFile(byFile as Map<string, string[] | null>, specs, total);
+  if (btn) btn.disabled = false;
+  return result;
+};
 
-  _runDone = 0;
-  _runTotal = Array.from(byFile.values()).reduce((sum, arr) => sum + arr.length, 0);
-  showProgress(0, _runTotal);
-  setTopbarStatus('running', 'Running…');
-  notifyRunBegin(Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests })));
+// ── Keyboard navigation ───────────────────────────────────────────────────────
 
-  for (const [filename, testNames] of byFile) {
-    if (_stopRequested) break;
-    openAndResetCard(filename);
-    log(`run filtered  ${filename}`);
-    try {
-      const { passed, failed, duration } = countResults(await fetchAndRun(filename, { filename, filterTests: testNames }));
-      totalPass += passed; totalFail += failed; totalDuration += duration;
-    } catch (e: any) {
-      log('Error: ' + e.message, { type: 'error' });
-      updateCardStatus(filename, 0, 1);
-      totalFail++;
+let _kbFocusedTestKey: string | null = null;
+
+function _getVisibleTestItems(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('.tx-test-item'))
+    .filter(el => el.style.display !== 'none');
+}
+
+function _setKbFocus(newKey: string | null): void {
+  if (_kbFocusedTestKey != null) {
+    for (const el of document.querySelectorAll<HTMLElement>('.tx-test-item')) {
+      if (el.dataset.testkey === _kbFocusedTestKey) { el.classList.remove('tx-kb-focus'); break; }
     }
   }
-
-  notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
-  _isTestRunning = false;
-  hideProgress();
-  setStopBtnVisible(false);
-  if (_stopRequested) {
-    setTopbarStatus('ready', `Stopped — ${totalPass} passed, ${totalFail} failed`);
-  } else {
-    setTopbarStatus(totalFail === 0 ? 'passed' : 'failed', `${totalPass} passed, ${totalFail} failed`);
+  _kbFocusedTestKey = newKey;
+  if (newKey != null) {
+    for (const el of document.querySelectorAll<HTMLElement>('.tx-test-item')) {
+      if (el.dataset.testkey === newKey) { el.classList.add('tx-kb-focus'); break; }
+    }
   }
-  if (btn) btn.disabled = false;
-};
+}
+
+function _navigateTestList(dir: 1 | -1): void {
+  const items = _getVisibleTestItems();
+  if (!items.length) return;
+  const curIdx = _kbFocusedTestKey != null
+    ? items.findIndex(el => el.dataset.testkey === _kbFocusedTestKey)
+    : -1;
+  const nextIdx = dir === 1
+    ? Math.min(items.length - 1, curIdx < 0 ? 0 : curIdx + 1)
+    : Math.max(0, curIdx < 0 ? items.length - 1 : curIdx - 1);
+  const next = items[nextIdx];
+  if (!next) return;
+  _setKbFocus(next.dataset.testkey ?? null);
+  next.scrollIntoView({ block: 'nearest' });
+}
+
+function _runKbFocusedTest(): void {
+  if (_kbFocusedTestKey == null || _isTestRunning) return;
+  let focusedEl: HTMLElement | null = null;
+  for (const el of document.querySelectorAll<HTMLElement>('.tx-test-item')) {
+    if (el.dataset.testkey === _kbFocusedTestKey) { focusedEl = el; break; }
+  }
+  if (!focusedEl) return;
+  const card = focusedEl.closest<HTMLElement>('.tx-spec-card[data-filename]');
+  if (!card?.dataset.filename) return;
+  const fullName = focusedEl.dataset.fullname;
+  if (fullName) window.runTest(card.dataset.filename, fullName);
+}
 
 // ── Panel resizing ────────────────────────────────────────────────────────────
 
@@ -780,6 +824,61 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   initResizers();
   initNetworkResizer();
+
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    const isEditable = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+    const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
+
+    if (e.key === 'Escape') {
+      if (filterInput && document.activeElement === filterInput) {
+        if (filterInput.value) { filterInput.value = ''; window.applyFilter(''); }
+        else filterInput.blur();
+        e.preventDefault();
+        return;
+      }
+      if (!isEditable && filterInput?.value) {
+        filterInput.value = '';
+        window.applyFilter('');
+        _setKbFocus(null);
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (isEditable) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        _navigateTestList(e.key === 'ArrowDown' ? 1 : -1);
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    switch (e.key) {
+      case 'r': case 'R':
+        if (!_isTestRunning) window.runAll();
+        break;
+      case 'f': case 'F':
+        e.preventDefault();
+        filterInput?.focus();
+        filterInput?.select();
+        break;
+      case 'ArrowDown':
+        _navigateTestList(1);
+        e.preventDefault();
+        break;
+      case 'ArrowUp':
+        _navigateTestList(-1);
+        e.preventDefault();
+        break;
+      case 'Enter':
+        _runKbFocusedTest();
+        break;
+    }
+  });
+
   const snapshotWrapper = document.getElementById('snapshotViewportWrapper');
   if (snapshotWrapper) {
     new ResizeObserver(() => { if (_activeBrowserView === 'snapshot') applySnapshotViewport(); })

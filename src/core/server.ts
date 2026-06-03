@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { generateControlPanelHTML, type ControlPanelConfig } from '../panel/controlPanel';
 import { parseTestFile, bundleTestFile, ParsedFile } from '../runner/runner';
+import { DEFAULT_CONTROL_PANEL_PORT } from '../constants';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from '../runner/reporter';
 import type { TaskHandler } from '../types';
 import type { BrowserMessage, Msg } from '../ws-protocol';
@@ -32,9 +33,9 @@ export interface TestServerConfig {
 export class TestServer {
   private server: http.Server | null = null;
   private port: number;
-  private testFileMap: Map<string, string>; // basename → absolute path (from config)
-  private bundledCodeMap = new Map<string, string>(); // basename → bundled browser JS
-  private parsedCache = new Map<string, ParsedFile>(); // basename → parsed test structure
+  private testFileMap: Map<string, string>; // relPath (or basename) → absolute path
+  private bundledCodeMap = new Map<string, string>(); // relPath (or basename) → bundled browser JS
+  private parsedCache = new Map<string, ParsedFile>(); // relPath (or basename) → parsed test structure
   private _version = 0;
   private reporters: Reporter[];
   private emitter: ReporterEmitter;
@@ -54,7 +55,7 @@ export class TestServer {
   private _setCookieJarCb: ((jar: string | null) => void) | undefined;
 
   constructor(config: TestServerConfig = {}) {
-    this.port = config.port ?? 11339;
+    this.port = config.port ?? DEFAULT_CONTROL_PANEL_PORT;
     this.reporters = config.reporters ?? [];
     this.emitter = new ReporterEmitter();
     for (const r of this.reporters) this.emitter.add(r);
@@ -203,7 +204,7 @@ export class TestServer {
     try {
       for (const t of msg.tests) {
         const testCase = { title: t.name, fullTitle: t.name, file: msg.filename };
-        const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs };
+        const result: ReporterTestResult = { status: t.passed ? 'passed' : 'failed', duration: t.duration, error: t.error, logs: t.logs, retry: t.retry };
         this.emitter.emitTestBegin(testCase, result);
         this.emitter.emitTestEnd(testCase, result);
       }

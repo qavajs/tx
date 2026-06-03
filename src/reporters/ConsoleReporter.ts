@@ -29,7 +29,7 @@ export class ConsoleReporter implements Reporter {
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
-    console.log(this.formatStatus(test.title, result.status, result.duration));
+    console.log(this.formatStatus(test.title, result.status, result.duration, result.retry));
 
     this.printLogs(result.logs);
     this.printError(result.error);
@@ -50,8 +50,9 @@ export class ConsoleReporter implements Reporter {
     );
   }
 
-  private formatStatus(title: string, status: TestResult['status'], duration: number) {
-    const base = `${title} (${duration}ms)`;
+  private formatStatus(title: string, status: TestResult['status'], duration: number, retry?: number) {
+    const retryLabel = retry != null && retry > 0 ? color(` [retry ${retry}]`, 'yellow') : '';
+    const base = `${title}${retryLabel} (${duration}ms)`;
 
     switch (status) {
       case 'passed':

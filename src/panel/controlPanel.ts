@@ -2,6 +2,8 @@
  * Control Panel - Tx HTML UI
  */
 
+import { DEFAULT_CONTROL_PANEL_PORT } from '../constants';
+
 export interface ControlPanelConfig {
     proxyUrl: string;
     controlPanelPort?: number;
@@ -15,7 +17,7 @@ export interface ControlPanelConfig {
     retries?: number;
 }
 
-export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, viewport, testMode, snapshot, grep, actionTimeout, expectTimeout, testTimeout, retries }: ControlPanelConfig): string {
+export function generateControlPanelHTML({ proxyUrl, controlPanelPort = DEFAULT_CONTROL_PANEL_PORT, viewport, testMode, snapshot, grep, actionTimeout, expectTimeout, testTimeout, retries }: ControlPanelConfig): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -483,6 +485,7 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         .tx-test-item:hover { background: var(--bg-hover); }
         .tx-test-item.pass { color: var(--text-dim); }
         .tx-test-item.fail { color: var(--fail); }
+        .tx-test-item.tx-kb-focus { background: var(--bg-active); outline: 1px solid var(--jade); outline-offset: -1px; }
         .tx-test-dot {
             width: 12px;
             flex-shrink: 0;
@@ -883,6 +886,33 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             align-self: center;
             box-shadow: 0 0 0 2px var(--jade-bg);
         }
+
+        .tx-attachment-img {
+            display: block;
+            max-width: calc(100% - 29px);
+            max-height: 160px;
+            margin: 4px 0 6px 29px;
+            border-radius: 3px;
+            border: 1px solid var(--border);
+            object-fit: contain;
+            cursor: zoom-in;
+        }
+        .tx-attachment-html-btn {
+            display: inline-flex;
+            align-items: center;
+            margin: 3px 0 3px 29px;
+            padding: 3px 9px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-s);
+            border-radius: 3px;
+            color: var(--jade);
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            transition: background 0.1s, border-color 0.1s;
+            letter-spacing: 0.01em;
+        }
+        .tx-attachment-html-btn:hover { background: var(--bg-hover); border-color: var(--jade); }
 
         .tx-browser-main {
             flex: 1;
@@ -1450,6 +1480,73 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             margin-left: 10px;
         }
         .tx-cmd-group.open .tx-cmd-group-body { display: block; }
+
+        /* ══ Keyboard shortcut help ══════════════════════════════════ */
+
+        .tx-kbd-help {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .tx-kbd-help-btn {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: transparent;
+            border: 1px solid var(--border-s);
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 700;
+            cursor: default;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+            flex-shrink: 0;
+        }
+        .tx-kbd-help:hover .tx-kbd-help-btn { background: var(--bg-hover); color: var(--text); }
+
+        .tx-kbd-tooltip {
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-s);
+            border-radius: var(--radius);
+            padding: 6px 10px;
+            min-width: 190px;
+            z-index: 100;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            pointer-events: none;
+        }
+        .tx-kbd-help:hover .tx-kbd-tooltip { display: block; }
+
+        .tx-kbd-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 3px 0;
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .tx-kbd {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1px 5px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-s);
+            border-radius: 3px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -1471,6 +1568,16 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
             <div class="tx-status-pill">
                 <span class="tx-status-dot" id="statusIndicator"></span>
                 <span id="statusText">Initializing…</span>
+            </div>
+            <div class="tx-kbd-help">
+                <button class="tx-kbd-help-btn" aria-label="Keyboard shortcuts">?</button>
+                <div class="tx-kbd-tooltip" role="tooltip">
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">R</kbd><span>Run all tests</span></div>
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">F</kbd><span>Focus filter</span></div>
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">↑ ↓</kbd><span>Navigate tests</span></div>
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">Enter</kbd><span>Run focused test</span></div>
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">Esc</kbd><span>Clear filter</span></div>
+                </div>
             </div>
         </div>
     </header>
@@ -1494,10 +1601,10 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = 11339, v
         <!-- ── Browser ───────────────────────────────────────────── -->
         <main class="tx-browser">
             <div class="tx-browser-toolbar">
-                <button class="tx-nav-btn" onclick="window.testApi && window.testApi.reload()" title="Reload" aria-label="Reload page">&#8635;</button>
+                <button class="tx-nav-btn" onclick="window.tx && window.tx.page.reload()" title="Reload" aria-label="Reload page">&#8635;</button>
                 <div class="tx-url-bar">
                     <input type="text" id="navUrl" class="tx-url-input" placeholder="Enter URL…" value="">
-                    <button class="tx-go-btn" onclick="window.testApi && window.testApi.visit(document.getElementById('navUrl').value)">Go</button>
+                    <button class="tx-go-btn" onclick="window.tx && window.tx.page.goto(document.getElementById('navUrl').value)">Go</button>
                 </div>
                 <span class="tx-viewport-tag" id="viewportTag">—</span>
                 <button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle DevTools panel">DevTools <span id="consoleErrorBadge" class="tx-console-error-badge tx-hidden"></span></button>

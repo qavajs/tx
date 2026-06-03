@@ -146,12 +146,12 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
       attempt++;
     }
     if (passed) {
-      const r: TestResult = { name: t.name, passed: true, duration, logs: finalLogs };
+      const r: TestResult = { name: t.name, passed: true, duration, logs: finalLogs, retry: attempt - 1 };
       results.push(r);
       opts?.onTestEnd?.(r);
     } else {
       const rawErr = lastError?.stack || lastError?.message || String(lastError);
-      const r: TestResult = { name: t.name, passed: false, error: remap ? remap(rawErr) : rawErr, duration, logs: finalLogs };
+      const r: TestResult = { name: t.name, passed: false, error: remap ? remap(rawErr) : rawErr, duration, logs: finalLogs, retry: attempt - 1 };
       results.push(r);
       opts?.onTestEnd?.(r);
     }

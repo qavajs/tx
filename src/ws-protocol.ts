@@ -14,6 +14,7 @@ export interface ReportTest {
   error?: string;
   duration: number;
   logs?: LogEntry[];
+  retry?: number;
 }
 
 export type BrowserMessage =

@@ -962,6 +962,66 @@ interface TxDescribeOptions {
   tag?: string[];
 }
 
+// ── TxConfig ──────────────────────────────────────────────────────────────────
+
+interface TxConfig {
+  /** Reporter entries — each is a [modulePath, configObject] tuple. */
+  reporters?: [path: string, config: Record<string, unknown>][];
+  /** Named task handlers executed in Node.js context, callable via node.task() */
+  tasks?: Record<string, (payload: unknown) => unknown | Promise<unknown>>;
+  /** Optional preprocessor applied to each spec file's raw TypeScript source before bundling. */
+  preprocessor?: (source: string, filePath: string) => string;
+  /** Proxy hostname (default: 'localhost') */
+  proxyHost?: string;
+  /** Proxy port 1 (default: 11337) */
+  port1?: number;
+  /** Proxy port 2 (default: 11338) */
+  port2?: number;
+  /** Control panel port (default: 11339) */
+  controlPanelPort?: number;
+  /** Run in headless mode (default: false) */
+  headless?: boolean;
+  /** Explicit list of test file paths (relative to config file) */
+  testFiles?: string[];
+  /** Regexp string to filter tests by name (e.g. "login" or "/should log in/i") */
+  grep?: string;
+  /** Iframe viewport dimensions */
+  viewport?: { width: number; height: number };
+  /** Run all tests automatically, then close — exit code 0 = all passed, 1 = any failed */
+  testMode?: boolean;
+  /** Capture DOM snapshots after each command (default: false) */
+  snapshot?: boolean;
+  /** Default timeout for actions like click(), fill() in ms (default: 5000) */
+  actionTimeout?: number;
+  /** Default timeout for expect() assertion retry loop in ms (default: 5000) */
+  expectTimeout?: number;
+  /** Maximum time a single test may run in ms (default: 30000) */
+  testTimeout?: number;
+  /** Number of times to retry a failing test before marking it failed (default: 0) */
+  retries?: number;
+  /**
+   * Browser to open the control panel in.
+   * Accepts a well-known name ("chrome", "chromium", "firefox", "edge", "safari")
+   * or an absolute path to a browser executable.
+   */
+  browser?: string;
+  /**
+   * Named config profiles. Select one at runtime with --profile <name>.
+   * Profile values are deep-merged on top of the base config, before CLI args.
+   */
+  profiles?: Record<string, Omit<TxConfig, 'profiles'>>;
+  /**
+   * Shard this run — split test files into `total` equal buckets and run only bucket `current` (1-based).
+   * Use with --shard <n>/<total> on the CLI.
+   */
+  shard?: { current: number; total: number };
+  /**
+   * Number of parallel browser workers when `testMode` is true.
+   * Each worker gets its own browser and proxy. Default: 1 (sequential).
+   */
+  workers?: number;
+}
+
 // ── '@qavajs/tx' module — available via require('@qavajs/tx') or import from '@qavajs/tx' ─────────────
 
 declare module '@qavajs/tx' {
@@ -981,6 +1041,22 @@ declare module '@qavajs/tx' {
   export { Mouse, TxMouseClickOptions, TxMouseButton };
   export { APIResponse, APIRequestContext };
   export { Route, TxRouteFulfillOptions, TxRouteContinueOptions, TxRouteFetchOptions };
+
+  export { TxConfig };
+
+  /**
+   * Wraps your config object to provide full TypeScript IntelliSense on all fields.
+   *
+   * @example
+   * // tx.config.ts
+   * import { defineConfig } from '@qavajs/tx';
+   * export default defineConfig({
+   *   browser: 'chrome',
+   *   headless: true,
+   *   testFiles: ['./specs/**\/*.spec.ts'],
+   * });
+   */
+  export function defineConfig(config: TxConfig): TxConfig;
 
   export const page: Page;
   export const browser: Browser;

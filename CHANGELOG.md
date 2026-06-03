@@ -4,6 +4,21 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- `defineConfig(config)` — helper exported from `'@qavajs/tx'` that returns its argument unchanged; gives full TypeScript IntelliSense on all config fields when used in `tx.config.ts`
+- `TxConfig` interface — full type declaration for the configuration object, now exported from `'@qavajs/tx'` for use in type annotations
+- Keyboard shortcuts in the control panel — `R` runs all tests, `F` focuses the filter input, `↑`/`↓` navigates the visible test list, `Enter` runs the keyboard-focused test, `Esc` clears the filter or blurs the input. A `?` button in the topbar shows a hover tooltip listing all shortcuts
+- Retry indicators in the UI — passing tests that required retries show `↺N` on the status badge (e.g. `234ms ↺2`); a `↻ Retry N` banner is prepended to the test log at the start of each retry attempt
+- Inline attachments in the command log — `attach(label, body, contentType)` now renders directly in the log panel: images (`image/*`) appear as inline thumbnails; HTML attachments (`text/html`) get a "⊞ View HTML" button that opens the content in the snapshot viewer pane
+
+### Changed
+- Profile deep merge — `--profile <name>` values are now deep-merged on top of the base config (nested objects like `viewport` are merged field-by-field instead of replaced wholesale)
+- `ConsoleReporter` now prints `[retry N]` in yellow next to the test title when a test passed after one or more retries
+- `window.runAll` now delegates to `window.runFiltered()` when a filter is active, and `runFiltered` now returns `{ passed, failed }` consistent with `runAll`; internal `_runMultiFile` helper extracted to deduplicate the run loop
+- `main()` in `src/index.ts` is now guarded by `require.main === module` so the module can be imported without triggering CLI startup
+
 ## [0.0.10]
 
 ### Added
