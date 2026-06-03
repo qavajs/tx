@@ -3,7 +3,7 @@ import { fail } from './testData';
 
 test.describe('apptesting forms', { tag: ['@smoke'] }, () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/forms.html');
+        await page.goto('http://localhost:3000/forms.html');
     });
 
     test('simple input', { tag: ['@tag1'] }, async ({ page }) => {
@@ -32,7 +32,7 @@ test.describe('apptesting forms', { tag: ['@smoke'] }, () => {
 
 test.describe('apptesting interactions', () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/interactions.html');
+        await page.goto('http://localhost:3000/interactions.html');
     });
 
     test('press and hold', async ({ page }) => {
@@ -80,7 +80,7 @@ test.describe('apptesting interactions', () => {
 
 test.describe('apptesting widgets', () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/widgets.html');
+        await page.goto('http://localhost:3000/widgets.html');
     });
 
     test('accordion', async ({ page }) => {
@@ -140,7 +140,7 @@ test.describe('apptesting widgets', () => {
 
 test.describe('apptesting windows', () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/windows.html');
+        await page.goto('http://localhost:3000/windows.html');
     });
 
     test('new tab', async ({ browser, page }) => {
@@ -179,7 +179,7 @@ test.describe('apptesting windows', () => {
 
 test.describe('apptesting alerts', { tag: ['@alerts'] }, () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/alerts.html');
+        await page.goto('http://localhost:3000/alerts.html');
     });
 
     test('alert', async ({ page }) => {
@@ -193,16 +193,16 @@ test.describe('apptesting alerts', { tag: ['@alerts'] }, () => {
         await expect(result).toHaveText('Alert was shown and dismissed.');
     });
 
-    for (const testCase of [{action: 'accept', button: 'OK'}, { action: 'dismiss', button: 'Cancel' }]) {
+    for (const testCase of [{ action: 'accept', expected: 'User clicked: OK' }, { action: 'dismiss', expected: 'User clicked: Cancel' }]) {
         test(`confirm: ${testCase.action}`, async ({ page }) => {
             const button = page.locator('#confirm-btn');
             const result = page.locator('#confirm-output');
-            const dialogPromise = page.waitForEvent('dialog');
+            page.on('dialog', dialog => {
+                expect(dialog.type()).toBe('confirm');
+                dialog[testCase.action]();
+            });
             await button.click();
-            const dialog = await dialogPromise;
-            expect(dialog.type()).toBe('confirm');
-            dialog[testCase.action]();
-            await expect(result).toHaveText('User clicked: Cancel');
+            await expect(result).toHaveText(testCase.expected);
         });
     }
 

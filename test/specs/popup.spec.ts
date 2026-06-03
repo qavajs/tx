@@ -3,7 +3,7 @@ import { test, expect } from '@qavajs/tx';
 test.describe('browser.newWindow', () => {
 
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/forms.html');
+        await page.goto('http://localhost:3000/forms.html');
         const mainTitle = page.locator('h1');
         await expect(mainTitle).toHaveText('Forms');
     });
@@ -12,7 +12,7 @@ test.describe('browser.newWindow', () => {
         const mainTitle = page.locator('h1');
         await expect(mainTitle).toHaveText('Forms');
 
-        await browser.newWindow('https://apptesting.pl/pages/interactions.html');
+        await browser.newWindow('http://localhost:3000/interactions.html');
 
         // Now page should be controlling the popup
         const popupTitle = page.locator('h1');
@@ -32,7 +32,7 @@ test.describe('browser.newWindow', () => {
     });
 
     test('should handle navigation in popup', async ({ browser, page }) => {
-        await page.goto('https://apptesting.pl/pages/widgets.html');
+        await page.goto('http://localhost:3000/widgets.html');
         await expect(page.locator('h1')).toHaveText('Widgets');
     });
 });

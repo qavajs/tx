@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Widgets</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; background: #f5f5f5; }
+    h2 { margin-top: 32px; }
+
+    /* Accordion */
+    .accordion-section { border: 1px solid #ddd; margin: 4px 0; border-radius: 4px; }
+    .accordion-header { padding: 10px 14px; cursor: pointer; background: #eee; user-select: none; }
+    .accordion-header:hover { background: #e0e0e0; }
+    .accordion-content { display: none; padding: 10px 14px; }
+    .active .accordion-content { display: block; }
+
+    /* Tabs */
+    .tab-buttons { display: flex; gap: 4px; margin-bottom: 0; }
+    .tab-buttons button { padding: 8px 16px; cursor: pointer; border: 1px solid #ddd; background: #eee; }
+    .tab-content { display: none; padding: 12px; border: 1px solid #ddd; }
+    .tab-content.active { display: block; }
+
+    /* Modal */
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); align-items: center; justify-content: center; }
+    .modal.open { display: flex; }
+    .modal-dialog { background: #fff; border-radius: 8px; padding: 24px; min-width: 280px; }
+    .modal-header { font-weight: bold; margin-bottom: 12px; }
+
+    /* Tooltip */
+    .tooltip-wrapper { position: relative; display: inline-block; margin: 8px 0; }
+    .tooltip { display: none; position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+               background: #333; color: #fff; padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+    .tooltip-wrapper:hover .tooltip,
+    .tooltip-wrapper.hovered .tooltip { display: block; }
+
+    /* Autocomplete */
+    .autocomplete-wrapper { position: relative; display: inline-block; }
+    #autocomplete { padding: 8px; width: 240px; }
+    .autocomplete-list { position: absolute; top: 100%; left: 0; width: 100%; background: #fff; border: 1px solid #ddd; z-index: 10; }
+    .autocomplete-item { padding: 8px; cursor: pointer; }
+    .autocomplete-item:hover { background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>Widgets</h1>
+
+  <h2>Accordion</h2>
+  <div class="accordion-section" id="accordion-section-1">
+    <div id="accordion-header-1" class="accordion-header">Section 1</div>
+    <div class="accordion-content">Content for section 1.</div>
+  </div>
+  <div class="accordion-section" id="accordion-section-2">
+    <div id="accordion-header-2" class="accordion-header">Section 2</div>
+    <div class="accordion-content">Content for section 2.</div>
+  </div>
+
+  <h2>Tabs</h2>
+  <div class="tab-buttons">
+    <button id="tab-btn-1">Tab 1</button>
+    <button id="tab-btn-2">Tab 2</button>
+  </div>
+  <div class="tab-content active" id="tab-panel-1">Content for tab 1.</div>
+  <div class="tab-content" id="tab-panel-2">Content for tab 2.</div>
+
+  <h2>Modal</h2>
+  <button id="modal-trigger">Open Modal</button>
+  <div class="modal" id="modal">
+    <div class="modal-dialog">
+      <div class="modal-header">Modal</div>
+      <div class="modal-body">This is modal content.</div>
+      <button id="modal-close">Close</button>
+    </div>
+  </div>
+
+  <h2>Tooltip</h2>
+  <div class="tooltip-wrapper" id="tooltip-wrapper">
+    <button id="tooltip-btn">Hover me</button>
+    <div class="tooltip">Tooltip text!</div>
+  </div>
+
+  <h2>Autocomplete</h2>
+  <div class="autocomplete-wrapper">
+    <input id="autocomplete" type="text" placeholder="Type to search..." autocomplete="off" />
+    <div class="autocomplete-list" id="autocomplete-list"></div>
+  </div>
+
+  <script>
+    // Accordion
+    ['accordion-header-1', 'accordion-header-2'].forEach(id => {
+      document.getElementById(id).addEventListener('click', function () {
+        const section = this.closest('.accordion-section');
+        section.classList.toggle('active');
+      });
+    });
+
+    // Tabs
+    document.getElementById('tab-btn-1').addEventListener('click', () => {
+      document.getElementById('tab-panel-1').classList.add('active');
+      document.getElementById('tab-panel-2').classList.remove('active');
+    });
+    document.getElementById('tab-btn-2').addEventListener('click', () => {
+      document.getElementById('tab-panel-2').classList.add('active');
+      document.getElementById('tab-panel-1').classList.remove('active');
+    });
+
+    // Modal
+    document.getElementById('modal-trigger').addEventListener('click', () => {
+      document.getElementById('modal').classList.add('open');
+    });
+    document.getElementById('modal-close').addEventListener('click', () => {
+      document.getElementById('modal').classList.remove('open');
+    });
+
+    // Tooltip (JS-driven for reliable automation testing)
+    const tooltipWrapper = document.getElementById('tooltip-wrapper');
+    tooltipWrapper.addEventListener('mouseenter', () => tooltipWrapper.classList.add('hovered'));
+    tooltipWrapper.addEventListener('mouseleave', () => tooltipWrapper.classList.remove('hovered'));
+
+    // Autocomplete
+    const ITEMS = ['JavaScript', 'Java', 'Python', 'TypeScript'];
+    const autocompleteInput = document.getElementById('autocomplete');
+    const autocompleteList = document.getElementById('autocomplete-list');
+
+    autocompleteInput.addEventListener('input', () => {
+      const query = autocompleteInput.value.toLowerCase();
+      const matches = query ? ITEMS.filter(item => item.toLowerCase().includes(query)) : [];
+      autocompleteList.innerHTML = '';
+      matches.forEach(match => {
+        const div = document.createElement('div');
+        div.className = 'autocomplete-item';
+        div.textContent = match;
+        div.addEventListener('click', () => {
+          autocompleteInput.value = match;
+          autocompleteList.innerHTML = '';
+        });
+        autocompleteList.appendChild(div);
+      });
+    });
+  </script>
+</body>
+</html>

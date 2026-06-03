@@ -721,6 +721,8 @@ export const page = {
 
   on(event: string, fn: (...args: any[]) => any) {
     _addPageListener(event, fn);
+    const entry = logCommand(`page.on(${JSON.stringify(event)})`, 'on');
+    entry.success();
     return page;
   },
 
@@ -731,6 +733,8 @@ export const page = {
 
   off(event: string, fn: (...args: any[]) => any) {
     _removePageListener(event, fn);
+    const entry = logCommand(`page.off(${JSON.stringify(event)})`, 'off');
+    entry.success();
     return page;
   },
 

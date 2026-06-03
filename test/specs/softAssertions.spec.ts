@@ -58,7 +58,7 @@ test.describe('expect.soft — value matchers', () => {
 
 test.describe('expect.soft — locator matchers', () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/forms.html');
+        await page.goto('http://localhost:3000/forms.html');
     });
 
     test('passes for a visible element', async ({ page }) => {

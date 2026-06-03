@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactions</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; background: #f5f5f5; }
+    button { display: block; padding: 10px 20px; margin: 16px 0 4px; cursor: pointer; }
+    .output { min-height: 24px; margin-bottom: 24px; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Interactions</h1>
+
+  <button id="single-click-btn">Single Click</button>
+  <div id="single-click-output" class="output"></div>
+
+  <button id="longpress-btn">Long Press</button>
+  <div id="longpress-output" class="output"></div>
+
+  <script>
+    document.getElementById('single-click-btn').addEventListener('click', () => {
+      document.getElementById('single-click-output').textContent = 'Button clicked at ' + new Date().toLocaleTimeString();
+    });
+
+    let pressStart = 0;
+    const longBtn = document.getElementById('longpress-btn');
+    longBtn.addEventListener('mousedown', () => { pressStart = Date.now(); });
+    longBtn.addEventListener('mouseup', () => {
+      if (Date.now() - pressStart >= 2000) {
+        document.getElementById('longpress-output').textContent = 'Long press detected! Held for 2 seconds.';
+      }
+    });
+  </script>
+</body>
+</html>

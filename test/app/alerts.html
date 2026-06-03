@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alerts</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; background: #f5f5f5; }
+    button { display: block; margin: 8px 0; padding: 8px 16px; cursor: pointer; }
+    .output { min-height: 24px; margin-bottom: 24px; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Alerts</h1>
+
+  <button id="alert-btn">Show Alert</button>
+  <div id="alert-output" class="output"></div>
+
+  <button id="confirm-btn">Show Confirm</button>
+  <div id="confirm-output" class="output"></div>
+
+  <button id="prompt-btn">Show Prompt</button>
+  <div id="prompt-output" class="output"></div>
+
+  <script>
+    document.getElementById('alert-btn').addEventListener('click', () => {
+      alert('Test alert');
+      document.getElementById('alert-output').textContent = 'Alert was shown and dismissed.';
+    });
+
+    document.getElementById('confirm-btn').addEventListener('click', () => {
+      const result = confirm('Confirm action?');
+      document.getElementById('confirm-output').textContent = 'User clicked: ' + (result ? 'OK' : 'Cancel');
+    });
+
+    document.getElementById('prompt-btn').addEventListener('click', () => {
+      const value = prompt('Enter a value');
+      document.getElementById('prompt-output').textContent = 'User entered: ' + value;
+    });
+  </script>
+</body>
+</html>

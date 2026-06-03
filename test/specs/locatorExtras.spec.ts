@@ -1,12 +1,10 @@
 import { test, expect } from '@qavajs/tx';
 
 // Tests for locator.boundingBox(), locator.blur(), and expect().toHaveCSS().
-// Uses https://apptesting.pl/pages/forms.html which has stable, well-known
-// form elements with predictable properties.
 
 test.describe('locator.boundingBox', () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/forms.html');
+        await page.goto('http://localhost:3000/forms.html');
     });
 
     test('returns an object with numeric x, y, width, height for a visible element', async ({ page }) => {
@@ -39,7 +37,7 @@ test.describe('locator.boundingBox', () => {
 
 test.describe('locator.blur', () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/forms.html');
+        await page.goto('http://localhost:3000/forms.html');
     });
 
     test('removes focus from an element after focus()', async ({ page }) => {
@@ -63,7 +61,7 @@ test.describe('locator.blur', () => {
 
 test.describe('expect().toHaveCSS', () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('https://apptesting.pl/pages/forms.html');
+        await page.goto('http://localhost:3000/forms.html');
     });
 
     test('matches an explicitly set background-color', async ({ page }) => {
