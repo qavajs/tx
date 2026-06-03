@@ -4,6 +4,11 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- Built reporters (`ConsoleReporter`, `HtmlReporter`, `JunitReporter`) are now compiled to `dist/reporters/` and included in the published package
+
 ## [0.0.11]
 
 ### Fixed

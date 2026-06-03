@@ -33,6 +33,20 @@ await esbuild.build({
 
 await esbuild.build({
   ...sharedOpts,
+  entryPoints: [
+    'src/reporters/ConsoleReporter.ts',
+    'src/reporters/HtmlReporter.ts',
+    'src/reporters/JunitReporter.ts',
+  ],
+  bundle: true,
+  platform: 'node',
+  packages: 'external',
+  outdir: 'dist/reporters',
+  sourcemap: true,
+});
+
+await esbuild.build({
+  ...sharedOpts,
   entryPoints: ['src/core/controller.ts'],
   bundle: true,
   platform: 'browser',
