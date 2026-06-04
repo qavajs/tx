@@ -1,8 +1,8 @@
-import * as vm from 'vm';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as esbuild from 'esbuild';
+import { createRequire } from 'module';
 import type { Preprocessor } from '../types';
 
 let _preprocessor: Preprocessor | null = null;
@@ -76,29 +76,14 @@ export function parseTestCode(code: string): ParsedTest[] {
     { get: (t, k) => (k in t ? (t as any)[k] : deepNoop) },
   );
   
-  const moduleStub: any = new Proxy(
-    Object.assign(() => deepNoop, { __esModule: false, default: deepNoop }),
-    
-    { get: (t, k) => (k in t ? (t as any)[k] : deepNoop) },
-  );
-  
-  const pageProxy: any = new Proxy({}, { get: () => noop });
-  
+  const _require = createRequire(__filename);
+  const customRequire = (id: string) => id === '@qavajs/tx' ? txStub : _require(id);
   const exportsObj: any = {};
-  const sandbox = vm.createContext({
-    expect: () => noop,
-    tx: deepNoop,
-    page: pageProxy,
-    require: (id: string) => id === '@qavajs/tx' ? txStub : moduleStub,
-    exports: exportsObj,
-    module: { exports: exportsObj },
-    console: { log: noop, error: noop, warn: noop, info: noop, debug: noop },
-    setTimeout: noop, clearTimeout: noop,
-    Promise: { resolve: () => ({ then: noop }) },
-    __dirname: '/',
-    __filename: '/test.ts',
-  });
-  try { vm.runInContext(code, sandbox); } catch { /* syntax errors */ }
+  try {
+    new Function('require', 'exports', 'module', '__dirname', '__filename', code)(
+      customRequire, exportsObj, { exports: exportsObj }, '/', '/test.ts',
+    );
+  } catch { /* ignore errors during parse */ }
   return tests;
 }
 

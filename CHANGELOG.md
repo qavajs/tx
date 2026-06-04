@@ -6,12 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.0.12]
 
+### Fixed
+- Test discovery now works correctly when spec files import third-party packages (e.g. `chai`) — the VM sandbox used for parsing lacked host globals such as `EventTarget`, causing package initialisation to throw before any tests were registered; replaced the VM sandbox with `new Function` running in the host Node.js context so all globals are naturally available, with `createRequire` intercepting only `@qavajs/tx`
+
 ### Changed
-- `page.resetSession()` no longer emits command log entries — the reset is an internal lifecycle step and its pending/pass entries added noise to the test log
-- Removed `.js`/`.ts` extension restriction from test source serving and file watching — test files with any extension are now accepted
+- File watcher no longer filters by `.js`/`.ts` extension — any change to a tracked file triggers re-bundling, enabling test files with non-standard extensions to be watched correctly
 
 ### Added
-- Built reporters (`ConsoleReporter`, `HtmlReporter`, `JunitReporter`) are now compiled to `dist/reporters/` and included in the published package
+- Built reporters (`ConsoleReporter`, `HtmlReporter`, `JUnitReporter`) are now compiled to `dist/reporters/` and included in the published package
 
 ## [0.0.11]
 
