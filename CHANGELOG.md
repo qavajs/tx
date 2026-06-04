@@ -4,7 +4,11 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.12]
+
+### Changed
+- `page.resetSession()` no longer emits command log entries — the reset is an internal lifecycle step and its pending/pass entries added noise to the test log
+- Removed `.js`/`.ts` extension restriction from test source serving and file watching — test files with any extension are now accepted
 
 ### Added
 - Built reporters (`ConsoleReporter`, `HtmlReporter`, `JunitReporter`) are now compiled to `dist/reporters/` and included in the published package
