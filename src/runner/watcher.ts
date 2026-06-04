@@ -57,7 +57,7 @@ export async function startWatcher(
     if (!fs.existsSync(dir)) continue;
     try {
       fs.watch(dir, { recursive: true }, (_event, filename) => {
-        if (!filename || !/\.(js|ts)$/.test(filename)) return;
+        if (!filename) return;
         const fullPath = path.join(dir, filename);
         const rel = path.relative(baseDir, fullPath).replace(/\\/g, '/');
         const tracked = patterns.length > 0
