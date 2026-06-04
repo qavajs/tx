@@ -36,7 +36,7 @@ await esbuild.build({
   entryPoints: [
     'src/reporters/ConsoleReporter.ts',
     'src/reporters/HtmlReporter.ts',
-    'src/reporters/JunitReporter.ts',
+    'src/reporters/JUnitReporter.ts',
   ],
   bundle: true,
   platform: 'node',
