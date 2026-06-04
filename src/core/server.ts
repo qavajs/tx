@@ -293,7 +293,7 @@ export class TestServer {
   private _onGetTestSource(ws: WebSocket, msg: Msg<'get-test-source'>): void | Promise<void> {
     const { id, file } = msg;
     const isAbsolutePath = (f: string) => f.startsWith('/') || f.startsWith('\\') || /^[A-Za-z]:/.test(f);
-    if (!file || file.includes('..') || file.includes('\\') || isAbsolutePath(file) || (!file.endsWith('.js') && !file.endsWith('.ts'))) {
+    if (!file || file.includes('..') || file.includes('\\') || isAbsolutePath(file)) {
       this._send(ws, { type: 'test-source', id, error: 'Invalid filename' });
       return;
     }
