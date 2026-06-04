@@ -815,54 +815,52 @@ export const page = {
   },
 
   async resetSession(): Promise<void> {
-    return _withCommand('page.resetSession()', 'resetSession', async () => {
-      _locatorHandlers.length = 0;
-      _routeHandlers.length = 0;
-      clearPageListeners();
+    _locatorHandlers.length = 0;
+    _routeHandlers.length = 0;
+    clearPageListeners();
 
-      try {
-        const win = iframeWin() as any;
-        const doc = iframeDoc() as any;
-        if (win) {
-          try { win.localStorage.clear(); } catch { /* cross-origin */ }
-          try { win.sessionStorage.clear(); } catch { /* cross-origin */ }
-        }
-        if (doc) {
-          try {
-            const hostname = win?.location?.hostname ?? '';
-            for (const cookie of doc.cookie.split(';')) {
-              const name = cookie.split('=')[0].trim();
-              if (!name) continue;
-              const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
-              doc.cookie = base;
-              if (hostname) doc.cookie = `${base}; domain=${hostname}`;
-            }
-          } catch { /* cross-origin or HttpOnly */ }
-        }
-      } catch { /* ignore */ }
-
-      closeExtraTabs();
-
-      if (_tabs.length === 0) {
-        createTab();
-        return;
+    try {
+      const win = iframeWin() as any;
+      const doc = iframeDoc() as any;
+      if (win) {
+        try { win.localStorage.clear(); } catch { /* cross-origin */ }
+        try { win.sessionStorage.clear(); } catch { /* cross-origin */ }
       }
+      if (doc) {
+        try {
+          const hostname = win?.location?.hostname ?? '';
+          for (const cookie of doc.cookie.split(';')) {
+            const name = cookie.split('=')[0].trim();
+            if (!name) continue;
+            const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+            doc.cookie = base;
+            if (hostname) doc.cookie = `${base}; domain=${hostname}`;
+          }
+        } catch { /* cross-origin or HttpOnly */ }
+      }
+    } catch { /* ignore */ }
 
-      const tab = _activeTab();
-      if (!tab) return;
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('resetSession: blank page load timed out')), 10_000);
-        if (tab.iframe) {
-          tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-          tab.iframe.src = API_BASE + '/about-blank';
-        } else if (tab.popup) {
-          tab.popup.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-          tab.popup.location.href = API_BASE + '/about-blank';
-        } else {
-          clearTimeout(timer);
-          resolve();
-        }
-      });
+    closeExtraTabs();
+
+    if (_tabs.length === 0) {
+      createTab();
+      return;
+    }
+
+    const tab = _activeTab();
+    if (!tab) return;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('resetSession: blank page load timed out')), 10_000);
+      if (tab.iframe) {
+        tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+        tab.iframe.src = API_BASE + '/about-blank';
+      } else if (tab.popup) {
+        tab.popup.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+        tab.popup.location.href = API_BASE + '/about-blank';
+      } else {
+        clearTimeout(timer);
+        resolve();
+      }
     });
   },
 
