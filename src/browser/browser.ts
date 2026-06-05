@@ -5,6 +5,7 @@ import { Route, routeHandlers as _routeHandlers, matchesRoutePattern as _matches
 export { Route };
 import { installEventBridges as _installEventBridges, installWindowBridges as _installWindowBridges } from './bridges';
 import { Locator, resolveSelector, _locatorHandlers } from './locator';
+import { isXPath, resolveXPath, queryXPath } from './locator-utils';
 import { makeLocatorQueries } from './locator-queries';
 import { ariaSnapshot as _ariaSnapshot } from './aria';
 import { Mouse } from './mouse';
@@ -613,6 +614,7 @@ export const page = {
     return new Locator(() => {
       const doc = iframeDoc();
       if (!doc) return [];
+      if (isXPath(selector)) return queryXPath(doc, resolveXPath(selector));
       const parts = resolveSelector(selector);
       const seen = new Set<Element>();
       const out: Element[] = [];

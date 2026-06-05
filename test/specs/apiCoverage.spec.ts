@@ -1169,3 +1169,50 @@ test.describe('Download – full API', () => {
     });
 });
 
+// ── XPath locators ─────────────────────────────────────────────────────────────
+
+test.describe('XPath locators', () => {
+    test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
+
+    test('// prefix finds element by tag and id attribute', async ({ page }) => {
+        await expect(page.locator(`//button[@id='clickBtn']`)).toBeVisible();
+    });
+
+    test('xpath= prefix finds element', async ({ page }) => {
+        await expect(page.locator(`xpath=//button[@id='clickBtn']`)).toBeVisible();
+    });
+
+    test('XPath text() predicate matches element text', async ({ page }) => {
+        await expect(page.locator(`//button[text()='Click']`)).toBeVisible();
+    });
+
+    test('XPath contains() matches partial attribute value', async ({ page }) => {
+        await expect(page.locator(`//input[contains(@placeholder,'here')]`)).toBeVisible();
+    });
+
+    test('XPath click triggers action', async ({ page }) => {
+        await page.locator(`//button[@id='clickBtn']`).click();
+        await expect(page.locator('#mouseResult')).toHaveText('Clicked');
+    });
+
+    test('XPath fill types into input', async ({ page }) => {
+        await page.locator(`//input[@id='textInput']`).fill('xpath fill');
+        await expect(page.locator('#textInput')).toHaveValue('xpath fill');
+    });
+
+    test('XPath count returns number of matched elements', async ({ page }) => {
+        const count = await page.locator(`//section[@class='card']`).count();
+        expect(count).toBeGreaterThan(0);
+    });
+
+    test('chained .locator() with XPath narrows within CSS root', async ({ page }) => {
+        const heading = page.locator('.card').locator(`//h2[text()='Mouse / Pointer']`);
+        await expect(heading).toBeVisible();
+    });
+
+    test('chained CSS then xpath= prefix form', async ({ page }) => {
+        const btn = page.locator('.card').locator(`xpath=//button[@id='dblClickBtn']`);
+        await expect(btn).toBeVisible();
+    });
+});
+
