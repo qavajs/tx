@@ -1,6 +1,6 @@
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+import * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const APP_PORT = 3000;
 const APP_DIR = path.join(__dirname, 'app');
@@ -18,12 +18,14 @@ const appServer = http.createServer((req, res) => {
   }
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return; }
-    const mime = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+    const mime = MIME[path.extname(filePath).toLowerCase() as keyof typeof MIME] || 'application/octet-stream';
     res.writeHead(200, { 'Content-Type': mime });
     res.end(data);
   });
 });
-appServer.on('error', err => { if (err.code !== 'EADDRINUSE') console.error('[app-server]', err.message); });
+appServer.on('error', (err: any) => {
+  if (err.code !== 'EADDRINUSE') console.error('[app-server]', err.message);
+});
 appServer.listen(APP_PORT, 'localhost');
 
 module.exports = {
@@ -44,8 +46,8 @@ module.exports = {
     ['../src/reporters/HtmlReporter.ts', { outputPath: 'report/report.html' }],
   ],
   tasks: {
-    readFile: ({ path }) => require('fs').readFileSync(path, 'utf-8'),
-    deleteFile: ({ path }) => require('fs').unlinkSync(path),
+    readFile: ({ path }: { path: string }) => require('fs').readFileSync(path, 'utf-8'),
+    deleteFile: ({ path }: { path: string }) => require('fs').unlinkSync(path),
     dirname: () => __dirname,
   },
   profiles: {
