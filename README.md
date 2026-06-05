@@ -483,7 +483,7 @@ console.log(resp.status()); // 200
 ```ts
 page.locator(selector: string): Locator
 ```
-Match elements by CSS selector. Supports the `:has-text("…")` pseudo-class.
+Match elements by CSS selector.
 
 ```ts
 page.getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator

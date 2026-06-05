@@ -5,14 +5,6 @@ export function textMatches(el: Element, text: string | RegExp, exact = false): 
   return text instanceof RegExp ? text.test(t) : exact ? t === text : t.includes(text);
 }
 
-export function resolveSelector(selector: string): { base: string; hasText: string | null }[] {
-  return selector.split(',').map(s => {
-    s = s.trim();
-    const m = s.match(/:has-text\(["'](.+?)["']\)/);
-    if (m) {
-      const base = s.replace(/:has-text\(["'](.+?)["']\)/, '').trim() || '*';
-      return { base, hasText: m[1] };
-    }
-    return { base: s, hasText: null };
-  });
+export function resolveSelector(selector: string): string[] {
+  return selector.split(',').map(s => s.trim());
 }

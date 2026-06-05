@@ -41,7 +41,7 @@ test.describe('UI5', () => {
             await page.locator('[data-sap-ui="container-cart---checkoutView--deliveryTypeStep-nextButton"]').click();
             await expect(page.locator('#container-cart---checkoutView--totalPriceTitle-inner')).toHaveText('Total: 16,00 EUR');
             await page.locator('#container-cart---checkoutView--submitOrder').click();
-            await page.locator('footer button:has-text("Yes")').click();
+            await page.locator('footer button').filter({ hasText: 'Yes' }).click();
         });
 
         await step('Verify order confirmation', async () => {
