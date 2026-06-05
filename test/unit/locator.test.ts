@@ -45,39 +45,15 @@ describe('textMatches', () => {
 // ── resolveSelector ───────────────────────────────────────────────────────────
 
 describe('resolveSelector', () => {
-  test('returns plain selector with null hasText', () => {
-    const result = resolveSelector('button');
-    assert.deepEqual(result, [{ base: 'button', hasText: null }]);
-  });
-
-  test('extracts double-quoted :has-text() filter', () => {
-    const result = resolveSelector('button:has-text("Submit")');
-    assert.deepEqual(result, [{ base: 'button', hasText: 'Submit' }]);
-  });
-
-  test('extracts single-quoted :has-text() filter', () => {
-    const result = resolveSelector("div:has-text('click me')");
-    assert.deepEqual(result, [{ base: 'div', hasText: 'click me' }]);
-  });
-
-  test('uses * as base when only :has-text() is present', () => {
-    const result = resolveSelector(':has-text("Submit")');
-    assert.deepEqual(result, [{ base: '*', hasText: 'Submit' }]);
+  test('returns single selector as array', () => {
+    assert.deepEqual(resolveSelector('button'), ['button']);
   });
 
   test('splits comma-separated selectors', () => {
-    const result = resolveSelector('input, button');
-    assert.deepEqual(result, [
-      { base: 'input', hasText: null },
-      { base: 'button', hasText: null },
-    ]);
+    assert.deepEqual(resolveSelector('input, button'), ['input', 'button']);
   });
 
-  test('handles mixed selectors with and without has-text', () => {
-    const result = resolveSelector('span:has-text("ok"), div');
-    assert.deepEqual(result, [
-      { base: 'span', hasText: 'ok' },
-      { base: 'div', hasText: null },
-    ]);
+  test('trims whitespace around each part', () => {
+    assert.deepEqual(resolveSelector('  span ,  div  '), ['span', 'div']);
   });
 });

@@ -4,7 +4,7 @@ import type { WindowConfig } from '../types';
 import { Route, routeHandlers as _routeHandlers, matchesRoutePattern as _matchesRoutePattern } from './route';
 export { Route };
 import { installEventBridges as _installEventBridges, installWindowBridges as _installWindowBridges } from './bridges';
-import { Locator, textMatches, resolveSelector, _locatorHandlers } from './locator';
+import { Locator, resolveSelector, _locatorHandlers } from './locator';
 import { makeLocatorQueries } from './locator-queries';
 import { ariaSnapshot as _ariaSnapshot } from './aria';
 import { Mouse } from './mouse';
@@ -616,9 +616,8 @@ export const page = {
       const parts = resolveSelector(selector);
       const seen = new Set<Element>();
       const out: Element[] = [];
-      for (const { base, hasText } of parts) {
+      for (const base of parts) {
         for (const el of Array.from(doc.querySelectorAll(base))) {
-          if (hasText && !textMatches(el, hasText)) continue;
           if (!seen.has(el)) { seen.add(el); out.push(el); }
         }
       }

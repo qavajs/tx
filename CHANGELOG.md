@@ -4,6 +4,20 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed
+- Command log entries no longer have a coloured left border — status is conveyed by the icon only
+- Inline test log now collapses automatically when a test finishes, regardless of pass or fail
+
+### Removed
+- `:has-text("…")` pseudo-class support in selectors — use `locator.filter({ hasText: '…' })` instead
+
+## [0.0.13]
+
+### Changed
+- File extension restriction removed from test source requests — spec files with non-`.js`/`.ts` extensions are now accepted by the server
+
 ## [0.0.12]
 
 ### Fixed

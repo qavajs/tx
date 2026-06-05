@@ -359,9 +359,9 @@ async function fetchAndRun(
       activateTestLog(opts.filename!, testName, attempt);
     } : undefined,
     onAttemptError: opts?.filename ? appendErrorToLog : undefined,
-    onAttemptFinally: opts?.filename ? (testName, passed, attemptsLeft) => {
+    onAttemptFinally: opts?.filename ? (testName) => {
       const logEl = document.getElementById('tlog-' + escAttr(opts.filename! + '\x01' + testName));
-      if (!passed || attemptsLeft > 0) logEl?.classList.remove('open');
+      logEl?.classList.remove('open');
       _activeTestLog = null;
     } : undefined,
     onTestEnd: (r) => {

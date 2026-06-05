@@ -177,9 +177,8 @@ export class Locator {
       const seen = new Set<Element>();
       const out: Element[] = [];
       for (const root of this._els()) {
-        for (const { base, hasText } of parts) {
+        for (const base of parts) {
           for (const el of Array.from(root.querySelectorAll(base))) {
-            if (hasText && !textMatches(el, hasText)) continue;
             if (!seen.has(el)) { seen.add(el); out.push(el); }
           }
         }
@@ -526,9 +525,8 @@ export class FrameLocator {
       const parts = resolveSelector(selector);
       const seen = new Set<Element>();
       const out: Element[] = [];
-      for (const { base, hasText } of parts) {
+      for (const base of parts) {
         for (const el of Array.from(doc.querySelectorAll(base))) {
-          if (hasText && !textMatches(el, hasText)) continue;
           if (!seen.has(el)) { seen.add(el); out.push(el); }
         }
       }
