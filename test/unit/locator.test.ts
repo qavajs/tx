@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { textMatches, resolveSelector } from '../../src/browser/locator-utils';
+import { textMatches, resolveSelector, isXPath, resolveXPath } from '../../src/browser/locator-utils';
 
 // ── textMatches ───────────────────────────────────────────────────────────────
 
@@ -55,5 +55,45 @@ describe('resolveSelector', () => {
 
   test('trims whitespace around each part', () => {
     assert.deepEqual(resolveSelector('  span ,  div  '), ['span', 'div']);
+  });
+});
+
+// ── isXPath ───────────────────────────────────────────────────────────────────
+
+describe('isXPath', () => {
+  test('detects // prefix', () => {
+    assert.ok(isXPath('//div'));
+  });
+
+  test('detects xpath= prefix', () => {
+    assert.ok(isXPath('xpath=//div'));
+  });
+
+  test('returns false for CSS selector', () => {
+    assert.ok(!isXPath('#id'));
+    assert.ok(!isXPath('.class'));
+    assert.ok(!isXPath('button'));
+  });
+
+  test('handles leading whitespace', () => {
+    assert.ok(isXPath('  //div'));
+    assert.ok(isXPath('  xpath=//div'));
+  });
+});
+
+// ── resolveXPath ──────────────────────────────────────────────────────────────
+
+describe('resolveXPath', () => {
+  test('strips xpath= prefix', () => {
+    assert.equal(resolveXPath('xpath=//div'), '//div');
+  });
+
+  test('returns // expression unchanged', () => {
+    assert.equal(resolveXPath('//div[@id="foo"]'), '//div[@id="foo"]');
+  });
+
+  test('handles leading whitespace', () => {
+    assert.equal(resolveXPath('  xpath=//span'), '//span');
+    assert.equal(resolveXPath('  //span'), '//span');
   });
 });

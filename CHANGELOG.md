@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- XPath locator support — `page.locator()`, `locator.locator()`, and `frameLocator.locator()` now accept XPath expressions in addition to CSS selectors. Prefix with `//` (e.g. `//button[@id='submit']`) or with `xpath=` (e.g. `xpath=//button[@id='submit']`). Evaluated via `document.evaluate()` using `ORDERED_NODE_SNAPSHOT_TYPE`.
+
 ### Changed
 - Command log entries no longer have a coloured left border — status is conveyed by the icon only
 - Inline test log now collapses automatically when a test finishes, regardless of pass or fail

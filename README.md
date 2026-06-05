@@ -483,7 +483,21 @@ console.log(resp.status()); // 200
 ```ts
 page.locator(selector: string): Locator
 ```
-Match elements by CSS selector.
+Match elements by CSS selector or XPath expression. Selectors prefixed with `//` or `xpath=` are treated as XPath and evaluated via `document.evaluate()`; all other strings are treated as CSS.
+
+```ts
+// CSS selector
+page.locator('#submit')
+page.locator('.card, .panel')   // comma-separated CSS
+
+// XPath — // prefix
+page.locator(`//button[@id='submit']`)
+page.locator(`//h2[text()='Login']`)
+page.locator(`//input[contains(@placeholder,'email')]`)
+
+// XPath — explicit xpath= prefix
+page.locator(`xpath=//button[text()='OK']`)
+```
 
 ```ts
 page.getByText(text: string | RegExp, opts?: { exact?: boolean }): Locator
@@ -943,7 +957,17 @@ locator.nth(n: number): Locator
 locator.first(): Locator
 locator.last(): Locator
 locator.filter(opts: { hasText?: string | RegExp; hasNotText?: string | RegExp }): Locator
-locator.locator(selector: string): Locator  // scoped child query
+locator.locator(selector: string): Locator  // scoped child query — CSS or XPath
+```
+
+`locator.locator()` accepts the same CSS and XPath syntax as `page.locator()`. XPath expressions are evaluated relative to each matched root element, so descendants-only axes (`//`) search within that subtree.
+
+```ts
+// CSS then XPath chain
+page.locator('.card').locator(`//button[text()='Add']`)
+
+// XPath then CSS is not directly chainable, but XPath first works too
+page.locator(`//section[@class='card']`).locator('button')
 ```
 
 #### Actions

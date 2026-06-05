@@ -1,7 +1,7 @@
 import { _awaitOrAbort, iframeDoc, iframeWin, _withCommand } from './browser';
 import { actionTimeout } from './config';
 export { textMatches, resolveSelector } from './locator-utils';
-import { textMatches, resolveSelector } from './locator-utils';
+import { textMatches, resolveSelector, isXPath, resolveXPath, queryXPath } from './locator-utils';
 import { makeLocatorQueries } from './locator-queries';
 import { ariaSnapshot } from './aria';
 
@@ -173,9 +173,17 @@ export class Locator {
   }
   locator(selector: string): Locator {
     return new Locator(() => {
-      const parts = resolveSelector(selector);
       const seen = new Set<Element>();
       const out: Element[] = [];
+      if (isXPath(selector)) {
+        for (const root of this._els()) {
+          for (const el of queryXPath(root, resolveXPath(selector))) {
+            if (!seen.has(el)) { seen.add(el); out.push(el); }
+          }
+        }
+        return out;
+      }
+      const parts = resolveSelector(selector);
       for (const root of this._els()) {
         for (const base of parts) {
           for (const el of Array.from(root.querySelectorAll(base))) {
@@ -522,6 +530,7 @@ export class FrameLocator {
     return new Locator(() => {
       const doc = this._frameDoc();
       if (!doc) return [];
+      if (isXPath(selector)) return queryXPath(doc, resolveXPath(selector));
       const parts = resolveSelector(selector);
       const seen = new Set<Element>();
       const out: Element[] = [];
