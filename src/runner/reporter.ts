@@ -20,7 +20,7 @@ export interface Attachment {
 export interface LogEntry {
   cmd: string;
   message: string;
-  state: 'pass' | 'fail' | 'info';
+  state: 'pass' | 'fail' | 'info' | 'warn';
   duration?: number;
   attachment?: Attachment;
   children?: LogEntry[];

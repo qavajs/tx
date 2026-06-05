@@ -5,8 +5,9 @@ import type { Reporter, FullConfig, Suite, TestCase, TestResult, FullResult, Log
 interface StepEntry {
   cmd: string;
   message: string;
-  state: 'pass' | 'fail' | 'info';
+  state: 'pass' | 'fail' | 'info' | 'warn';
   duration?: number;
+  children?: StepEntry[];
 }
 
 interface AttachmentEntry {
@@ -48,13 +49,11 @@ export class HtmlReporter implements Reporter {
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
-    const allLogs = flattenLogs(result.logs ?? []);
+    const logs = result.logs ?? [];
 
-    const steps = allLogs
-      .filter((l: LogEntry) => l.cmd !== 'attach')
-      .map((l: LogEntry) => ({ cmd: l.cmd, message: l.message, state: l.state, duration: l.duration }));
+    const steps = logsToSteps(logs);
 
-    const attachments = allLogs
+    const attachments = flattenLogs(logs)
       .filter((l: LogEntry) => l.cmd === 'attach' && l.attachment)
       .map((l: LogEntry) => ({
         label: l.message,
@@ -92,6 +91,18 @@ function flattenLogs(logs: LogEntry[]): LogEntry[] {
   return out;
 }
 
+function logsToSteps(logs: LogEntry[]): StepEntry[] {
+  return logs
+    .filter(l => l.cmd !== 'attach')
+    .map(l => ({
+      cmd: l.cmd,
+      message: l.message,
+      state: l.state as StepEntry['state'],
+      duration: l.duration,
+      children: l.children?.length ? logsToSteps(l.children) : undefined,
+    }));
+}
+
 function esc(s: unknown): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -103,6 +114,11 @@ function esc(s: unknown): string {
 function parseSuite(fullTitle: string): string {
   const idx = fullTitle.lastIndexOf(' > ');
   return idx >= 0 ? fullTitle.slice(0, idx) : '(root)';
+}
+
+function parseTitle(fullTitle: string): string {
+  const idx = fullTitle.lastIndexOf(' > ');
+  return idx >= 0 ? fullTitle.slice(idx + 3) : fullTitle;
 }
 
 function fmtDur(ms: number): string {
@@ -183,6 +199,11 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 40px; }
 .jump { padding: 6px 12px; background: var(--fail-light); color: var(--fail); border: 1px solid #fecaca; border-radius: 8px; font-size: 0.8rem; cursor: pointer; white-space: nowrap; transition: background .15s; }
 .jump:hover { background: #fecaca; }
 
+/* ── Suite buttons ── */
+.suite-btns { display: flex; gap: 5px; }
+.suite-btn { padding: 6px 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; font-size: 0.8rem; cursor: pointer; transition: all .15s; white-space: nowrap; color: var(--text); }
+.suite-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+
 /* ── Groups ── */
 #groups { display: flex; flex-direction: column; gap: 8px; }
 
@@ -235,8 +256,18 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 40px; }
 .sico.pass { color: var(--pass); }
 .sico.fail { color: var(--fail); }
 .sico.info { color: #94a3b8; }
+.sico.warn { color: var(--skip); }
 .step span { font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; font-size: 0.79rem; }
 .sdur { color: #94a3b8; margin-left: auto; white-space: nowrap; padding-left: 10px; }
+
+/* ── Step groups ── */
+.step-group { list-style: none; }
+.step-group-hdr { display: flex; align-items: flex-start; gap: 7px; padding: 2px 0; font-size: 0.8rem; color: #475569; line-height: 1.4; cursor: pointer; user-select: none; }
+.step-group-hdr:hover { color: var(--text); }
+.step-group-chev { font-size: 0.58rem; color: #94a3b8; transition: transform .15s; margin-top: 2px; flex-shrink: 0; }
+.step-group.open > .step-group-hdr .step-group-chev { transform: rotate(90deg); }
+.step-group-body { display: none; padding-left: 18px; border-left: 2px solid #e2e8f0; margin-left: 5px; margin-top: 2px; margin-bottom: 2px; }
+.step-group.open > .step-group-body { display: block; }
 
 /* ── Error ── */
 .err-block { background: #fff5f5; border: 1px solid #fecaca; border-radius: 7px; padding: 10px 12px; margin-bottom: 10px; }
@@ -302,22 +333,39 @@ const JS = `
   var STEP_ICONS = {
     pass: '<svg class="sico pass" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3L11.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     fail: '<svg class="sico fail" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-    info: '<svg class="sico info" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.4"/><path d="M7 6.5v3M7 5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'
+    info: '<svg class="sico info" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.4"/><path d="M7 6.5v3M7 5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    warn: '<svg class="sico warn" viewBox="0 0 14 14" fill="none"><path d="M7 2.5l4.5 8H2.5L7 2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M7 6v2M7 10v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'
   };
 
   var CHEV = '<svg class="chev open" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var EXI  = '<svg class="exi" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var ATT_ICON = '<svg viewBox="0 0 14 14" fill="none" style="width:11px;height:11px"><path d="M8.5 1.5H3.5a1 1 0 00-1 1v9a1 1 0 001 1h7a1 1 0 001-1V5l-3-3.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.5 1.5v3h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  function renderStepList(steps) {
+    if (!steps || !steps.length) return '';
+    return '<ul class="steps">' + steps.map(function(s) {
+      var ico = STEP_ICONS[s.state] || STEP_ICONS.info;
+      var dur = s.duration != null ? '<span class="sdur">' + fmt(s.duration) + '</span>' : '';
+      if (s.children && s.children.length) {
+        var open = s.state === 'fail' || s.state === 'warn';
+        return '<li class="step-group' + (open ? ' open' : '') + '">'
+          + '<div class="step-group-hdr">'
+          + '<span class="step-group-chev">&#9658;</span>'
+          + '<span>' + esc(s.message) + '</span>'
+          + dur
+          + '</div>'
+          + '<div class="step-group-body">' + renderStepList(s.children) + '</div>'
+          + '</li>';
+      }
+      return '<li class="step">' + ico + '<span>' + esc(s.message) + '</span>' + dur + '</li>';
+    }).join('') + '</ul>';
+  }
+
   function renderTest(t) {
     var cls = sc(t.status);
     var steps = '';
     if (t.steps && t.steps.length) {
-      steps = '<ul class="steps">' + t.steps.map(function(s) {
-        var ico = STEP_ICONS[s.state] || STEP_ICONS.info;
-        var dur = s.duration != null ? '<span class="sdur">' + fmt(s.duration) + '</span>' : '';
-        return '<li class="step">' + ico + '<span>' + esc(s.message) + '</span>' + dur + '</li>';
-      }).join('') + '</ul>';
+      steps = renderStepList(t.steps);
     }
 
     var errBlock = '';
@@ -390,11 +438,12 @@ const JS = `
       if (skipped) badges += '<span class="gbadge skip">'  + skipped + ' skipped</span>';
       badges += '<span class="gbadge total">' + g.tests.length + ' total</span>';
 
+      var startOpen = failed > 0;
       return '<div class="group' + (failed ? ' has-fail' : '') + '">'
-        + '<div class="gh">' + CHEV + '<span class="gname">' + esc(g.name) + '</span>'
+        + '<div class="gh">' + (startOpen ? CHEV : CHEV.replace('chev open','chev')) + '<span class="gname">' + esc(g.name) + '</span>'
         + '<div class="gbadges">' + badges + '</div>'
         + '<span class="gdur">' + fmt(dur) + '</span></div>'
-        + '<div class="gbody">' + g.tests.map(renderTest).join('') + '</div>'
+        + '<div class="gbody"' + (startOpen ? '' : ' style="display:none"') + '>' + g.tests.map(renderTest).join('') + '</div>'
         + '</div>';
     }).join('');
 
@@ -459,16 +508,33 @@ const JS = `
     });
   }
 
+  // step-group toggle (event delegation — survives re-renders)
+  document.addEventListener('click', function(ev) {
+    var hdr = ev.target.closest && ev.target.closest('.step-group-hdr');
+    if (!hdr) return;
+    var group = hdr.closest('.step-group');
+    if (group) group.classList.toggle('open');
+  });
+
   // group collapse (event delegation — survives re-renders)
   document.addEventListener('click', function(ev) {
     var gh = ev.target.closest && ev.target.closest('.gh');
     if (!gh) return;
     var body  = gh.nextElementSibling;
     var chev  = gh.querySelector('.chev');
-    var isOpen = body.style.display !== 'none' && body.style.display !== '';
-    // first time display is '' (visible); toggle to 'none' then back
+    var isOpen = body.style.display !== 'none';
     body.style.display = isOpen ? 'none' : '';
     if (chev) chev.classList.toggle('open', !isOpen);
+  });
+
+  // expand/collapse all suites
+  document.getElementById('expand-all').addEventListener('click', function() {
+    document.querySelectorAll('.gbody').forEach(function(b) { b.style.display = ''; });
+    document.querySelectorAll('.chev').forEach(function(c) { c.classList.add('open'); });
+  });
+  document.getElementById('collapse-all').addEventListener('click', function() {
+    document.querySelectorAll('.gbody').forEach(function(b) { b.style.display = 'none'; });
+    document.querySelectorAll('.chev').forEach(function(c) { c.classList.remove('open'); });
   });
 
   // filter buttons
@@ -551,7 +617,7 @@ function buildHtml(
 
   const data = tests.map((t, i) => ({
     id: i,
-    title: t.title,
+    title: parseTitle(t.fullTitle),
     fullTitle: t.fullTitle,
     suite: parseSuite(t.fullTitle),
     status: t.status,
@@ -645,6 +711,10 @@ function buildHtml(
       <button class="fb pass"   data-f="passed">Passed <span>${result.passed}</span></button>
       <button class="fb fail"   data-f="failed">Failed <span>${result.failed}</span></button>
       <button class="fb skip"   data-f="skipped">Skipped <span>${skipped}</span></button>
+    </div>
+    <div class="suite-btns">
+      <button id="expand-all" class="suite-btn">Expand all</button>
+      <button id="collapse-all" class="suite-btn">Collapse all</button>
     </div>
     ${result.failed > 0 ? '<button class="jump" id="jf">↓ Jump to failures</button>' : ''}
   </div>
