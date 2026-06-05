@@ -560,15 +560,8 @@ export function generateControlPanelHTML({ proxyUrl, controlPanelPort = DEFAULT_
             font-family: var(--font-mono);
             font-size: 11px;
             line-height: 1.55;
-            border-left: 2px solid transparent;
         }
         .tx-cmd:hover { background: var(--bg-card); }
-
-        .tx-cmd.pass { border-left-color: var(--pass); }
-        .tx-cmd.fail { border-left-color: var(--fail); }
-        .tx-cmd.warn { border-left-color: var(--warn); }
-        .tx-cmd.pending { border-left-color: var(--warn); opacity: 0.7; }
-        .tx-cmd.info { border-left-color: transparent; }
 
         .tx-cmd-icon {
             width: 13px;
