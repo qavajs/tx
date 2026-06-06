@@ -8,10 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - XPath locator support — `page.locator()`, `locator.locator()`, and `frameLocator.locator()` now accept XPath expressions in addition to CSS selectors. Prefix with `//` (e.g. `//button[@id='submit']`) or with `xpath=` (e.g. `xpath=//button[@id='submit']`). Evaluated via `document.evaluate()` using `ORDERED_NODE_SNAPSHOT_TYPE`.
+- `HtmlReporter` — suite (group) headers are now collapsible; suites containing failures start expanded, all-passing suites start collapsed; **Expand all** / **Collapse all** buttons in the toolbar toggle all suites at once
+- `HtmlReporter` — log groups produced by `log.group()` / the `step` fixture are now rendered as collapsible nested step lists inside the test detail panel; failing and warning groups start expanded, passing groups start collapsed; a `warn` state icon (amber triangle) is shown for `warn`-state steps
+- `LogEntry.state` now includes `'warn'` in the reporter type, matching the runtime state emitted by `log.group()` and `logCommand().warn()`
 
 ### Changed
 - Command log entries no longer have a coloured left border — status is conveyed by the icon only
 - Inline test log now collapses automatically when a test finishes, regardless of pass or fail
+- `HtmlReporter` — each test row now displays only the leaf test name; the suite prefix is stripped since it is already shown in the group header
 
 ### Removed
 - `:has-text("…")` pseudo-class support in selectors — use `locator.filter({ hasText: '…' })` instead
