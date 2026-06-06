@@ -1,0 +1,23 @@
+/** Canonical element IDs shared between controlPanel.html and devPanel.ts. */
+export const SEL = {
+  networkPanel:         'networkPanel',
+  networkResizeHandle:  'networkResizeHandle',
+  networkList:          'networkList',
+  networkDetail:        'networkDetail',
+  networkDetailTitle:   'networkDetailTitle',
+  networkDetailBody:    'networkDetailBody',
+  networkCount:         'networkCount',
+  networkToggleBtn:     'networkToggleBtn',
+  consoleList:          'consoleList',
+  consoleCount:         'consoleCount',
+  consoleErrorBadge:    'consoleErrorBadge',
+  selectorInput:        'selectorInput',
+  selectorStatus:       'selectorStatus',
+  selectorMatches:      'selectorMatches',
+  devTabNetwork:        'devTabNetwork',
+  devTabConsole:        'devTabConsole',
+  devTabSelector:       'devTabSelector',
+  devTabContentNetwork: 'devTabContentNetwork',
+  devTabContentConsole: 'devTabContentConsole',
+  devTabContentSelector:'devTabContentSelector',
+} as const;

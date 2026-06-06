@@ -1,5 +1,6 @@
 import { fromProxiedUrl, iframeDoc, wsOnMessage, page } from './browser';
 import { escHtml } from '../utils/htmlUtils';
+import { SEL } from '../panel/selectors';
 
 // ── Network panel ─────────────────────────────────────────────────────────────
 
@@ -54,14 +55,14 @@ function _renderNetworkRow(entry: NetworkEntry): string {
 }
 
 function _updateNetworkCount() {
-  const el = document.getElementById('networkCount');
+  const el = document.getElementById(SEL.networkCount);
   if (el) el.textContent = _networkEntries.length > 0
     ? _networkEntries.length + ' request' + (_networkEntries.length !== 1 ? 's' : '')
     : '';
 }
 
 function _appendNetworkEntry(entry: NetworkEntry) {
-  const list = document.getElementById('networkList');
+  const list = document.getElementById(SEL.networkList);
   if (!list) return;
   const empty = list.querySelector('.tx-empty-network');
   if (empty) empty.remove();
@@ -74,7 +75,7 @@ function _appendNetworkEntry(entry: NetworkEntry) {
 }
 
 function _refreshNetworkRow(entry: NetworkEntry) {
-  const list = document.getElementById('networkList');
+  const list = document.getElementById(SEL.networkList);
   const row = list?.querySelector<HTMLElement>('[data-net-id="' + entry.id + '"]');
   if (!row) return;
   const tmp = document.createElement('div');
@@ -84,7 +85,7 @@ function _refreshNetworkRow(entry: NetworkEntry) {
   row.replaceWith(newRow);
   _updateNetworkCount();
   if (_selectedNetworkId === entry.id) {
-    const detailBody = document.getElementById('networkDetailBody');
+    const detailBody = document.getElementById(SEL.networkDetailBody);
     if (detailBody) detailBody.innerHTML = _renderNetworkDetail(entry);
   }
 }
@@ -160,9 +161,9 @@ function _openNetworkDetail(id: number) {
   document.querySelectorAll<HTMLElement>('.tx-network-row.selected').forEach(el => el.classList.remove('selected'));
   document.querySelector<HTMLElement>('[data-net-id="' + id + '"]')?.classList.add('selected');
   _selectedNetworkId = id;
-  const detail = document.getElementById('networkDetail');
-  const detailTitle = document.getElementById('networkDetailTitle');
-  const detailBody = document.getElementById('networkDetailBody');
+  const detail = document.getElementById(SEL.networkDetail);
+  const detailTitle = document.getElementById(SEL.networkDetailTitle);
+  const detailBody = document.getElementById(SEL.networkDetailBody);
   if (!detail || !detailBody) return;
   detail.classList.add('open');
   if (detailTitle) detailTitle.textContent = entry.method + ' ' + _netShortUrl(entry.url);
@@ -170,7 +171,7 @@ function _openNetworkDetail(id: number) {
 }
 
 (window as any).closeNetworkDetail = () => {
-  document.getElementById('networkDetail')?.classList.remove('open');
+  document.getElementById(SEL.networkDetail)?.classList.remove('open');
   document.querySelectorAll<HTMLElement>('.tx-network-row.selected').forEach(el => el.classList.remove('selected'));
   _selectedNetworkId = null;
 };
@@ -180,8 +181,8 @@ function _openNetworkDetail(id: number) {
   _networkCounter = 0;
   _hhReqMap.clear();
   _selectedNetworkId = null;
-  document.getElementById('networkDetail')?.classList.remove('open');
-  const list = document.getElementById('networkList');
+  document.getElementById(SEL.networkDetail)?.classList.remove('open');
+  const list = document.getElementById(SEL.networkList);
   if (list) list.innerHTML = '<div class="tx-empty-network">No requests yet</div>';
   _updateNetworkCount();
 };
@@ -202,9 +203,9 @@ let _consoleErrorCount = 0;
 const _MAX_CONSOLE = 1000;
 
 function _updateConsoleBadge() {
-  const count = document.getElementById('consoleCount');
-  const badge = document.getElementById('consoleErrorBadge');
-  const panel = document.getElementById('networkPanel');
+  const count = document.getElementById(SEL.consoleCount);
+  const badge = document.getElementById(SEL.consoleErrorBadge);
+  const panel = document.getElementById(SEL.networkPanel);
   const isConsoleTab = panel?.dataset.activeTab === 'console';
   if (count) {
     count.textContent = _consoleEntries.length > 0 ? String(_consoleEntries.length) : '';
@@ -217,7 +218,7 @@ function _updateConsoleBadge() {
 }
 
 function _appendConsoleEntry(entry: ConsoleEntry) {
-  const list = document.getElementById('consoleList');
+  const list = document.getElementById(SEL.consoleList);
   if (!list) return;
   const empty = list.querySelector('.tx-empty-network');
   if (empty) empty.remove();
@@ -239,13 +240,12 @@ function _appendConsoleEntry(entry: ConsoleEntry) {
 let _activeDevTab: 'network' | 'console' | 'selector' = 'network';
 
 function _openDevPanel(tab: 'network' | 'console' | 'selector') {
-  const panel = document.getElementById('networkPanel');
+  const panel = document.getElementById(SEL.networkPanel);
   if (!panel) return;
   const alreadyOpen = panel.classList.contains('open');
   if (alreadyOpen && _activeDevTab === tab) {
     panel.classList.remove('open');
-    document.getElementById('networkToggleBtn')?.classList.remove('active');
-    document.getElementById('consoleToggleBtn')?.classList.remove('active');
+    document.getElementById(SEL.networkToggleBtn)?.classList.remove('active');
     _clearSelectorHighlights();
     return;
   }
@@ -258,31 +258,31 @@ function _openDevPanel(tab: 'network' | 'console' | 'selector') {
 }
 
 function _switchDevTabInternal(tab: 'network' | 'console' | 'selector') {
-  const panel = document.getElementById('networkPanel');
+  const panel = document.getElementById(SEL.networkPanel);
   if (!panel) return;
   if (_activeDevTab === 'selector' && tab !== 'selector') _clearSelectorHighlights();
   _activeDevTab = tab;
   panel.dataset.activeTab = tab;
-  document.getElementById('devTabNetwork')?.classList.toggle('active', tab === 'network');
-  document.getElementById('devTabConsole')?.classList.toggle('active', tab === 'console');
-  document.getElementById('devTabSelector')?.classList.toggle('active', tab === 'selector');
-  document.getElementById('devTabContentNetwork')?.classList.toggle('active', tab === 'network');
-  document.getElementById('devTabContentConsole')?.classList.toggle('active', tab === 'console');
-  document.getElementById('devTabContentSelector')?.classList.toggle('active', tab === 'selector');
-  document.getElementById('networkToggleBtn')?.classList.toggle('active', panel.classList.contains('open'));
+  document.getElementById(SEL.devTabNetwork)?.classList.toggle('active', tab === 'network');
+  document.getElementById(SEL.devTabConsole)?.classList.toggle('active', tab === 'console');
+  document.getElementById(SEL.devTabSelector)?.classList.toggle('active', tab === 'selector');
+  document.getElementById(SEL.devTabContentNetwork)?.classList.toggle('active', tab === 'network');
+  document.getElementById(SEL.devTabContentConsole)?.classList.toggle('active', tab === 'console');
+  document.getElementById(SEL.devTabContentSelector)?.classList.toggle('active', tab === 'selector');
+  document.getElementById(SEL.networkToggleBtn)?.classList.toggle('active', panel.classList.contains('open'));
   if (tab === 'console') {
     _consoleErrorCount = 0;
     _updateConsoleBadge();
   }
   if (tab === 'selector') {
-    const input = document.getElementById('selectorInput') as HTMLInputElement | null;
+    const input = document.getElementById(SEL.selectorInput) as HTMLInputElement | null;
     if (input?.value) _runSelectorQuery(input.value);
     setTimeout(() => input?.focus(), 50);
   }
 }
 
 (window as any).switchDevTab = (tab: 'network' | 'console' | 'selector') => {
-  const panel = document.getElementById('networkPanel');
+  const panel = document.getElementById(SEL.networkPanel);
   if (!panel) return;
   if (!panel.classList.contains('open')) {
     panel.classList.add('open');
@@ -293,11 +293,10 @@ function _switchDevTabInternal(tab: 'network' | 'console' | 'selector') {
 };
 
 (window as any).toggleNetworkPanel = () => {
-  const panel = document.getElementById('networkPanel');
+  const panel = document.getElementById(SEL.networkPanel);
   if (panel?.classList.contains('open')) {
     panel.classList.remove('open');
-    document.getElementById('networkToggleBtn')?.classList.remove('active');
-    document.getElementById('consoleToggleBtn')?.classList.remove('active');
+    document.getElementById(SEL.networkToggleBtn)?.classList.remove('active');
     _clearSelectorHighlights();
   } else {
     _openDevPanel(_activeDevTab);
@@ -315,7 +314,7 @@ function _switchDevTabInternal(tab: 'network' | 'console' | 'selector') {
     _consoleEntries.length = 0;
     _consoleCounter = 0;
     _consoleErrorCount = 0;
-    const list = document.getElementById('consoleList');
+    const list = document.getElementById(SEL.consoleList);
     if (list) list.innerHTML = '<div class="tx-empty-network">No console output yet</div>';
     _updateConsoleBadge();
   }
@@ -353,9 +352,9 @@ function _describeElement(el: Element, idx: number): string {
 }
 
 function _runSelectorQuery(selector: string) {
-  const input = document.getElementById('selectorInput') as HTMLInputElement | null;
-  const status = document.getElementById('selectorStatus');
-  const matchList = document.getElementById('selectorMatches');
+  const input = document.getElementById(SEL.selectorInput) as HTMLInputElement | null;
+  const status = document.getElementById(SEL.selectorStatus);
+  const matchList = document.getElementById(SEL.selectorMatches);
   if (!status || !matchList) return;
 
   _clearSelectorHighlights();
@@ -415,7 +414,7 @@ function _runSelectorQuery(selector: string) {
 (window as any).runSelectorQuery = _runSelectorQuery;
 
 (window as any).clearSelectorQuery = () => {
-  const input = document.getElementById('selectorInput') as HTMLInputElement | null;
+  const input = document.getElementById(SEL.selectorInput) as HTMLInputElement | null;
   if (input) { input.value = ''; input.className = 'tx-selector-input'; }
   _runSelectorQuery('');
 };
@@ -423,8 +422,8 @@ function _runSelectorQuery(selector: string) {
 // ── Network panel resizer ─────────────────────────────────────────────────────
 
 export function initNetworkResizer(): void {
-  const panel = document.getElementById('networkPanel');
-  const handle = document.getElementById('networkResizeHandle');
+  const panel = document.getElementById(SEL.networkPanel);
+  const handle = document.getElementById(SEL.networkResizeHandle);
   if (!panel || !handle) return;
 
   handle.addEventListener('mousedown', (e: MouseEvent) => {
@@ -490,7 +489,7 @@ export function initNetworkListeners(): void {
     _refreshNetworkRow(entry);
   });
 
-  document.getElementById('networkList')?.addEventListener('click', (e: MouseEvent) => {
+  document.getElementById(SEL.networkList)?.addEventListener('click', (e: MouseEvent) => {
     const row = (e.target as Element).closest<HTMLElement>('.tx-network-row');
     if (!row) return;
     const id = Number(row.getAttribute('data-net-id'));

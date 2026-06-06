@@ -1,8 +1,9 @@
-import { log, attach, setLogContainer, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsRequest, wsOnMessage } from '../browser/browser';
-import { escHtml, escAttr, jsq } from '../utils/htmlUtils';
-import { type TestResult } from '../runner/executor';
-import { executeTests } from '../runner/testRunner';
+import { log, attach, setLogContainer, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsOnMessage, wsRequest } from '../browser/browser';
+import { escHtml, escAttr } from '../utils/htmlUtils';
 import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
+import { renderTestItemHtml, renderSuiteHtml, renderTestFileCard } from '../panel/render';
+import { fetchAndRun, type TestResult, type RunSpec } from '../panel/runner-bridge';
+import type { ParsedFile } from '../panel/render';
 
 declare global {
   interface Window {
@@ -157,9 +158,6 @@ function hideProgress() {
 
 // ── Spec list ─────────────────────────────────────────────────────────────────
 
-interface ParsedTest { suite: string; name: string; tags?: string[]; }
-interface ParsedFile { filename: string; relPath?: string; tests: ParsedTest[]; }
-
 async function loadTestList() {
   const container = document.getElementById('testList')!;
   try {
@@ -172,78 +170,6 @@ async function loadTestList() {
   } catch (e: any) {
     container.innerHTML = `<div class="tx-empty" style="color:var(--fail)">Failed to load specs<br>${e.message}</div>`;
   }
-}
-
-function renderTestItemHtml(filename: string, suite: string, name: string, tags: string[]): string {
-  const fullName = suite === '(root)' ? name : suite + ' > ' + name;
-  const stateIcons =
-    '<svg class="tx-state-svg tx-state-svg--idle" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
-      '<path d="M5 8h6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>' +
-    '</svg>' +
-    '<svg class="tx-state-svg tx-state-svg--pass" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
-      '<path d="M4 8.667L7.333 12L12 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '</svg>' +
-    '<svg class="tx-state-svg tx-state-svg--fail" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
-      '<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
-    '</svg>' +
-    '<svg class="tx-state-svg tx-state-svg--running" width="12" height="12" viewBox="0 0 16 16" fill="none">' +
-      '<circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="2"/>' +
-    '</svg>';
-  const key = escAttr(filename + '\x01' + fullName);
-  const tagsHtml = tags.length > 0
-    ? '<span class="tx-test-tags">' + tags.map(t => '<span class="tx-test-tag">' + escHtml(t) + '</span>').join('') + '</span>'
-    : '';
-  return '<div class="tx-test-item"' +
-    ' data-testkey="' + key + '"' +
-    ' data-suite="' + escHtml(suite) + '"' +
-    ' data-fullname="' + escHtml(fullName) + '"' +
-    ' data-tags="' + escHtml(tags.join(' ')) + '">' +
-    '<span class="tx-test-chevron">&#9658;</span>' +
-    '<span class="tx-test-dot">' + stateIcons + '</span>' +
-    '<span class="tx-test-name">' + escHtml(name) + '</span>' +
-    tagsHtml +
-    '<span class="tx-test-badge"></span>' +
-    '<button class="tx-test-run-btn" aria-label="Run ' + escHtml(name) + '" onclick="event.stopPropagation();window.runTest(' + jsq(filename) + ',' + jsq(fullName) + ')">&#9654;</button>' +
-  '</div>' +
-  '<div class="tx-test-log" id="tlog-' + key + '"></div>';
-}
-
-function renderSuiteHtml(filename: string, suite: string, items: Array<{ name: string; tags: string[] }>): string {
-  const key = escAttr(filename + '\x01' + suite);
-  return '<div class="tx-suite-row" data-suite-key="' + key + '" onclick="window.toggleSuite(' + jsq(filename) + ',' + jsq(suite) + ')">' +
-    '<span class="tx-suite-chevron">&#9658;</span>' +
-    '<span class="tx-suite-name">' + escHtml(suite) + '</span>' +
-    '<span class="tx-suite-badges" id="sbadges-' + key + '"></span>' +
-    '<button class="tx-suite-run-btn" aria-label="Run suite ' + escHtml(suite) + '" onclick="event.stopPropagation();window.runSuite(' + jsq(filename) + ',' + jsq(suite) + ')">&#9654;</button>' +
-  '</div>' + items.map(({ name, tags }) => renderTestItemHtml(filename, suite, name, tags)).join('');
-}
-
-function renderTestFileCard(f: ParsedFile): string {
-  const suites: Record<string, Array<{ name: string; tags: string[] }>> = Object.create(null);
-  f.tests.forEach(t => {
-    const k = t.suite || '(root)';
-    if (!suites[k]) suites[k] = [];
-    suites[k].push({ name: t.name, tags: t.tags ?? [] });
-  });
-  const suiteHtml = Object.entries(suites).map(([s, items]) => renderSuiteHtml(f.filename, s, items)).join('');
-  const display = f.relPath ?? f.filename;
-  const ext = display.split('.').pop() ?? 'js';
-  const noExt = display.slice(0, -(ext.length + 1));
-  const lastSlash = noExt.lastIndexOf('/');
-  const dir = lastSlash >= 0 ? noExt.slice(0, lastSlash + 1) : '';
-  const stem = lastSlash >= 0 ? noExt.slice(lastSlash + 1) : noExt;
-  return '<div class="tx-spec-card" id="card-' + escAttr(f.filename) + '" data-filename="' + escHtml(f.filename) + '">' +
-    '<div class="tx-spec-hdr" onclick="window.toggleCard(' + jsq(f.filename) + ')">' +
-      '<span class="tx-spec-chevron">&#9658;</span>' +
-      '<span class="tx-spec-filename">' +
-        (dir ? '<span class="tx-spec-dir">' + escHtml(dir) + '</span>' : '') +
-        escHtml(stem) + '<span class="ext">.' + escHtml(ext) + '</span>' +
-      '</span>' +
-      '<span class="tx-suite-badges" id="badges-' + escAttr(f.filename) + '"></span>' +
-      '<button class="tx-spec-run-btn" aria-label="Run ' + escHtml(display) + '" onclick="event.stopPropagation();window.runTestByFilename(' + jsq(f.filename) + ')">&#9654;</button>' +
-    '</div>' +
-    (Object.keys(suites).length ? '<div class="tx-spec-body">' + suiteHtml + '</div>' : '') +
-  '</div>';
 }
 
 window.toggleCard = (filename: string) =>
@@ -264,10 +190,7 @@ window.toggleSuite = (filename: string, suiteName: string) => {
   });
 };
 
-// ── Test execution ────────────────────────────────────────────────────────────
-
 // ── Server communication ──────────────────────────────────────────────────────
-
 
 function notifyRunBegin(specs: Array<{ file: string; tests: string[] | null }>): void {
   wsSend('run-begin', { specs } as Record<string, unknown>);
@@ -308,6 +231,16 @@ function openAndResetCard(filename: string) {
   setCardRunning(filename);
 }
 
+function countResults(results: TestResult[]): { passed: number; failed: number; duration: number } {
+  let passed = 0, failed = 0, duration = 0;
+  for (const r of results) {
+    if (r.passed) passed++
+    else failed++;
+    duration += r.duration;
+  }
+  return { passed, failed, duration };
+}
+
 async function _singleRun(
   setupFn: () => void,
   getSpecs: () => Array<{ file: string; tests: string[] | null }>,
@@ -334,39 +267,27 @@ async function _singleRun(
   setStopBtnVisible(false);
 }
 
-function countResults(results: TestResult[]): { passed: number; failed: number; duration: number } {
-  let passed = 0, failed = 0, duration = 0;
-  for (const r of results) { 
-    if (r.passed) passed++
-    else failed++;
-    duration += r.duration;
-  }
-  return { passed, failed, duration };
-}
-
-async function fetchAndRun(
+async function _fetchAndRunFile(
   filename: string,
-  opts?: { filterSuite?: string; filterTest?: string; filterTests?: string[]; filename?: string }
+  spec: RunSpec | null,
+  uiFilename?: string,
 ): Promise<TestResult[]> {
-  const msg = await wsRequest<{ data?: string; error?: string }>('get-test-source', { file: filename });
-  if (msg.error || !msg.data) throw new Error(msg.error ?? 'Failed to load test source');
-  const results = await executeTests(msg.data, {
-    ...opts,
+  const results = await fetchAndRun(filename, spec, {
     isStopRequested: () => _stopRequested,
     setCancelFn: (fn) => { _currentTestCancel = fn; },
-    onAttemptBegin: opts?.filename ? (testName, attempt) => {
-      setTestItemStatus(opts.filename!, testName, 'running');
-      activateTestLog(opts.filename!, testName, attempt);
+    onAttemptBegin: uiFilename ? (testName, attempt) => {
+      setTestItemStatus(uiFilename, testName, 'running');
+      activateTestLog(uiFilename, testName, attempt);
     } : undefined,
-    onAttemptError: opts?.filename ? appendErrorToLog : undefined,
-    onAttemptFinally: opts?.filename ? (testName) => {
-      const logEl = document.getElementById('tlog-' + escAttr(opts.filename! + '\x01' + testName));
+    onAttemptError: uiFilename ? appendErrorToLog : undefined,
+    onAttemptFinally: uiFilename ? (testName) => {
+      const logEl = document.getElementById('tlog-' + escAttr(uiFilename + '\x01' + testName));
       logEl?.classList.remove('open');
       _activeTestLog = null;
     } : undefined,
     onTestEnd: (r) => {
       wsSend('report', { filename, tests: [r] } as Record<string, unknown>);
-      if (opts?.filename) setTestItemStatus(opts.filename, r.name, r.passed ? 'pass' : 'fail', r.duration, r.retry);
+      if (uiFilename) setTestItemStatus(uiFilename, r.name, r.passed ? 'pass' : 'fail', r.duration, r.retry);
       if (_runTotal > 0) showProgress(++_runDone, _runTotal);
     },
   });
@@ -393,8 +314,9 @@ async function _runMultiFile(
     openAndResetCard(filename);
     log(`run  ${filename}`);
     try {
+      const spec: RunSpec | null = tests ? { filterTests: tests } : null;
       const { passed, failed, duration } = countResults(
-        await fetchAndRun(filename, tests ? { filename, filterTests: tests } : { filename })
+        await _fetchAndRunFile(filename, spec, filename)
       );
       totalPass += passed; totalFail += failed; totalDuration += duration;
     } catch (e: any) {
@@ -423,7 +345,7 @@ window.runTestByFilename = async (filename: string) => {
   await _singleRun(
     () => { openAndResetCard(filename); log(`run  ${filename}`); },
     () => [{ file: filename, tests: null }],
-    () => fetchAndRun(filename, { filename }),
+    () => _fetchAndRunFile(filename, null, filename),
     () => updateCardStatus(filename, 0, 1),
     total,
   );
@@ -453,7 +375,7 @@ window.runSuite = async (filename: string, suiteName: string) => {
       ).filter(el => el.dataset.suite === suiteName).map(el => el.dataset.fullname!).filter(Boolean);
     },
     () => [{ file: filename, tests: suiteTests.length ? suiteTests : null }],
-    () => fetchAndRun(filename, { filterSuite: suiteName, filename }),
+    () => _fetchAndRunFile(filename, { filterSuite: suiteName }, filename),
     () => updateCardStatus(filename, 0, 1),
     suiteTests.length,
   );
@@ -467,7 +389,7 @@ window.runTest = async (filename: string, fullName: string) => {
       setCardRunning(filename);
     },
     () => [{ file: filename, tests: [fullName] }],
-    () => fetchAndRun(filename, { filterTest: fullName, filename }),
+    () => _fetchAndRunFile(filename, { filterTest: fullName }, filename),
     () => setTestItemStatus(filename, fullName, 'fail'),
     1,
   );
@@ -798,7 +720,6 @@ function initResizers() {
     document.addEventListener('mouseup', onUp);
   });
 }
-
 
 window.stopExecution = () => {
   _stopRequested = true;
