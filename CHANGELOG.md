@@ -4,7 +4,7 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.14]
 
 ### Added
 - XPath locator support — `page.locator()`, `locator.locator()`, and `frameLocator.locator()` now accept XPath expressions in addition to CSS selectors. Prefix with `//` (e.g. `//button[@id='submit']`) or with `xpath=` (e.g. `xpath=//button[@id='submit']`). Evaluated via `document.evaluate()` using `ORDERED_NODE_SNAPSHOT_TYPE`.
@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Command log entries no longer have a coloured left border — status is conveyed by the icon only
 - Inline test log now collapses automatically when a test finishes, regardless of pass or fail
 - `HtmlReporter` — each test row now displays only the leaf test name; the suite prefix is stripped since it is already shown in the group header
+- **Front-end / runner decoupling** — control panel HTML, CSS, and browser scripts are now standalone files edited with full IDE support; the test runner import (`executeTests`) is isolated behind `src/panel/runner-bridge.ts`; HTML-generation functions live in `src/panel/render.ts` with no DOM or runner dependencies; shared element IDs are declared once in `src/panel/selectors.ts` and used by both the HTML template and `devPanel.ts`; the `tsLoader` now registers `.css`, `.html`, and `.iife.js` require hooks so reporters load correctly from source during `--test` runs without a prior build step
 
 ### Removed
 - `:has-text("…")` pseudo-class support in selectors — use `locator.filter({ hasText: '…' })` instead

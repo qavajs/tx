@@ -20,4 +20,20 @@ export function register(): void {
     });
     mod._compile(code, filename);
   };
+
+  const textHandler = (mod: any, filename: string) => {
+    mod.exports = fs.readFileSync(filename, 'utf-8');
+  };
+  (Module as any)._extensions['.css'] = textHandler;
+  (Module as any)._extensions['.html'] = textHandler;
+
+  // .iife.js files have extension .js so patch the .js handler to intercept them
+  const originalJsExt = (Module as any)._extensions['.js'];
+  (Module as any)._extensions['.js'] = (mod: any, filename: string) => {
+    if (filename.endsWith('.iife.js')) {
+      mod.exports = fs.readFileSync(filename, 'utf-8');
+      return;
+    }
+    originalJsExt(mod, filename);
+  };
 }

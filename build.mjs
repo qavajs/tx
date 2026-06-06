@@ -10,8 +10,11 @@ if (!watch) {
 
 const sharedOpts = watch ? { watch: true } : {};
 
+const textLoader = { loader: { '.html': 'text', '.css': 'text', '.iife.js': 'text' } };
+
 await esbuild.build({
   ...sharedOpts,
+  ...textLoader,
   entryPoints: ['src/index.ts'],
   bundle: true,
   platform: 'node',
@@ -33,10 +36,11 @@ await esbuild.build({
 
 await esbuild.build({
   ...sharedOpts,
+  ...textLoader,
   entryPoints: [
     'src/reporters/ConsoleReporter.ts',
     'src/reporters/HtmlReporter.ts',
-    'src/reporters/JUnitReporter.ts',
+    'src/reporters/JunitReporter.ts',
   ],
   bundle: true,
   platform: 'node',

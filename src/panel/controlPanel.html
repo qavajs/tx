@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Expert</title>
+    <style>{{CSS}}</style>
+</head>
+<body>
+
+    <header class="tx-topbar">
+        <div class="tx-logo">
+            <div class="tx-logo-mark">TX</div>
+            <span class="tx-logo-name">Test Expert</span>
+        </div>
+        <div class="tx-topbar-div"></div>
+        <button class="tx-run-all-btn" id="runAllBtn" onclick="window.runAll && window.runAll()" aria-label="Run all specs">
+            &#9654;&nbsp; Run all specs
+        </button>
+        <button class="tx-stop-btn tx-hidden" id="stopBtn" onclick="window.stopExecution && window.stopExecution()" aria-label="Stop execution">
+            &#9632;&nbsp; Stop
+        </button>
+        <div class="tx-topbar-right">
+            <span id="runProgress" class="tx-progress-badge tx-hidden"></span>
+            <div class="tx-status-pill">
+                <span class="tx-status-dot" id="statusIndicator"></span>
+                <span id="statusText">Initializing…</span>
+            </div>
+            <div class="tx-kbd-help">
+                <button class="tx-kbd-help-btn" aria-label="Keyboard shortcuts">?</button>
+                <div class="tx-kbd-tooltip" role="tooltip">
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">R</kbd><span>Run all tests</span></div>
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">F</kbd><span>Focus filter</span></div>
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">↑ ↓</kbd><span>Navigate tests</span></div>
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">Enter</kbd><span>Run focused test</span></div>
+                    <div class="tx-kbd-row"><kbd class="tx-kbd">Esc</kbd><span>Clear filter</span></div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="tx-body">
+
+        <!-- ── Specs ──────────────────────────────────────────────── -->
+        <nav class="tx-specs">
+            <div class="tx-panel-hdr">Specs<div id="testRunnerStatus"></div></div>
+            <div class="tx-filter-bar">
+                <input type="text" id="testFilter" class="tx-filter-input" placeholder="Filter tests… (:passed :failed)" oninput="window.applyFilter && window.applyFilter(this.value)" autocomplete="off" spellcheck="false">
+                <button class="tx-filter-run-btn tx-hidden" id="filterRunBtn" onclick="window.runFiltered && window.runFiltered()" title="Run filtered tests" aria-label="Run filtered tests">&#9654;</button>
+            </div>
+            <div class="tx-specs-scroll" id="testList">
+                <div class="tx-loading">Loading specs</div>
+            </div>
+        </nav>
+
+        <div class="tx-resize-handle" id="specsResizer"></div>
+
+        <!-- ── Browser ───────────────────────────────────────────── -->
+        <main class="tx-browser">
+            <div class="tx-browser-toolbar">
+                <button class="tx-nav-btn" onclick="window.tx && window.tx.page.reload()" title="Reload" aria-label="Reload page">&#8635;</button>
+                <div class="tx-url-bar">
+                    <input type="text" id="navUrl" class="tx-url-input" placeholder="Enter URL…" value="">
+                    <button class="tx-go-btn" onclick="window.tx && window.tx.page.goto(document.getElementById('navUrl').value)">Go</button>
+                </div>
+                <span class="tx-viewport-tag" id="viewportTag">—</span>
+                <button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle DevTools panel">DevTools <span id="consoleErrorBadge" class="tx-console-error-badge tx-hidden"></span></button>
+            </div>
+            <div class="tx-tab-bar" id="tabBar"></div>
+            <div class="tx-browser-main">
+                <div class="tx-browser-pane" id="liveBrowserPane">
+                    <div id="iframe-container"></div>
+                </div>
+                <div class="tx-browser-pane tx-browser-pane--hidden" id="snapshotPane">
+                    <div class="tx-snapshot-header">
+                        <div class="tx-snapshot-header-meta">
+                            <div class="tx-snapshot-header-text">
+                                <div class="tx-snapshot-title" id="snapshotTitle">Snapshot</div>
+                                <div class="tx-snapshot-url" id="snapshotUrl"></div>
+                            </div>
+                            <span class="tx-viewport-tag" id="snapshotViewportTag">—</span>
+                        </div>
+                        <button class="tx-snapshot-close-btn" onclick="window.setBrowserView && window.setBrowserView('browser')" title="Return to browser" aria-label="Close snapshot view">Close</button>
+                    </div>
+                    <div id="snapshotViewportWrapper">
+                        <iframe id="snapshotFrame" sandbox="allow-same-origin"></iframe>
+                    </div>
+                </div>
+            </div>
+            <div class="tx-network" id="networkPanel">
+                <div class="tx-network-resize-handle" id="networkResizeHandle"></div>
+                <div class="tx-devtools-tabs">
+                    <button class="tx-devtools-tab active" id="devTabNetwork" onclick="window.switchDevTab && window.switchDevTab('network')">Network <span class="tx-devtools-tab-count" id="networkCount"></span></button>
+                    <button class="tx-devtools-tab" id="devTabConsole" onclick="window.switchDevTab && window.switchDevTab('console')">Console <span class="tx-devtools-tab-count" id="consoleCount"></span></button>
+                    <button class="tx-devtools-tab" id="devTabSelector" onclick="window.switchDevTab && window.switchDevTab('selector')">Selector</button>
+                    <div class="tx-devtools-spacer"></div>
+                    <button class="tx-network-clear-btn" id="devClearBtn" onclick="window.clearDevTab && window.clearDevTab()">Clear</button>
+                </div>
+                <div class="tx-devtab-content active" id="devTabContentNetwork">
+                    <div class="tx-network-content">
+                        <div class="tx-network-list">
+                            <div class="tx-network-header">
+                                <span>Method</span>
+                                <span>Status</span>
+                                <span>Type</span>
+                                <span>URL</span>
+                                <span>Duration</span>
+                            </div>
+                            <div class="tx-network-body" id="networkList">
+                                <div class="tx-empty-network">No requests yet</div>
+                            </div>
+                        </div>
+                        <div class="tx-network-detail" id="networkDetail">
+                            <div class="tx-network-detail-toolbar">
+                                <span class="tx-network-detail-title" id="networkDetailTitle">Details</span>
+                                <button class="tx-network-detail-close" onclick="window.closeNetworkDetail && window.closeNetworkDetail()" title="Close" aria-label="Close network detail">×</button>
+                            </div>
+                            <div class="tx-network-detail-body" id="networkDetailBody"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tx-devtab-content" id="devTabContentConsole">
+                    <div class="tx-console-body" id="consoleList">
+                        <div class="tx-empty-network">No console output yet</div>
+                    </div>
+                </div>
+                <div class="tx-devtab-content" id="devTabContentSelector">
+                    <div class="tx-selector-body">
+                        <div class="tx-selector-row">
+                            <input type="text" id="selectorInput" class="tx-selector-input" placeholder="CSS selector, e.g. button.primary" autocomplete="off" spellcheck="false" oninput="window.runSelectorQuery && window.runSelectorQuery(this.value)">
+                            <button class="tx-selector-clear-btn" onclick="window.clearSelectorQuery && window.clearSelectorQuery()">Clear</button>
+                        </div>
+                        <div class="tx-selector-status" id="selectorStatus"></div>
+                        <div class="tx-selector-matches" id="selectorMatches"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    {{CONFIG_SCRIPT}}
+    <script src="/controller.js"></script>
+</body>
+</html>
