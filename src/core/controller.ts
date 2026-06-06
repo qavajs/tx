@@ -21,6 +21,20 @@ declare global {
 
 (window as any).tx = { page, expect, browser, node, request, log, attach };
 
+// ── Autoscroll to running test ────────────────────────────────────────────────
+
+function scrollToRunningItem(item: HTMLElement) {
+  const container = document.querySelector<HTMLElement>('.tx-specs-scroll');
+  if (!container) return;
+  const cr = container.getBoundingClientRect();
+  const ir = item.getBoundingClientRect();
+  if (ir.top < cr.top) {
+    container.scrollTop += ir.top - cr.top;
+  } else if (ir.bottom > cr.bottom) {
+    container.scrollTop += ir.bottom - cr.bottom;
+  }
+}
+
 // ── Inline test log ───────────────────────────────────────────────────────────
 
 let _activeTestLog: HTMLElement | null = null;
@@ -61,7 +75,8 @@ function appendErrorToLog(error: string) {
     stackEl.textContent = error;
     el.appendChild(stackEl);
   }
-  el.scrollTop = el.scrollHeight;
+  const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+  if (gap < 40) el.scrollTop = el.scrollHeight;
 }
 
 // ── Spec card helpers ─────────────────────────────────────────────────────────
@@ -84,6 +99,7 @@ function setTestItemStatus(filename: string, fullName: string, state: 'running'|
   if (!item) return;
   item.classList.remove('running', 'pass', 'fail');
   item.classList.add(state);
+  if (state === 'running') scrollToRunningItem(item);
   const dot = item.querySelector('.tx-test-dot');
   const badge = item.querySelector<HTMLElement>('.tx-test-badge');
   if (dot) { dot.classList.remove('running', 'pass', 'fail'); dot.classList.add(state); }

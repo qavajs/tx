@@ -142,6 +142,7 @@ export class TestServer {
         this._send(ws, { type: 'version', version: this._version });
 
         ws.on('close', () => this._wsClients.delete(ws));
+        ws.on('error', () => this._wsClients.delete(ws));
 
         ws.on('message', (rawData: Buffer) => {
           let msg: BrowserMessage;
@@ -360,7 +361,7 @@ export class TestServer {
   }
 
   private _send(ws: WebSocket, msg: object): void {
-    ws.send(JSON.stringify(msg));
+    try { ws.send(JSON.stringify(msg)); } catch { /* ignore sends on closing sockets */ }
   }
 
   sendToClients(msg: object): void {

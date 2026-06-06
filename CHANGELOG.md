@@ -4,6 +4,15 @@ All notable changes to `@qavajs/tx` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+- `ECONNRESET` crash when a second browser connects to the WebSocket server — each WebSocket connection now has an `error` event handler that removes the client from the active set, preventing the error from becoming an unhandled Node.js exception; `_send` is also wrapped in try/catch so messages dispatched to a concurrently-closing socket fail silently
+
+### Changed
+- Specs-list autoscroll now always scrolls the running test item into view, regardless of prior manual scrolling — the `_userScrolled` one-shot disable flag has been removed
+- Log section autoscroll is now "smart": new log entries scroll to the bottom only when the user is already within 40 px of it; scrolling up to review earlier entries pauses auto-scroll, and it resumes automatically once the user scrolls back near the bottom
+
 ## [0.0.14]
 
 ### Added
