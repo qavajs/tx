@@ -1,7 +1,7 @@
 import { log, attach, setLogContainer, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsOnMessage, wsRequest } from '../browser/browser';
 import { escHtml, escAttr } from '../utils/htmlUtils';
 import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
-import { renderTestItemHtml, renderSuiteHtml, renderTestFileCard } from '../panel/render';
+import { renderTestFileCard } from '../panel/render';
 import { fetchAndRun, type TestResult, type RunSpec } from '../panel/runner-bridge';
 import type { ParsedFile } from '../panel/render';
 
