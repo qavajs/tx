@@ -29,6 +29,11 @@ const LOG_STATE: Record<LogState, { icon: string }> = {
 let _logContainer: HTMLElement | null = null;
 export function setLogContainer(el: HTMLElement | null): void { _logContainer = el; }
 
+function _scrollToBottom(container: HTMLElement): void {
+  const gap = container.scrollHeight - container.scrollTop - container.clientHeight;
+  if (gap < 40) container.scrollTop = container.scrollHeight;
+}
+
 export interface LogEntry {
   cmd: string;
   message: string;
@@ -65,7 +70,7 @@ function createLogEntry(message: string, state: LogState, cmd?: string, duration
     entry.appendChild(durEl);
   }
   container.appendChild(entry);
-  container.scrollTop = container.scrollHeight;
+  _scrollToBottom(container);
   return entry;
 }
 
@@ -115,14 +120,14 @@ export function attach(label: string, body: string, contentType = 'text/plain'):
     img.className = 'tx-attachment-img';
     img.title = label;
     container.appendChild(img);
-    container.scrollTop = container.scrollHeight;
+    _scrollToBottom(container);
   } else if (contentType === 'text/html') {
     const btn = document.createElement('button');
     btn.className = 'tx-attachment-html-btn';
     btn.textContent = '⊞ View HTML';
     btn.onclick = () => (window as any).openHtmlAttachment?.(body, label);
     container.appendChild(btn);
-    container.scrollTop = container.scrollHeight;
+    _scrollToBottom(container);
   }
 }
 
@@ -219,7 +224,7 @@ function logGroup(message: string, cmdOrFn?: string | (() => any), fn?: () => an
     groupEl.appendChild(hdrEl);
     groupEl.appendChild(bodyEl);
     container.appendChild(groupEl);
-    container.scrollTop = container.scrollHeight;
+    _scrollToBottom(container);
   }
 
   const savedContainer = _logContainer;

@@ -5,6 +5,7 @@ async function loadTestPage({ page, node }: any) {
     await page.goto(`file://${dirname}/app/testPage.html`);
 }
 
+const API_BASE = 'http://localhost:3000';
 const CUSTOM_COOKIE_VALUE = 'custom_value_123';
 
 const CUSTOM_COOKIE_STATE = {
@@ -16,13 +17,13 @@ const CUSTOM_COOKIE_STATE = {
         allowSpecialUseDomain: true,
         prefixSecurity: 'silent',
         cookies: [
-            { key: 'tx_cookie', value: CUSTOM_COOKIE_VALUE, domain: 'httpbin.org', path: '/', hostOnly: true },
+            { key: 'tx_cookie', value: CUSTOM_COOKIE_VALUE, domain: 'localhost', path: '/', hostOnly: true },
         ],
     },
     origins: [],
 };
 
-test.describe('browser.storageState – cookies (httpbin.org)', () => {
+test.describe('browser.storageState – cookies (localhost)', () => {
     test('saves and restores cookies via file path', async ({ page, browser, node }: any) => {
         const dirname = await node.task('dirname');
         const filePath = `${dirname}/.cookie-state-test.json`;
@@ -34,7 +35,7 @@ test.describe('browser.storageState – cookies (httpbin.org)', () => {
 
         await browser.loadStorageState(filePath);
 
-        await page.goto('https://httpbin.org/cookies');
+        await page.goto(`${API_BASE}/cookies`);
         const text = await page.evaluate(() => document.body.innerText);
         expect(JSON.parse(text).cookies?.tx_cookie).toBe(CUSTOM_COOKIE_VALUE);
 
@@ -44,14 +45,14 @@ test.describe('browser.storageState – cookies (httpbin.org)', () => {
     test('cookie roundtrip via storageState', async ({ page, browser }: any) => {
         await browser.loadStorageState(CUSTOM_COOKIE_STATE);
 
-        await page.goto('https://httpbin.org/cookies');
+        await page.goto(`${API_BASE}/cookies`);
         const text1 = await page.evaluate(() => document.body.innerText);
         const json1 = JSON.parse(text1);
         expect(json1.cookies?.tx_cookie).toBe(CUSTOM_COOKIE_VALUE);
 
         await browser.loadStorageState({ cookieJar: {}, origins: [] });
 
-        await page.goto('https://httpbin.org/cookies');
+        await page.goto(`${API_BASE}/cookies`);
         const text2 = await page.evaluate(() => document.body.innerText);
         const json2 = JSON.parse(text2);
         expect(Object.keys(json2.cookies ?? {}).length).toBe(0);

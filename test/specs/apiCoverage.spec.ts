@@ -1,5 +1,7 @@
 import { test, expect } from '@qavajs/tx';
 
+const API_BASE = 'http://localhost:3000';
+
 async function loadTestPage({ page, node }: any) {
     const dirname = await node.task('dirname');
     await page.goto(`file://${dirname}/app/testPage.html`);
@@ -372,15 +374,15 @@ test.describe('Route APIs', () => {
 
 test.describe('waitForRequest and waitForResponse', () => {
     test('waitForRequest resolves on matching request', async ({ page, request }) => {
-        const reqPromise = page.waitForRequest('https://httpbin.org/get', { timeout: 15000 });
-        await request.fetch('https://httpbin.org/get');
+        const reqPromise = page.waitForRequest(`${API_BASE}/get`, { timeout: 15000 });
+        await request.fetch(`${API_BASE}/get`);
         const req = await reqPromise;
-        expect(req.url()).toContain('httpbin.org');
+        expect(req.url()).toContain('localhost:3000');
     });
 
     test('waitForResponse resolves with matching response', async ({ page, request }) => {
-        const respPromise = page.waitForResponse('https://httpbin.org/get', { timeout: 15000 });
-        await request.fetch('https://httpbin.org/get');
+        const respPromise = page.waitForResponse(`${API_BASE}/get`, { timeout: 15000 });
+        await request.fetch(`${API_BASE}/get`);
         const resp = await respPromise;
         expect(resp.status()).toBe(200);
     });
@@ -777,29 +779,29 @@ test.describe('Route – fulfill and request()', () => {
     test.beforeEach(async ({ page, node }) => { await loadTestPage({ page, node }); });
 
     test('route.fulfill returns a synthetic response', async ({ page }) => {
-        await page.route('https://httpbin.org/get', async route => {
+        await page.route(`${API_BASE}/get`, async route => {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
                 body: JSON.stringify({ mocked: true }),
             });
         });
-        const result = await page.evaluate(() =>
-            fetch('https://httpbin.org/get').then(r => r.json())
+        const result = await page.evaluate((url: string) =>
+            fetch(url).then(r => r.json()), `${API_BASE}/get`
         );
         expect((result as any).mocked).toBe(true);
     });
 
     test('route.request() exposes the intercepted request URL', async ({ page }) => {
         let capturedUrl = '';
-        await page.route('https://httpbin.org/get', async route => {
+        await page.route(`${API_BASE}/get`, async route => {
             capturedUrl = route.request().url();
             await route.abort();
         });
-        await page.evaluate(() =>
-            fetch('https://httpbin.org/get').catch(() => {})
+        await page.evaluate((url: string) =>
+            fetch(url).catch(() => {}), `${API_BASE}/get`
         );
-        expect(capturedUrl).toContain('httpbin.org/get');
+        expect(capturedUrl).toContain('localhost:3000/get');
     });
 });
 
@@ -853,15 +855,15 @@ test.describe('Page events – request / response / requestfinished / requestfai
     test('request fires for a page-initiated fetch', async ({ page }) => {
         const urls: string[] = [];
         page.on('request', req => { urls.push(req.url()); });
-        await page.evaluate(() => fetch('https://httpbin.org/get').catch(() => {}));
+        await page.evaluate((url: string) => fetch(url).catch(() => {}), `${API_BASE}/get`);
         await page.waitForTimeout(3000);
-        expect(urls.some(u => u.includes('httpbin.org'))).toBe(true);
+        expect(urls.some(u => u.includes('localhost:3000'))).toBe(true);
     });
 
     test('response fires when a fetch response arrives', async ({ page }) => {
         const statuses: number[] = [];
         page.on('response', resp => { statuses.push(resp.status()); });
-        await page.evaluate(() => fetch('https://httpbin.org/get').catch(() => {}));
+        await page.evaluate((url: string) => fetch(url).catch(() => {}), `${API_BASE}/get`);
         await page.waitForTimeout(3000);
         expect(statuses.some(s => s === 200)).toBe(true);
     });
@@ -869,18 +871,18 @@ test.describe('Page events – request / response / requestfinished / requestfai
     test('requestfinished fires after a successful request', async ({ page }) => {
         const finished: string[] = [];
         page.on('requestfinished', req => { finished.push(req.url()); });
-        await page.evaluate(() => fetch('https://httpbin.org/get').catch(() => {}));
+        await page.evaluate((url: string) => fetch(url).catch(() => {}), `${API_BASE}/get`);
         await page.waitForTimeout(3000);
-        expect(finished.some(u => u.includes('httpbin.org'))).toBe(true);
+        expect(finished.some(u => u.includes('localhost:3000'))).toBe(true);
     });
 
     test('requestfailed fires when route.abort() cancels a request', async ({ page }) => {
         let failedUrl = '';
         page.on('requestfailed', req => { failedUrl = req.url(); });
-        await page.route('https://httpbin.org/get', async route => { await route.abort(); });
-        await page.evaluate(() => fetch('https://httpbin.org/get').catch(() => {}));
+        await page.route(`${API_BASE}/get`, async route => { await route.abort(); });
+        await page.evaluate((url: string) => fetch(url).catch(() => {}), `${API_BASE}/get`);
         await page.waitForTimeout(1000);
-        expect(failedUrl).toContain('httpbin.org');
+        expect(failedUrl).toContain('localhost:3000');
     });
 });
 

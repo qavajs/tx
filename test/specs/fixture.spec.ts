@@ -50,17 +50,19 @@ myTest.describe('Fixtures', () => {
 
 });
 
+const API_BASE = 'http://localhost:3000';
+
 test.describe('API', () => {
   test('request fixture fetches JSON from an API', async ({ request }) => {
-    const resp = await request.fetch('https://httpbin.org/get');
+    const resp = await request.fetch(`${API_BASE}/get`);
     expect(resp.status()).toBe(200);
     expect(resp.ok()).toBe(true);
     const body = await resp.json() as { url: string };
-    expect(body.url).toContain('httpbin.org');
+    expect(body.url).toContain('localhost:3000');
   });
 
   test('request fixture posts JSON body', async ({ request }) => {
-    const resp = await request.fetch('https://httpbin.org/post', {
+    const resp = await request.fetch(`${API_BASE}/post`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hello: 'world' }),

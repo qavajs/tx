@@ -11,8 +11,49 @@ const MIME = {
 };
 
 const appServer = http.createServer((req, res) => {
-  const urlPath = (req.url || '/').split('?')[0];
-  const filePath = path.join(APP_DIR, urlPath === '/' ? 'index.html' : urlPath);
+  const pathname = (req.url || '/').split('?')[0];
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204); res.end(); return;
+  }
+
+  if (req.method === 'GET' && pathname === '/get') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ url: `http://localhost:${APP_PORT}/get` }));
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/post') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      let json: unknown = null;
+      try { json = JSON.parse(body); } catch {}
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ json }));
+    });
+    return;
+  }
+  if (req.method === 'GET' && pathname === '/cookies') {
+    const cookieHeader = req.headers.cookie || '';
+    const cookies: Record<string, string> = {};
+    if (cookieHeader) {
+      for (const part of cookieHeader.split(';')) {
+        const eqIdx = part.indexOf('=');
+        if (eqIdx === -1) continue;
+        const k = part.slice(0, eqIdx).trim();
+        const v = part.slice(eqIdx + 1);
+        if (k) cookies[k] = v;
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ cookies }));
+    return;
+  }
+
+  const filePath = path.join(APP_DIR, pathname === '/' ? 'index.html' : pathname);
   if (!filePath.startsWith(APP_DIR + path.sep) && filePath !== APP_DIR) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
