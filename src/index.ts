@@ -350,6 +350,7 @@ async function main() {
     testTimeout:      fileConfig.testTimeout,
     retries:              cliConfig.retries ?? fileConfig.retries,
     workers:              cliConfig.workers ?? fileConfig.workers,
+    testIdAttribute:      fileConfig.testIdAttribute,
   };
 
   // Resolve testFiles into absolute paths
@@ -417,6 +418,21 @@ async function main() {
   // Single-worker path (default, and for interactive mode)
   const wrapper = new TxWrapper(wrapperConfig);
 
+  let stopping = false;
+  const shutdown = async (code: number) => {
+    if (stopping) return;
+    stopping = true;
+    await wrapper.stop();
+    process.exit(code);
+  };
+
+  process.on('SIGINT', () => { console.log('\n\n🛑 Shutting down...'); shutdown(0); });
+  process.on('SIGTERM', () => shutdown(0));
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection:', reason);
+    shutdown(1);
+  });
+
   try {
     await wrapper.start();
 
@@ -430,12 +446,6 @@ async function main() {
       console.log('🎯 Virtual browser is now running!');
       console.log('📍 Use the control panel to interact with the site');
       console.log('⌨️  Press Ctrl+C to stop\n');
-
-      process.on('SIGINT', async () => {
-        console.log('\n\n🛑 Shutting down...');
-        await wrapper.stop();
-        process.exit(0);
-      });
     }
   } catch (error) {
     console.error('Error:', error);

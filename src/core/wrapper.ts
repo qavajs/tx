@@ -266,18 +266,27 @@ export class TxWrapper {
     this._agentBrowserChild = null;
   }
 
-  /** Open Safari at url and store its PID via pgrep -n after it starts. */
+  /** Open Safari at url and store its PID via pgrep polling until found (max 5s). */
   private _spawnSafariAgent(url: string): void {
     this._agentBrowserChild = spawn('open', ['-n', '-a', 'Safari', url], { stdio: 'ignore' });
     this._agentBrowserChild.unref();
-    setTimeout(() => {
+    let attempts = 0;
+    const poll = setInterval(() => {
       try {
         const raw = execSync('pgrep -n -x Safari').toString().trim();
-        console.log(`[tx] pgrep Safari → "${raw}"`);
         const pid = parseInt(raw, 10);
-        if (!isNaN(pid)) this._agentSafariPid = pid;
-      } catch (e) { console.log('[tx] pgrep Safari failed:', e); }
-    }, 2000);
+        if (!isNaN(pid)) {
+          console.log(`[tx] pgrep Safari → pid=${pid} (attempt ${attempts + 1})`);
+          this._agentSafariPid = pid;
+          clearInterval(poll);
+          return;
+        }
+      } catch { /* Safari not yet visible to pgrep */ }
+      if (++attempts >= 10) {
+        clearInterval(poll);
+        console.log('[tx] pgrep Safari: gave up after 10 attempts');
+      }
+    }, 500);
   }
 
   /** Close the agent browser after a test run ends. */
@@ -431,6 +440,7 @@ export class TxWrapper {
         expectTimeout: this.config.expectTimeout,
         testTimeout:   this.config.testTimeout,
         retries:         this.config.retries,
+        testIdAttribute: this.config.testIdAttribute,
         agentProxyUrl:   this.agentProxyUrl,
         onGetCookieJar:  () => cpSession.cookies.serializeJar(),
         onSetCookieJar:  (jar) => cpSession.cookies.setJar(jar),

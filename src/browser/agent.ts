@@ -7,12 +7,13 @@ import type { AgentLocatorSpec, TbCommandMethod } from '../ws-protocol';
 
 declare global {
   interface Window {
-    __AGENT_CONFIG__: { port: number; proxyPrefix: string };
+    __AGENT_CONFIG__: { port: number; proxyPrefix: string; testIdAttribute?: string };
   }
 }
 
 const _cfg = window.__AGENT_CONFIG__;
 const _proxyPrefix = _cfg.proxyPrefix;
+const _testIdAttribute = _cfg.testIdAttribute ?? 'data-testid';
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
@@ -396,10 +397,25 @@ function _startEarlyBridgeWatcher(): void {
   if (_earlyWatcherStarted) return;
   _earlyWatcherStarted = true;
   let lastWin: object | null = null;
+  let _lastPolledUrl = '';
   const tick = () => {
     try {
       const win = iframeWin() as any;
       if (win && win !== lastWin) { lastWin = win; _installWindowBridges(win); }
+      // Detect URL changes for SPA navigation and cases where iframe 'load' doesn't fire
+      if (win) {
+        try {
+          const href = fromProxiedUrl(win.location?.href ?? '');
+          if (href && href !== 'about:blank' && href !== _lastPolledUrl) {
+            _lastPolledUrl = href;
+            const tab = _activeTab();
+            if (tab && tab.url !== href) {
+              tab.url = href;
+              _emitEvent('framenavigated', { url: href, title: win.document?.title ?? tab.title, name: '', isMainFrame: true });
+            }
+          }
+        } catch { /* cross-origin or restricted, ignore */ }
+      }
     } catch { /* ignore */ }
     requestAnimationFrame(tick);
   };
@@ -517,8 +533,8 @@ function _evalSpecIn(spec: AgentLocatorSpec, root: Document | Element): Element[
       });
     }
     case 'testid': {
-      try { return Array.from(root.querySelectorAll(`[data-testid="${CSS.escape(spec.id)}"]`)); }
-      catch { return Array.from(root.querySelectorAll(`[data-testid="${spec.id}"]`)); }
+      try { return Array.from(root.querySelectorAll(`[${_testIdAttribute}="${CSS.escape(spec.id)}"]`)); }
+      catch { return Array.from(root.querySelectorAll(`[${_testIdAttribute}="${spec.id}"]`)); }
     }
     case 'alt': {
       return Array.from(root.querySelectorAll('[alt]')).filter(el => {
@@ -609,9 +625,10 @@ async function _waitForActionable(spec: AgentLocatorSpec, timeout: number, actio
   const needsStable   = ['click','dblclick','rightClick','check','uncheck','hover'].includes(action ?? '');
   const needsEditable = ['fill','clear','selectOption','type'].includes(action ?? '');
   let lastReason = 'element not found'; let stableRect: DOMRect | null = null;
+  let docNullCount = 0;
   while (Date.now() - t0 < timeout) {
     const doc = iframeDoc();
-    if (!doc) { await _sleep(50); continue; }
+    if (!doc) { docNullCount++; await _sleep(50); continue; }
     const el = _evalSpecIn(spec, doc)[0] as HTMLElement | null;
     if (!el)                               { lastReason = 'element not found';      stableRect = null; await _sleep(50); continue; }
     if (!_isVisible(el))                   { lastReason = 'element not visible';    stableRect = null; await _sleep(50); continue; }
@@ -627,7 +644,17 @@ async function _waitForActionable(spec: AgentLocatorSpec, timeout: number, actio
     el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     return el;
   }
-  throw new Error(`waitForActionable timed out after ${timeout}ms — ${lastReason}`);
+  const doc = iframeDoc();
+  if (docNullCount > 0 && !doc) {
+    throw new Error(`waitForActionable timed out after ${timeout}ms — no iframe document (contentDocument was inaccessible throughout)`);
+  }
+  if (docNullCount > 0 && doc) {
+    throw new Error(`waitForActionable timed out after ${timeout}ms — ${lastReason} (iframe document was null for ${docNullCount * 50}ms of the wait)`);
+  }
+  // Doc was accessible but element never appeared — include page URL and body length for diagnosis
+  const url = _activeTab()?.url ?? '?';
+  const bodyLen = doc?.body?.innerHTML?.length ?? 0;
+  throw new Error(`waitForActionable timed out after ${timeout}ms — ${lastReason} (page: ${url}, body length: ${bodyLen})`);
 }
 
 // ── Snapshot helpers ──────────────────────────────────────────────────────────
@@ -1186,7 +1213,7 @@ function _boot(): void {
     let msg: any;
     try { msg = JSON.parse(event.data as string); } catch { return; }
     if (msg.type === 'agent-reload') { location.reload(); return; }
-    if (msg.type === 'agent-close') { window.close(); return; }
+    if (msg.type === 'agent-close') { try { window.close(); } catch { } return; }
     if (msg.type !== 'tb-command') return;
     const { id, method, params } = msg;
     const handler = _cmds.get(method as TbCommandMethod);

@@ -31,6 +31,7 @@ export interface TestServerConfig {
   onSetCookieJar?: (jar: string | null) => void;
   onRestartAgent?: () => void | Promise<void>;
   onRunEnd?: () => void;
+  testIdAttribute?: string;
 }
 
 export class TestServer {
@@ -66,6 +67,7 @@ export class TestServer {
   private _setCookieJarCb: ((jar: string | null) => void) | undefined;
   private _onRestartAgentCb: (() => void | Promise<void>) | undefined;
   private _onRunEndCb: (() => void) | undefined;
+  private _testIdAttribute: string = 'data-testid';
 
   constructor(config: TestServerConfig = {}) {
     this.port = config.port ?? DEFAULT_CONTROL_PANEL_PORT;
@@ -94,6 +96,7 @@ export class TestServer {
     this._setCookieJarCb = config.onSetCookieJar;
     this._onRestartAgentCb = config.onRestartAgent;
     this._onRunEndCb = config.onRunEnd;
+    if (config.testIdAttribute) this._testIdAttribute = config.testIdAttribute;
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 
@@ -148,7 +151,7 @@ export class TestServer {
         }
 
         if (url === '/agent' && req.method === 'GET') {
-          const html = generateAgentHTML(this.port, this._testSessionProxyPrefix);
+          const html = generateAgentHTML(this.port, this._testSessionProxyPrefix, this._testIdAttribute);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(html);
           return;
@@ -375,6 +378,9 @@ export class TestServer {
         this.sendToClients({ type: 'agent-disconnected' });
         this._onRunEndCb?.();
       }, 100);
+    } else {
+      // Agent already disconnected before run-end arrived — still run cleanup
+      this._onRunEndCb?.();
     }
   }
 
@@ -576,7 +582,7 @@ export class TestServer {
   }
 }
 
-function generateAgentHTML(port: number, proxyPrefix: string): string {
+function generateAgentHTML(port: number, proxyPrefix: string, testIdAttribute: string = 'data-testid'): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -591,7 +597,8 @@ function generateAgentHTML(port: number, proxyPrefix: string): string {
 <script>
   window.__AGENT_CONFIG__ = {
     port: ${port},
-    proxyPrefix: ${JSON.stringify(proxyPrefix)}
+    proxyPrefix: ${JSON.stringify(proxyPrefix)},
+    testIdAttribute: ${JSON.stringify(testIdAttribute)}
   };
 </script>
 </head>

@@ -86,6 +86,12 @@ export interface TxConfig {
   retries?: number;
 
   /**
+   * HTML attribute used by getByTestId() to locate elements (default: "data-testid").
+   * Set to "data-test" for apps like Sauce Labs demo that use data-test instead.
+   */
+  testIdAttribute?: string;
+
+  /**
    * Browser to open the control panel in.
    * Accepts a well-known name ("chrome", "chromium", "firefox", "edge", "safari")
    * or an absolute path to a browser executable.
