@@ -6,7 +6,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as net from 'node:net';
-import { execSync, spawn, ChildProcess } from 'node:child_process';
+import { execSync, spawn, execFile, ChildProcess } from 'node:child_process';
+import { promisify } from 'node:util';
+const execFileAsync = promisify(execFile);
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const hammerhead = require('testcafe-hammerhead');
@@ -199,7 +201,8 @@ export class TxWrapper {
   private _nodeRunner: NodeTestRunner | null = null;
   private _browserChild: ChildProcess | null = null;
   private _agentBrowserChild: ChildProcess | null = null;
-  private _agentSafariPid: number | null = null;
+  private _safariWindowId: number | null = null;
+  private _agentSafariWindowId: number | null = null;
   private _isSafariBrowser = false;
   private _tempUserDataDir: string | null = null;
   private _agentTempUserDataDir: string | null = null;
@@ -291,37 +294,37 @@ export class TxWrapper {
     this._collector = new ProxyCollector([this.session, this.controlPanelSession], (msg) => this.server?.sendToClients(msg));
   }
 
-  /** Kill Safari agent by PID (Safari is launched via `open` so _agentBrowserChild is useless). */
-  private _killSafariAgent(): void {
-    console.log(`[tx] _killSafariAgent pid=${this._agentSafariPid}`);
-    if (this._agentSafariPid) {
-      try { process.kill(this._agentSafariPid, 'SIGKILL'); } catch { /* already gone */ }
-      this._agentSafariPid = null;
-    }
-    this._agentBrowserChild = null;
+  /** Open Safari to url via osascript; returns the Safari window ID for later targeted close. */
+  private async _openSafariWindow(url: string): Promise<number> {
+    const escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const script = `tell application "Safari"\nmake new document with properties {URL: "${escapedUrl}"}\nactivate\nreturn id of window 1\nend tell`;
+    const { stdout } = await execFileAsync('osascript', ['-e', script]);
+    const windowId = parseInt(stdout.trim(), 10);
+    if (isNaN(windowId)) throw new Error(`[tx] Safari osascript open returned unexpected output: ${stdout.trim()}`);
+    return windowId;
   }
 
-  /** Open Safari at url and store its PID via pgrep polling until found (max 5s). */
-  private _spawnSafariAgent(url: string): void {
-    this._agentBrowserChild = spawn('open', ['-n', '-a', 'Safari', url], { stdio: 'ignore' });
-    this._agentBrowserChild.unref();
-    let attempts = 0;
-    const poll = setInterval(() => {
-      try {
-        const raw = execSync('pgrep -n -x Safari').toString().trim();
-        const pid = parseInt(raw, 10);
-        if (!isNaN(pid)) {
-          console.log(`[tx] pgrep Safari → pid=${pid} (attempt ${attempts + 1})`);
-          this._agentSafariPid = pid;
-          clearInterval(poll);
-          return;
-        }
-      } catch { /* Safari not yet visible to pgrep */ }
-      if (++attempts >= 10) {
-        clearInterval(poll);
-        console.log('[tx] pgrep Safari: gave up after 10 attempts');
-      }
-    }, 500);
+  /** Close a specific Safari window by its window ID via osascript (does not affect other windows). */
+  private async _closeSafariWindow(windowId: number): Promise<void> {
+    const script = `tell application "Safari"\nrepeat with w in (every window)\nif id of w is ${windowId} then\nclose w\nexit repeat\nend if\nend repeat\nend tell`;
+    await execFileAsync('osascript', ['-e', script]);
+  }
+
+  /** Close the Safari agent window (fire-and-forget; errors are logged, not thrown). */
+  private _killSafariAgent(): void {
+    const windowId = this._agentSafariWindowId;
+    this._agentSafariWindowId = null;
+    this._agentBrowserChild = null;
+    if (windowId != null) {
+      this._closeSafariWindow(windowId).catch(e => console.error('[tx] Safari agent close error:', e));
+    }
+  }
+
+  /** Open Safari agent window and store its window ID for later close. */
+  private async _spawnSafariAgent(url: string): Promise<void> {
+    const windowId = await this._openSafariWindow(url);
+    console.log(`[tx] Safari agent window opened (id=${windowId})`);
+    this._agentSafariWindowId = windowId;
   }
 
   /** Close the agent browser after a test run ends. */
@@ -347,7 +350,7 @@ export class TxWrapper {
   private async _restartAgentBrowser(): Promise<void> {
     if (this._isSafariBrowser) {
       this._killSafariAgent();
-      if (this.agentProxyUrl) this._spawnSafariAgent(this.agentProxyUrl);
+      if (this.agentProxyUrl) await this._spawnSafariAgent(this.agentProxyUrl);
       return;
     }
 
@@ -387,9 +390,6 @@ export class TxWrapper {
 
   /** Build [cmd, args] for spawning a browser at the given URL. `isAgent` uses a separate user-data-dir. */
   private _buildBrowserArgs(exePath: string, url: string, isAgent: boolean): [string, string[]] {
-    if (this._isSafariBrowser) {
-      return ['open', ['-n', '-a', 'Safari', url]];
-    }
     const isFirefox = exePath.toLowerCase().includes('firefox');
     if (isFirefox) {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), isAgent ? 'tx-agent-ff-' : 'tx-ff-'));
@@ -538,15 +538,20 @@ export class TxWrapper {
       });
 
       this._isSafariBrowser = exePath.toLowerCase().includes('safari') && process.platform === 'darwin';
-      const [spawnCmd, args] = this._buildBrowserArgs(exePath, this.controlPanelProxyUrl, false);
 
       console.log(`\n🌐 ${this.config.headless ? 'Launching headless browser' : 'Opening browser'}: ${exePath}`);
-      // detached: true creates a new process group so we can kill the whole group (renderers etc.)
-      this._browserChild = spawn(spawnCmd, args, { stdio: 'ignore', detached: process.platform !== 'win32' });
-      this._browserChild.unref();
-      this._browserChild.on('error', (err: Error) => {
-        console.error('Browser error:', err.message);
-      });
+      if (this._isSafariBrowser) {
+        this._safariWindowId = await this._openSafariWindow(this.controlPanelProxyUrl);
+        console.log(`[tx] Safari control panel window opened (id=${this._safariWindowId})`);
+      } else {
+        const [spawnCmd, args] = this._buildBrowserArgs(exePath, this.controlPanelProxyUrl, false);
+        // detached: true creates a new process group so we can kill the whole group (renderers etc.)
+        this._browserChild = spawn(spawnCmd, args, { stdio: 'ignore', detached: process.platform !== 'win32' });
+        this._browserChild.unref();
+        this._browserChild.on('error', (err: Error) => {
+          console.error('Browser error:', err.message);
+        });
+      }
 
       await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -589,10 +594,13 @@ export class TxWrapper {
     }
     this._browserChild = null;
     this._agentBrowserChild = null;
-    if (this._agentSafariPid) {
-      try { process.kill(this._agentSafariPid, 'SIGTERM'); } catch { /* already gone */ }
-      this._agentSafariPid = null;
+    for (const windowId of [this._safariWindowId, this._agentSafariWindowId]) {
+      if (windowId != null) {
+        this._closeSafariWindow(windowId).catch(() => {});
+      }
     }
+    this._safariWindowId = null;
+    this._agentSafariWindowId = null;
 
     for (const dir of [this._tempUserDataDir, this._agentTempUserDataDir]) {
       if (dir) try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
