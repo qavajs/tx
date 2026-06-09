@@ -26,6 +26,7 @@ export interface TestServerConfig {
   actionTimeout?: number;
   expectTimeout?: number;
   testTimeout?: number;
+  navigationTimeout?: number;
   retries?: number;
   agentProxyUrl?: string;
   onGetCookieJar?: () => string;
@@ -50,6 +51,7 @@ export class TestServer {
   private actionTimeout: number | undefined;
   private expectTimeout: number | undefined;
   private testTimeout: number | undefined;
+  private navigationTimeout: number = 60000;
   private retries: number | undefined;
   private agentProxyUrl: string | undefined;
   /** Computed in start() — the Hammerhead proxy prefix for the test session (e.g. http://proxy:1836/sessionId/) */
@@ -65,6 +67,8 @@ export class TestServer {
   private _pendingTbCommands = new Map<string, WebSocket>();
   /** Pending in-process tb-command correlation: id → { resolve, reject } */
   private _pendingNodeCommands = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  /** Navigation commands (navigate/reload/resetSession/waitForNavigation) resolved on agent reconnect */
+  private _pendingNavigationCommands = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private _agentEventHandlers = new Set<(event: string, payload: unknown) => void>();
   private _agentConnectedCallbacks = new Set<() => void>();
   private _nodeRunner: NodeTestRunner | null = null;
@@ -96,6 +100,7 @@ export class TestServer {
     this.actionTimeout = config.actionTimeout;
     this.expectTimeout = config.expectTimeout;
     this.testTimeout = config.testTimeout;
+    if (config.navigationTimeout != null) this.navigationTimeout = config.navigationTimeout;
     this.retries = config.retries;
     this.agentProxyUrl = config.agentProxyUrl;
     this._getCookieJarCb = config.onGetCookieJar;
@@ -236,6 +241,11 @@ export class TestServer {
                 this.sendToClients({ type: 'agent-connected' });
                 for (const cb of this._agentConnectedCallbacks) cb();
                 this._agentConnectedCallbacks.clear();
+                // Resolve any pending navigation commands — agent reconnected after page nav
+                for (const [id, { resolve }] of this._pendingNavigationCommands) {
+                  this._pendingNavigationCommands.delete(id);
+                  resolve(undefined);
+                }
                 console.log('[tx] Test browser agent connected');
               } else {
                 this._addPanelClient(ws);
@@ -342,13 +352,6 @@ export class TestServer {
         this._stopSignal = { stop: false };
         const signal = this._stopSignal;
         const doRun = async () => {
-          // Start agent browser on demand if not connected
-          if (!this._testBrowserClient || this._testBrowserClient.readyState !== WebSocket.OPEN) {
-            if (this._onRestartAgentCb) {
-              await this._onRestartAgentCb();
-              await this._waitForAgent(15000);
-            }
-          }
           return this._nodeRunner!.run(files, spec, signal, {
             onBegin: (runFiles) => {
               const allTests = runFiles.flatMap(f => {
@@ -416,10 +419,11 @@ export class TestServer {
     if (msg.type === 'tb-result') {
       const { id } = msg;
       if (!id) return;
-      // Check in-process node command first
-      const nodeCmd = this._pendingNodeCommands.get(id);
+      // Check in-process node command first (including navigation commands that errored on the agent)
+      const nodeCmd = this._pendingNodeCommands.get(id) ?? this._pendingNavigationCommands.get(id);
       if (nodeCmd) {
         this._pendingNodeCommands.delete(id);
+        this._pendingNavigationCommands.delete(id);
         if (msg.error) nodeCmd.reject(new Error(msg.error as string));
         else nodeCmd.resolve(msg.result);
         return;
@@ -662,18 +666,37 @@ export class TestServer {
   /** In-process tb-command dispatch — routes through the agent WebSocket. */
   async execTbCommand(method: string, params?: Record<string, unknown>): Promise<unknown> {
     if (!this._testBrowserClient || this._testBrowserClient.readyState !== WebSocket.OPEN) {
-      throw new Error('Test browser agent not connected');
+      await this._waitForAgent(10000);
     }
     const id = 'node-' + (++this._cmdCounter) + '-' + Date.now();
+    // Navigation commands never send a tb-result — the agent navigates away and the WS closes.
+    // They are resolved when the agent reconnects (sends hello again).
+    const isNavCommand = method === 'navigate' || method === 'reload' || method === 'resetSession' || method === 'waitForNavigation';
     return new Promise<unknown>((resolve, reject) => {
-      this._pendingNodeCommands.set(id, { resolve, reject });
+      if (isNavCommand) {
+        this._pendingNavigationCommands.set(id, { resolve, reject });
+      } else {
+        this._pendingNodeCommands.set(id, { resolve, reject });
+      }
       this._send(this._testBrowserClient!, { type: 'tb-command', id, method, params: params ?? {} });
-      setTimeout(() => {
-        if (this._pendingNodeCommands.has(id)) {
-          this._pendingNodeCommands.delete(id);
-          reject(new Error(`execTbCommand(${method}) timed out`));
-        }
-      }, 30000);
+      if (isNavCommand) {
+        // Navigation commands resolve on agent reconnect. Apply a separate navigation timeout.
+        // On timeout: restart the agent browser so the session recovers, then throw.
+        setTimeout(() => {
+          if (this._pendingNavigationCommands.delete(id)) {
+            reject(new Error(`navigation (${method}) timed out after ${this.navigationTimeout}ms — site may not have loaded in agent browser`));
+            if (this._onRestartAgentCb) {
+              Promise.resolve(this._onRestartAgentCb()).catch(e => console.error('[tx] nav-restart error:', e));
+            }
+          }
+        }, this.navigationTimeout);
+      } else {
+        setTimeout(() => {
+          if (this._pendingNodeCommands.delete(id)) {
+            reject(new Error(`execTbCommand(${method}) timed out`));
+          }
+        }, 30000);
+      }
     });
   }
 
@@ -694,6 +717,34 @@ export class TestServer {
   onAgentEvent(handler: (event: string, payload: unknown) => void): () => void {
     this._agentEventHandlers.add(handler);
     return () => { this._agentEventHandlers.delete(handler); };
+  }
+
+  /** Spawn a fresh agent browser and wait for it to connect (per-test lifecycle). */
+  async startAgentForTest(): Promise<void> {
+    if (this._onRestartAgentCb) {
+      await this._onRestartAgentCb();
+      await this._waitForAgent(15000);
+    }
+  }
+
+  /** Close the agent browser after a test ends (per-test lifecycle). */
+  closeAgentForTest(): Promise<void> {
+    return new Promise<void>(resolve => {
+      const agentWs = this._testBrowserClient;
+      if (agentWs) {
+        this._testBrowserClient = null;
+        this._send(agentWs, { type: 'agent-close' });
+        setTimeout(() => {
+          agentWs.terminate();
+          this.sendToClients({ type: 'agent-disconnected' });
+          this._onRunEndCb?.();
+          resolve();
+        }, 100);
+      } else {
+        this._onRunEndCb?.();
+        resolve();
+      }
+    });
   }
 
   /** Send to all panel clients only (not the test-browser agent) */
@@ -745,8 +796,6 @@ function generateAgentHTML(port: number, proxyPrefix: string, testIdAttribute: s
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; }
-  #tab-container { position: relative; width: 100%; height: 100%; }
-  #tab-container iframe { width: 100%; height: 100%; border: none; display: none; position: absolute; top: 0; left: 0; }
 </style>
 <script>
   window.__AGENT_CONFIG__ = {
@@ -757,7 +806,11 @@ function generateAgentHTML(port: number, proxyPrefix: string, testIdAttribute: s
 </script>
 </head>
 <body>
-<div id="tab-container"></div>
+<script>
+  // Watchdog: if the WebSocket connection is not established within 10s, reload the page.
+  // This self-heals from transient startup races (proxy not yet ready, port binding delay, etc.).
+  setTimeout(function() { if (!window.__agentConnected) location.reload(); }, 10000);
+</script>
 <script src="/agent.js"></script>
 </body>
 </html>`;

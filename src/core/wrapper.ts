@@ -216,20 +216,44 @@ export class TxWrapper {
    */
   private initializeProxy(): void {
     class ProxySession extends hammerhead.Session {
-      getAuthCredentials() {
-        return null;
-      }
+      getAuthCredentials() { return null; }
       handleFileDownload() {}
       handleAttachment() {}
-      handlePageError(_ctx: unknown, err: string) {
-        console.error('Page error:', err);
+      handlePageError(_ctx: unknown, err: string) { console.error('Page error:', err); }
+      async getPayloadScript() { return ''; }
+      async getIframePayloadScript() { return ''; }
+    }
+
+    /** Test page session — injects agent.js into every proxied page so the agent
+     *  runs directly on each test page instead of inside an iframe. */
+    class AgentTestSession extends ProxySession {
+      private _payloadConfig = { port: 0, proxyPrefix: '', testIdAttribute: 'data-testid' };
+      private _agentJsContent: string | null = null;
+
+      setPayloadConfig(cfg: { port: number; proxyPrefix: string; testIdAttribute: string }) {
+        this._payloadConfig = cfg;
+        this._agentJsContent = null; // reset cache on config change
       }
-      async getPayloadScript() {
-        return '';
+
+      async getPayloadScript(): Promise<string> {
+        if (!this._agentJsContent) {
+          const candidates = [
+            path.join(__dirname, 'agent.js'),
+            path.join(__dirname, 'dist', 'agent.js'),
+          ];
+          const agentPath = candidates.find(p => fs.existsSync(p));
+          if (agentPath) {
+            this._agentJsContent = fs.readFileSync(agentPath, 'utf8');
+          }
+        }
+        if (!this._agentJsContent) return '';
+        const cfg = JSON.stringify(this._payloadConfig);
+        // Guard against double-init (e.g. Hammerhead injecting into the agent entry page twice)
+        return `if(!window.__agentLoaded){window.__agentLoaded=true;window.__AGENT_CONFIG__=${cfg};${this._agentJsContent}}`;
       }
-      async getIframePayloadScript() {
-        return '';
-      }
+
+      // Do not inject into sub-iframes within test pages
+      async getIframePayloadScript(): Promise<string> { return ''; }
     }
 
     this.proxy = new hammerhead.Proxy({});
@@ -241,7 +265,8 @@ export class TxWrapper {
     });
 
     // @ts-ignore
-    this.session = new ProxySession([], {});
+    const agentSession = new AgentTestSession([], {});
+    this.session = agentSession;
     this.proxyUrl = this.proxy.openSession('about:blank', this.session);
 
     // Create a second session for the control panel server (localhost:11339)
@@ -251,9 +276,17 @@ export class TxWrapper {
     const controlPanelLocalUrl = `http://localhost:${this.config.controlPanelPort}`;
     this.controlPanelProxyUrl = this.proxy.openSession(controlPanelLocalUrl, this.controlPanelSession);
 
-    // Agent shell is proxied through the test session (same origin as test iframes)
+    // Agent shell is proxied through the test session (same origin as test pages)
     const agentEntryUrl = `http://localhost:${this.config.controlPanelPort}/agent`;
     this.agentProxyUrl = this.proxy.openSession(agentEntryUrl, this.session);
+
+    // Configure payload injection: agent.js will be inlined into every test page
+    const proxyPrefix = this.proxyUrl.replace(/[^/]+$/, '');
+    agentSession.setPayloadConfig({
+      port: this.config.controlPanelPort!,
+      proxyPrefix,
+      testIdAttribute: this.config.testIdAttribute ?? 'data-testid',
+    });
 
     this._collector = new ProxyCollector([this.session, this.controlPanelSession], (msg) => this.server?.sendToClients(msg));
   }
@@ -438,9 +471,10 @@ export class TxWrapper {
         snapshot:      this.config.snapshot,
         tasks:         this.config.tasks,
         grep:          this.config.grep,
-        actionTimeout: this.config.actionTimeout,
-        expectTimeout: this.config.expectTimeout,
-        testTimeout:   this.config.testTimeout,
+        actionTimeout:     this.config.actionTimeout,
+        expectTimeout:     this.config.expectTimeout,
+        testTimeout:       this.config.testTimeout,
+        navigationTimeout: this.config.navigationTimeout,
         retries:         this.config.retries,
         testIdAttribute: this.config.testIdAttribute,
         agentProxyUrl:   this.agentProxyUrl,

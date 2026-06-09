@@ -34,30 +34,18 @@ function _sendResult(id: string, result?: unknown, error?: string): void {
   _wsSend(msg);
 }
 
-// ── Tab state ─────────────────────────────────────────────────────────────────
+// ── Page accessors (direct window — no iframe) ────────────────────────────────
 
-interface TabEntry { id: string; iframe: HTMLIFrameElement; title: string; url: string; }
-let _tabs: TabEntry[] = [];
-let _activeTabId: string | null = null;
-let _tabCounter = 0;
-
-function _activeTab(): TabEntry | null { return _tabs.find(t => t.id === _activeTabId) ?? null; }
-function iframeDoc(): Document | null {
-  try { return _activeTab()?.iframe.contentDocument ?? null; } catch { return null; }
-}
-function iframeWin(): (Window & typeof globalThis) | null {
-  try { return (_activeTab()?.iframe.contentWindow as any) ?? null; } catch { return null; }
-}
+function iframeDoc(): Document { return document; }
+function iframeWin(): Window & typeof globalThis { return window as any; }
 
 // ── Init scripts ──────────────────────────────────────────────────────────────
 
 const _initScripts: string[] = [];
 
 function _runInitScripts(): void {
-  const win = iframeWin() as any;
-  if (!win) return;
   for (const code of _initScripts) {
-    try { win.eval(code); } catch (e: any) { console.error('[agent:initScript]', e.message); }
+    try { (window as any).eval(code); } catch (e: any) { console.error('[agent:initScript]', e.message); }
   }
 }
 
@@ -73,7 +61,7 @@ function toProxiedUrl(url: string): string {
   if (!_proxyPrefix) return url;
   if (url.startsWith(_proxyPrefix)) return url;
   if (!/^https?:\/\//.test(url)) {
-    const baseUrl = _activeTab()?.url;
+    const baseUrl = fromProxiedUrl(window.location.href);
     if (baseUrl && /^https?:\/\//.test(baseUrl)) {
       try { url = new URL(url, baseUrl).href; } catch { return url; }
     } else { return url; }
@@ -257,12 +245,12 @@ function _bridgeWorker(win: any): void {
 }
 
 function _bridgePopup(win: any): void {
-  win.open = (url?: string) => {
-    const tab = _createTab(url);
-    _setActiveTab(tab.id);
-    _emitEvent('popup', { url: url ?? '', tabId: tab.id });
-    _emitEvent('tab-created', { tabId: tab.id, url: tab.url });
-    return tab.iframe.contentWindow;
+  const origOpen = (win.open as typeof window.open)?.bind(win);
+  if (!origOpen) return;
+  win.open = (url?: string, ...rest: any[]) => {
+    const newWin = origOpen(url as string, ...rest);
+    _emitEvent('popup', { url: url ?? '' });
+    return newWin;
   };
 }
 
@@ -274,10 +262,9 @@ function _bridgeDocumentEvents(doc: Document): void {
     if (!a || a.target !== '_blank' || a.hasAttribute('download')) return;
     e.preventDefault();
     if (a.href) {
-      const tab = _createTab(fromProxiedUrl(a.href));
-      _setActiveTab(tab.id);
-      _emitEvent('popup', { url: fromProxiedUrl(a.href), tabId: tab.id });
-      _emitEvent('tab-created', { tabId: tab.id, url: tab.url });
+      const url = fromProxiedUrl(a.href);
+      (window as any).open(toProxiedUrl(url));
+      _emitEvent('popup', { url });
     }
   }, true);
 
@@ -335,91 +322,27 @@ function _installDocumentBridges(doc: Document): void {
   _bridgeDocumentEvents(doc);
 }
 
-// ── Tab lifecycle ─────────────────────────────────────────────────────────────
+// ── SPA navigation watcher ────────────────────────────────────────────────────
 
-const _tabContainer = document.getElementById('tab-container')!;
-
-function _onTabLoad(tab: TabEntry): void {
-  const win = tab.iframe.contentWindow as any;
-  const doc = tab.iframe.contentDocument;
-  if (!win || !doc) return;
-  try { tab.title = doc.title || ''; } catch {}
+function _startSPANavWatcher(): void {
   try {
-    const href = win.location?.href ?? '';
-    tab.url = fromProxiedUrl(href);
-  } catch {}
-  _runInitScripts();
-  _installWindowBridges(win);
-  _installDocumentBridges(doc);
-  _emitEvent('domcontentloaded', { url: tab.url, title: tab.title });
-  _emitEvent('load', { url: tab.url, title: tab.title });
-  _emitEvent('framenavigated', { url: tab.url, title: tab.title, name: '', isMainFrame: true });
-}
-
-function _createTab(url?: string): TabEntry {
-  const tabId = 'tab-' + (++_tabCounter);
-  const iframeEl = document.createElement('iframe');
-  iframeEl.id = 'agent-tab-' + tabId;
-  iframeEl.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation');
-  iframeEl.style.cssText = 'width:100%;height:100%;border:none;display:none;position:absolute;top:0;left:0;';
-  const tab: TabEntry = { id: tabId, iframe: iframeEl, title: '', url: url ?? '' };
-  iframeEl.addEventListener('load', () => _onTabLoad(tab));
-  _tabContainer.appendChild(iframeEl);
-  _tabs.push(tab);
-  iframeEl.src = url ? toProxiedUrl(url) : 'about:blank';
-  return tab;
-}
-
-function _setActiveTab(tabId: string): void {
-  for (const t of _tabs) t.iframe.style.display = 'none';
-  const tab = _tabs.find(t => t.id === tabId);
-  if (!tab) return;
-  tab.iframe.style.display = 'block';
-  _activeTabId = tabId;
-}
-
-function _closeTab(tabId: string): void {
-  const tab = _tabs.find(t => t.id === tabId);
-  if (!tab) return;
-  tab.iframe.remove();
-  _tabs = _tabs.filter(t => t.id !== tabId);
-  if (_activeTabId === tabId) {
-    _activeTabId = _tabs.length > 0 ? _tabs[_tabs.length - 1].id : null;
-    if (_activeTabId) _setActiveTab(_activeTabId);
-  }
-}
-
-// ── Early bridge watcher ──────────────────────────────────────────────────────
-
-let _earlyWatcherStarted = false;
-
-function _startEarlyBridgeWatcher(): void {
-  if (_earlyWatcherStarted) return;
-  _earlyWatcherStarted = true;
-  let lastWin: object | null = null;
-  let _lastPolledUrl = '';
-  const tick = () => {
-    try {
-      const win = iframeWin() as any;
-      if (win && win !== lastWin) { lastWin = win; _installWindowBridges(win); }
-      // Detect URL changes for SPA navigation and cases where iframe 'load' doesn't fire
-      if (win) {
-        try {
-          const href = fromProxiedUrl(win.location?.href ?? '');
-          if (href && href !== 'about:blank' && href !== _lastPolledUrl) {
-            _lastPolledUrl = href;
-            const tab = _activeTab();
-            if (tab && tab.url !== href) {
-              tab.url = href;
-              _emitEvent('framenavigated', { url: href, title: win.document?.title ?? tab.title, name: '', isMainFrame: true });
-            }
-          }
-        } catch { /* cross-origin or restricted, ignore */ }
-      }
-    } catch { /* ignore */ }
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
+    const origPushState = window.history.pushState.bind(window.history);
+    window.history.pushState = function(...args: Parameters<typeof history.pushState>) {
+      origPushState(...args);
+      _emitEvent('framenavigated', { url: fromProxiedUrl(window.location.href), title: document.title, name: '', isMainFrame: true });
+    };
+    const origReplaceState = window.history.replaceState.bind(window.history);
+    window.history.replaceState = function(...args: Parameters<typeof history.replaceState>) {
+      origReplaceState(...args);
+      _emitEvent('framenavigated', { url: fromProxiedUrl(window.location.href), title: document.title, name: '', isMainFrame: true });
+    };
+  } catch { /* cross-origin guard */ }
+  window.addEventListener('popstate', () => {
+    _emitEvent('framenavigated', { url: fromProxiedUrl(window.location.href), title: document.title, name: '', isMainFrame: true });
+  });
+  window.addEventListener('hashchange', () => {
+    _emitEvent('framenavigated', { url: fromProxiedUrl(window.location.href), title: document.title, name: '', isMainFrame: true });
+  });
 }
 
 // ── Locator spec evaluation ───────────────────────────────────────────────────
@@ -625,10 +548,8 @@ async function _waitForActionable(spec: AgentLocatorSpec, timeout: number, actio
   const needsStable   = ['click','dblclick','rightClick','check','uncheck','hover'].includes(action ?? '');
   const needsEditable = ['fill','clear','selectOption','type'].includes(action ?? '');
   let lastReason = 'element not found'; let stableRect: DOMRect | null = null;
-  let docNullCount = 0;
   while (Date.now() - t0 < timeout) {
     const doc = iframeDoc();
-    if (!doc) { docNullCount++; await _sleep(50); continue; }
     const el = _evalSpecIn(spec, doc)[0] as HTMLElement | null;
     if (!el)                               { lastReason = 'element not found';      stableRect = null; await _sleep(50); continue; }
     if (!_isVisible(el))                   { lastReason = 'element not visible';    stableRect = null; await _sleep(50); continue; }
@@ -644,33 +565,20 @@ async function _waitForActionable(spec: AgentLocatorSpec, timeout: number, actio
     el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     return el;
   }
-  const doc = iframeDoc();
-  if (docNullCount > 0 && !doc) {
-    throw new Error(`waitForActionable timed out after ${timeout}ms — no iframe document (contentDocument was inaccessible throughout)`);
-  }
-  if (docNullCount > 0 && doc) {
-    throw new Error(`waitForActionable timed out after ${timeout}ms — ${lastReason} (iframe document was null for ${docNullCount * 50}ms of the wait)`);
-  }
-  // Doc was accessible but element never appeared — include page URL and body length for diagnosis
-  const url = _activeTab()?.url ?? '?';
-  const bodyLen = doc?.body?.innerHTML?.length ?? 0;
+  const url = fromProxiedUrl(window.location.href);
+  const bodyLen = document.body?.innerHTML?.length ?? 0;
   throw new Error(`waitForActionable timed out after ${timeout}ms — ${lastReason} (page: ${url}, body length: ${bodyLen})`);
 }
 
 // ── Snapshot helpers ──────────────────────────────────────────────────────────
 
 async function _captureScreenshot(): Promise<string> {
-  const doc = iframeDoc();
-  if (!doc) throw new Error('no active tab');
-  const tab = _activeTab()!;
-  return domToPng(doc.documentElement, { width: tab.iframe.offsetWidth || 1280, height: tab.iframe.offsetHeight || 720 });
+  return domToPng(document.documentElement, { width: window.innerWidth || 1280, height: window.innerHeight || 720 });
 }
 
 async function _captureFullSnapshot(): Promise<string> {
-  const doc = iframeDoc();
-  if (!doc) throw new Error('no active tab');
-  const pageUrl = _activeTab()?.url ?? '';
-  const clone = doc.documentElement.cloneNode(true) as HTMLElement;
+  const pageUrl = fromProxiedUrl(window.location.href);
+  const clone = document.documentElement.cloneNode(true) as HTMLElement;
   for (const el of Array.from(clone.querySelectorAll('script'))) el.remove();
   let html = '<!DOCTYPE html>' + clone.outerHTML;
   if (!/<base\b/i.test(html)) html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${pageUrl}">`);
@@ -697,42 +605,28 @@ const reg = (m: TbCommandMethod, h: Handler) => _cmds.set(m, h);
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 
-reg('navigate', async ({ url, timeout = DEFAULT_TIMEOUT }) => {
-  const tab = _activeTab(); if (!tab) throw new Error('no active tab');
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`navigate timed out`)), timeout);
-    tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-    tab.iframe.src = toProxiedUrl(url);
-  });
+reg('navigate', async ({ url }: { url: string }) => {
+  // Navigate the agent window directly — WS will close; server resolves this command on reconnect
+  window.location.href = toProxiedUrl(url);
+  await new Promise<never>(() => {}); // page navigates away, no result sent
 });
 
 reg('setViewportSize', async ({ width, height }: { width: number; height: number }) => {
-  const tab = _activeTab();
-  if (tab) {
-    tab.iframe.style.width  = `${width}px`;
-    tab.iframe.style.height = `${height}px`;
-  }
-  // Resize the agent window itself so media queries fire correctly
   try { window.resizeTo(width, height); } catch {}
 });
 
 reg('reload', async () => {
-  const win = iframeWin(); const tab = _activeTab();
-  if (!win || !tab) throw new Error('no active tab');
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('reload timed out')), DEFAULT_TIMEOUT);
-    tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-    win.location.reload();
-  });
+  // Reload the agent window — WS will close; server resolves on reconnect
+  window.location.reload();
+  await new Promise<never>(() => {});
 });
 
 reg('waitForNavigation', async ({ timeout = DEFAULT_TIMEOUT }: { timeout?: number } = {}) => {
-  const tab = _activeTab(); if (!tab) throw new Error('no active tab');
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('waitForNavigation timed out')), timeout);
-    tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-  });
-  return { url: _activeTab()?.url ?? '' };
+  // Wait for navigation caused by other actions (e.g. click → form submit).
+  // If navigation occurs, WS closes and server resolves this command on reconnect.
+  // If no navigation occurs within timeout, throw so the server gets a tb-result error.
+  await _sleep(timeout);
+  throw new Error(`waitForNavigation timed out after ${timeout}ms`);
 });
 
 reg('evaluate', async ({ code }) => {
@@ -740,20 +634,19 @@ reg('evaluate', async ({ code }) => {
   return await Promise.resolve(win.eval(code));
 });
 
-reg('title',    async () => iframeDoc()?.title ?? '');
-reg('url',      async () => _activeTab()?.url ?? '');
+reg('title',    async () => document.title ?? '');
+reg('url',      async () => fromProxiedUrl(window.location.href));
 reg('screenshot', async () => _captureScreenshot());
 reg('snapshot',   async () => _captureFullSnapshot());
 reg('getHTML',    async () => _captureFullSnapshot());
 
 reg('ariaSnapshot', async ({ spec }: { spec?: AgentLocatorSpec }) => {
-  const doc = iframeDoc(); if (!doc) throw new Error('no active tab');
   if (spec) {
-    const el = _evalSpecIn(spec, doc)[0];
+    const el = _evalSpecIn(spec, document)[0];
     if (!el) throw new Error('element not found');
     return _ariaSnapshotBasic(el);
   }
-  return _ariaSnapshotBasic(doc.body ?? doc.documentElement);
+  return _ariaSnapshotBasic(document.body ?? document.documentElement);
 });
 
 // ── Selector queries ──────────────────────────────────────────────────────────
@@ -991,26 +884,19 @@ reg('resetSession', async () => {
   _interceptAll = false;
   _initScripts.length = 0;
   _pendingDialogDecisions.length = 0;
-  for (const id of _tabs.slice(1).map(t => t.id)) _closeTab(id);
-  const tab = _activeTab();
-  if (!tab) { const t = _createTab(); _setActiveTab(t.id); return; }
-  const win = iframeWin() as any; const doc = iframeDoc() as any;
-  if (win) { try { win.localStorage.clear(); } catch {} try { win.sessionStorage.clear(); } catch {} }
-  if (doc && win) {
-    try {
-      const hostname = win.location?.hostname ?? '';
-      for (const cookie of doc.cookie.split(';')) {
-        const name = cookie.split('=')[0].trim(); if (!name) continue;
-        const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
-        doc.cookie = base; if (hostname) doc.cookie = `${base}; domain=${hostname}`;
-      }
-    } catch {}
-  }
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('resetSession timed out')), 10_000);
-    tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-    tab.iframe.src = 'about:blank';
-  });
+  try { window.localStorage.clear(); } catch {}
+  try { window.sessionStorage.clear(); } catch {}
+  try {
+    const hostname = window.location?.hostname ?? '';
+    for (const cookie of document.cookie.split(';')) {
+      const name = cookie.split('=')[0].trim(); if (!name) continue;
+      const base = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+      document.cookie = base; if (hostname) document.cookie = `${base}; domain=${hostname}`;
+    }
+  } catch {}
+  // Navigate to proxied blank — WS will close; server resolves on reconnect
+  window.location.href = _proxyPrefix ? (_proxyPrefix + 'about:blank') : 'about:blank';
+  await new Promise<never>(() => {});
 });
 
 // ── Init scripts ──────────────────────────────────────────────────────────────
@@ -1046,22 +932,18 @@ reg('clearStorage', async () => {
   if (win?.sessionStorage)  try { win.sessionStorage.clear();  } catch {}
 });
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
+// ── Tabs (single-window model) ────────────────────────────────────────────────
 
 reg('newTab', async ({ url }: { url?: string }) => {
-  const tab = _createTab(url); _setActiveTab(tab.id);
-  _emitEvent('tab-created', { tabId: tab.id, url: tab.url }); return tab.id;
+  const tabId = 'tab-' + Date.now();
+  window.open(url ? toProxiedUrl(url) : 'about:blank');
+  _emitEvent('tab-created', { tabId, url: url ?? '' });
+  return tabId;
 });
 
-reg('closeTab', async ({ tabId }: { tabId: string }) => {
-  _closeTab(tabId); _emitEvent('tab-closed', { tabId });
-});
-
-reg('switchTab', async ({ tabId }: { tabId: string }) => {
-  _setActiveTab(tabId); _emitEvent('tab-switched', { tabId });
-});
-
-reg('getTabsSnapshot', async () => _tabs.map(t => ({ id: t.id, title: t.title, url: t.url, active: t.id === _activeTabId })));
+reg('closeTab', async () => { /* single-window: no-op */ });
+reg('switchTab', async () => { /* single-window: no-op */ });
+reg('getTabsSnapshot', async () => [{ id: 'tab-1', title: document.title, url: fromProxiedUrl(window.location.href), active: true }]);
 
 // ── Mouse ─────────────────────────────────────────────────────────────────────
 
@@ -1190,9 +1072,11 @@ reg('keyboardInsertText', async ({ text }) => {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 function _boot(): void {
-  const firstTab = _createTab();
-  _setActiveTab(firstTab.id);
-  _startEarlyBridgeWatcher();
+  // Install bridges directly on the current page window/document
+  _installWindowBridges(window as any);
+  _installDocumentBridges(document);
+  _runInitScripts();
+  _startSPANavWatcher();
 
   // Use Hammerhead's native WebSocket (if available) to bypass the proxy interceptor.
   // The agent is infrastructure, not a test target — its WS must connect directly.
@@ -1201,12 +1085,10 @@ function _boot(): void {
   _ws = ws;
 
   ws.addEventListener('open', () => {
+    (window as any).__agentConnected = true;
     _wsSend({ type: 'hello', role: 'test-browser' });
-    // Notify panel of the initial tab so its _tabs array is populated
-    const tab = _activeTab();
-    if (tab) {
-      _emitEvent('tab-created', { tabId: tab.id, url: tab.url, title: tab.title });
-    }
+    // Emit initial framenavigated so the panel knows the current URL
+    _emitEvent('framenavigated', { url: fromProxiedUrl(window.location.href), title: document.title, name: '', isMainFrame: true });
   });
 
   ws.addEventListener('message', (event: MessageEvent) => {
@@ -1224,6 +1106,8 @@ function _boot(): void {
       .catch(err => _sendResult(id, undefined, err instanceof Error ? err.message : String(err)));
   });
 
+  // Reconnect after same-page WS drops (server restart, network blip).
+  // Navigation drops are handled by the payload script re-injecting _boot on the new page.
   ws.addEventListener('close', () => { _ws = null; setTimeout(_boot, 2000); });
   ws.addEventListener('error', () => {});
 }

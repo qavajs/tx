@@ -17,6 +17,8 @@ export interface ExecuteTestsOptions {
   onAttemptBegin?: (testName: string, attempt: number) => void;
   onAttemptError?: (message: string) => void;
   onAttemptFinally?: (testName: string, passed: boolean, attemptsLeft: number) => void;
+  onBeforeTest?: () => Promise<void>;
+  onAfterTest?: () => Promise<void>;
 }
 
 export async function executeTests(filePath: string, opts?: ExecuteTestsOptions): Promise<TestResult[]> {
@@ -30,6 +32,7 @@ export async function executeTests(filePath: string, opts?: ExecuteTestsOptions)
   const maxRetries = opts?.retries ?? getRetries();
   for (const t of queue) {
     if (opts?.isStopRequested?.()) break;
+    await opts?.onBeforeTest?.();
     let attempt = 0;
     let lastError: any;
     let passed = false;
@@ -132,6 +135,7 @@ export async function executeTests(filePath: string, opts?: ExecuteTestsOptions)
       results.push(r);
       try { opts?.onTestEnd?.(r); } catch (e) { console.error('[tx] onTestEnd error:', e); }
     }
+    await opts?.onAfterTest?.();
   }
   return results;
 }

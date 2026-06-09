@@ -82,6 +82,9 @@ export interface TxConfig {
   /** Maximum time a single test function may run in ms (default: 30000) */
   testTimeout?: number;
 
+  /** Maximum time to wait for the agent to reconnect after a navigation command in ms (default: 60000) */
+  navigationTimeout?: number;
+
   /** Number of times to retry a failing test before marking it failed (default: 0) */
   retries?: number;
 

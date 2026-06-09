@@ -111,6 +111,8 @@ export class NodeTestRunner {
             retries: this.config.retries,
             setCurrentTestInfo: (info) => { _testInfo.current = info; },
             isStopRequested: () => stopSignal?.stop ?? false,
+            onBeforeTest: () => this.server.startAgentForTest(),
+            onAfterTest: () => this.server.closeAgentForTest(),
             onAttemptBegin: (testName, attempt) => {
               this.server.pushToAllPanels({ type: 'runner-test-begin', file: fileKey, testName, attempt });
               if (attempt === 0) reporterHooks?.onTestBegin?.(fileKey, testName);
