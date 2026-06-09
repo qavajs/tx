@@ -193,10 +193,14 @@ export class TxWrapper {
   private _collector: ProxyCollector | null = null;
   private proxyUrl: string = '';
   private controlPanelProxyUrl: string = '';
+  private agentProxyUrl: string = '';
   private server: TestServer | null = null;
   private _browserChild: ChildProcess | null = null;
+  private _agentBrowserChild: ChildProcess | null = null;
+  private _agentSafariPid: number | null = null;
   private _isSafariBrowser = false;
   private _tempUserDataDir: string | null = null;
+  private _agentTempUserDataDir: string | null = null;
 
   constructor(private config: TxWrapperConfig = {}) {
     config.proxyHost = config.proxyHost || 'localhost';
@@ -245,7 +249,150 @@ export class TxWrapper {
     const controlPanelLocalUrl = `http://localhost:${this.config.controlPanelPort}`;
     this.controlPanelProxyUrl = this.proxy.openSession(controlPanelLocalUrl, this.controlPanelSession);
 
+    // Agent shell is proxied through the test session (same origin as test iframes)
+    const agentEntryUrl = `http://localhost:${this.config.controlPanelPort}/agent`;
+    this.agentProxyUrl = this.proxy.openSession(agentEntryUrl, this.session);
+
     this._collector = new ProxyCollector([this.session, this.controlPanelSession], (msg) => this.server?.sendToClients(msg));
+  }
+
+  /** Kill Safari agent by PID (Safari is launched via `open` so _agentBrowserChild is useless). */
+  private _killSafariAgent(): void {
+    console.log(`[tx] _killSafariAgent pid=${this._agentSafariPid}`);
+    if (this._agentSafariPid) {
+      try { process.kill(this._agentSafariPid, 'SIGKILL'); } catch { /* already gone */ }
+      this._agentSafariPid = null;
+    }
+    this._agentBrowserChild = null;
+  }
+
+  /** Open Safari at url and store its PID via pgrep -n after it starts. */
+  private _spawnSafariAgent(url: string): void {
+    this._agentBrowserChild = spawn('open', ['-n', '-a', 'Safari', url], { stdio: 'ignore' });
+    this._agentBrowserChild.unref();
+    setTimeout(() => {
+      try {
+        const raw = execSync('pgrep -n -x Safari').toString().trim();
+        console.log(`[tx] pgrep Safari → "${raw}"`);
+        const pid = parseInt(raw, 10);
+        if (!isNaN(pid)) this._agentSafariPid = pid;
+      } catch (e) { console.log('[tx] pgrep Safari failed:', e); }
+    }, 2000);
+  }
+
+  /** Close the agent browser after a test run ends. */
+  private _closeAgentBrowser(): void {
+    if (this._isSafariBrowser) { this._killSafariAgent(); return; }
+    if (this._agentBrowserChild) {
+      const { pid } = this._agentBrowserChild;
+      try {
+        if (pid !== undefined) {
+          if (process.platform !== 'win32') process.kill(-pid, 'SIGTERM');
+          else this._agentBrowserChild.kill();
+        }
+      } catch { /* already exited */ }
+      this._agentBrowserChild = null;
+    }
+    if (this._agentTempUserDataDir) {
+      try { fs.rmSync(this._agentTempUserDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      this._agentTempUserDataDir = null;
+    }
+  }
+
+  /** Kill the agent browser (if running) and spawn a fresh instance. On first call, just spawns. */
+  private async _restartAgentBrowser(): Promise<void> {
+    if (this._isSafariBrowser) {
+      this._killSafariAgent();
+      if (this.agentProxyUrl) this._spawnSafariAgent(this.agentProxyUrl);
+      return;
+    }
+
+    // For Chromium/Firefox: kill the old process group and wait for it to exit
+    // before spawning a new one, so the OS releases any lock files on the profile dir.
+    if (this._agentBrowserChild) {
+      const child = this._agentBrowserChild;
+      this._agentBrowserChild = null;
+      await new Promise<void>(resolve => {
+        const done = setTimeout(resolve, 3000); // fallback
+        child.once('exit', () => { clearTimeout(done); resolve(); });
+        const { pid } = child;
+        try {
+          if (pid !== undefined) {
+            if (process.platform !== 'win32') process.kill(-pid, 'SIGKILL');
+            else child.kill();
+          }
+        } catch { /* already exited */ }
+      });
+    }
+
+    if (this._agentTempUserDataDir) {
+      try { fs.rmSync(this._agentTempUserDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      this._agentTempUserDataDir = null;
+    }
+
+    const exePath = findBrowserExecutable(this.config.browser);
+    if (!exePath || !this.agentProxyUrl) return;
+    const [agentCmd, agentArgList] = this._buildBrowserArgs(exePath, this.agentProxyUrl, true);
+    this._agentBrowserChild = spawn(agentCmd, agentArgList, { stdio: 'ignore', detached: process.platform !== 'win32' });
+    this._agentBrowserChild.unref();
+    this._agentBrowserChild.on('error', (err: Error) => {
+      console.error('Agent browser error:', err.message);
+    });
+    console.log('[tx] Agent browser restarted');
+  }
+
+  /** Build [cmd, args] for spawning a browser at the given URL. `isAgent` uses a separate user-data-dir. */
+  private _buildBrowserArgs(exePath: string, url: string, isAgent: boolean): [string, string[]] {
+    if (this._isSafariBrowser) {
+      return ['open', ['-n', '-a', 'Safari', url]];
+    }
+    const isFirefox = exePath.toLowerCase().includes('firefox');
+    if (isFirefox) {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), isAgent ? 'tx-agent-ff-' : 'tx-ff-'));
+      if (isAgent) this._agentTempUserDataDir = tmpDir;
+      else this._tempUserDataDir = tmpDir;
+      // Embed the target URL as the startup homepage instead of passing it as a CLI argument.
+      // Firefox on a fresh profile often ignores the positional URL argument and shows its home
+      // page; setting browser.startup.homepage is more reliable.
+      // times.json marks the directory as a valid existing profile so Firefox reads prefs.js.
+      fs.writeFileSync(path.join(tmpDir, 'times.json'), JSON.stringify({ created: Date.now(), firstUse: Date.now() }));
+      fs.writeFileSync(path.join(tmpDir, 'prefs.js'), [
+        'user_pref("browser.startup.page", 1);',
+        `user_pref("browser.startup.homepage", ${JSON.stringify(url)});`,
+        'user_pref("startup.homepage_welcome_url", "");',
+        'user_pref("startup.homepage_override_url", "");',
+        'user_pref("browser.startup.homepage_override.mstone", "ignore");',
+        'user_pref("browser.aboutwelcome.enabled", false);',
+        'user_pref("browser.shell.checkDefaultBrowser", false);',
+        'user_pref("browser.sessionstore.resume_from_crash", false);',
+        'user_pref("datareporting.policy.dataSubmissionEnabled", false);',
+        'user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);',
+        'user_pref("browser.uitour.enabled", false);',
+        'user_pref("trailhead.firstrun.didSeeAboutWelcome", true);',
+      ].join('\n'));
+      return [exePath, [
+        '--no-remote', '--new-instance', '--disable-popup-blocking',
+        '-profile', tmpDir,
+        ...(this.config.headless ? ['--headless'] : []),
+        // No positional URL arg — Firefox opens browser.startup.homepage instead
+      ]];
+    }
+    // Chromium-based — each browser instance needs its own user-data-dir
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), isAgent ? 'tx-agent-' : 'tx-chrome-'));
+    const defaultProfileDir = path.join(tmpDir, 'Default');
+    fs.mkdirSync(defaultProfileDir, { recursive: true });
+    fs.writeFileSync(path.join(defaultProfileDir, 'Preferences'), JSON.stringify({
+      credentials_enable_service: false,
+      profile: { password_manager_enabled: false, password_manager_leak_detection: false },
+    }));
+    if (isAgent) this._agentTempUserDataDir = tmpDir;
+    else this._tempUserDataDir = tmpDir;
+    return [exePath, [
+      `--user-data-dir=${tmpDir}`,
+      '--no-first-run', '--no-default-browser-check', '--enable-automation', '--disable-popup-blocking',
+      ...(this.config.headless ? headlessArgs(exePath) : []),
+      url,
+    ]];
   }
 
   /**
@@ -284,8 +431,11 @@ export class TxWrapper {
         expectTimeout: this.config.expectTimeout,
         testTimeout:   this.config.testTimeout,
         retries:         this.config.retries,
+        agentProxyUrl:   this.agentProxyUrl,
         onGetCookieJar:  () => cpSession.cookies.serializeJar(),
         onSetCookieJar:  (jar) => cpSession.cookies.setJar(jar),
+        onRestartAgent:  () => this._restartAgentBrowser(),
+        onRunEnd:        () => this._closeAgentBrowser(),
       });
       await this.server.start(this.proxyUrl, this.config.viewport);
       this._collector?.attach();
@@ -331,51 +481,7 @@ export class TxWrapper {
       });
 
       this._isSafariBrowser = exePath.toLowerCase().includes('safari') && process.platform === 'darwin';
-      let spawnCmd: string;
-      let args: string[];
-
-      if (this._isSafariBrowser) {
-        // Safari must be launched via `open` — launching the binary directly triggers
-        // WebKit's WebProcess sandbox and blocks all resource loads.
-        spawnCmd = 'open';
-        args = ['-a', 'Safari', this.controlPanelProxyUrl];
-      } else {
-        spawnCmd = exePath;
-        const isFirefox = exePath.toLowerCase().includes('firefox');
-        if (isFirefox) {
-          // --no-remote / --new-instance prevent Firefox from reusing an existing window
-          args = [
-            '--no-remote',
-            '--new-instance',
-            '--disable-popup-blocking',
-            ...(this.config.headless ? ['--headless'] : []),
-            this.controlPanelProxyUrl,
-          ];
-        } else {
-          // Chromium-based: isolated user data dir so we always spawn a fresh instance
-          // (without this, Chrome reuses an existing window and the launcher exits immediately,
-          // making _browserChild.kill() a no-op on the already-gone launcher process)
-          this._tempUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tx-chrome-'));
-          const defaultProfileDir = path.join(this._tempUserDataDir, 'Default');
-          fs.mkdirSync(defaultProfileDir, { recursive: true });
-          fs.writeFileSync(
-            path.join(defaultProfileDir, 'Preferences'),
-            JSON.stringify({
-              credentials_enable_service: false,
-              profile: { password_manager_enabled: false, password_manager_leak_detection: false },
-            }),
-          );
-          args = [
-            `--user-data-dir=${this._tempUserDataDir}`,
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--enable-automation',
-            '--disable-popup-blocking',
-            ...(this.config.headless ? headlessArgs(exePath) : []),
-            this.controlPanelProxyUrl,
-          ];
-        }
-      }
+      const [spawnCmd, args] = this._buildBrowserArgs(exePath, this.controlPanelProxyUrl, false);
 
       console.log(`\n🌐 ${this.config.headless ? 'Launching headless browser' : 'Opening browser'}: ${exePath}`);
       // detached: true creates a new process group so we can kill the whole group (renderers etc.)
@@ -384,6 +490,7 @@ export class TxWrapper {
       this._browserChild.on('error', (err: Error) => {
         console.error('Browser error:', err.message);
       });
+
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       console.log(`\n✨ Control Panel ready for use`);
@@ -411,29 +518,30 @@ export class TxWrapper {
   async stop(): Promise<void> {
     console.log('\n🛑 Stopping Tx Wrapper...');
 
-    if (this._browserChild) {
-      const { pid } = this._browserChild;
-      try {
-        if (pid !== undefined) {
-          if (process.platform !== 'win32') {
-            process.kill(-pid, 'SIGTERM'); // kill the entire process group
-          } else {
-            this._browserChild.kill();
+    for (const [child, label] of [[this._browserChild, 'browser'], [this._agentBrowserChild, 'agent browser']] as const) {
+      if (child) {
+        const { pid } = child;
+        try {
+          if (pid !== undefined) {
+            if (process.platform !== 'win32') process.kill(-pid, 'SIGTERM');
+            else child.kill();
           }
-        }
-      } catch { /* already exited */ }
-      this._browserChild = null;
+        } catch { /* already exited */ }
+        void label;
+      }
+    }
+    this._browserChild = null;
+    this._agentBrowserChild = null;
+    if (this._agentSafariPid) {
+      try { process.kill(this._agentSafariPid, 'SIGTERM'); } catch { /* already gone */ }
+      this._agentSafariPid = null;
     }
 
-    if (this._tempUserDataDir) {
-      try { fs.rmSync(this._tempUserDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
-      this._tempUserDataDir = null;
+    for (const dir of [this._tempUserDataDir, this._agentTempUserDataDir]) {
+      if (dir) try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
-
-    if (this._isSafariBrowser) {
-      try { execSync('pkill -x Safari', { stdio: 'ignore' }); } catch { /* already closed */ }
-      this._isSafariBrowser = false;
-    }
+    this._tempUserDataDir = null;
+    this._agentTempUserDataDir = null;
 
     if (this.server) {
       await this.server.stop();

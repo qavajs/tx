@@ -3,7 +3,7 @@
 // dependency is safe because values are only accessed at call time, never
 // during module initialization.
 
-import { _awaitOrAbort, iframeDoc, iframeWin, logCommand, page } from './browser';
+import { _awaitOrAbort, logCommand, page } from './browser';
 import { Locator } from './locator';
 import { expectTimeout } from './config';
 
@@ -78,44 +78,44 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
 
     async toBeVisible(opts?: { timeout?: number }) {
       await locAssert('toBeVisible', async l => {
-        check(l._checkVisibility(), `Expected element ${negated ? 'NOT ' : ''}to be visible`);
+        check(await l.isVisible(), `Expected element ${negated ? 'NOT ' : ''}to be visible`);
       }, opts?.timeout);
     },
     async toBeHidden(opts?: { timeout?: number }) {
       await locAssert('toBeHidden', async l => {
-        check(!l._checkVisibility(), `Expected element ${negated ? 'NOT ' : ''}to be hidden`);
+        check(!await l.isVisible(), `Expected element ${negated ? 'NOT ' : ''}to be hidden`);
       }, opts?.timeout);
     },
     async toBeEnabled(opts?: { timeout?: number }) {
       await locAssert('toBeEnabled', async l => {
-        check(l._checkEnabled(), `Expected element ${negated ? 'NOT ' : ''}to be enabled`);
+        check(await l.isEnabled(), `Expected element ${negated ? 'NOT ' : ''}to be enabled`);
       }, opts?.timeout);
     },
     async toBeDisabled(opts?: { timeout?: number }) {
       await locAssert('toBeDisabled', async l => {
-        check(!l._checkEnabled(), `Expected element ${negated ? 'NOT ' : ''}to be disabled`);
+        check(!await l.isEnabled(), `Expected element ${negated ? 'NOT ' : ''}to be disabled`);
       }, opts?.timeout);
     },
     async toBeChecked(opts?: { timeout?: number }) {
       await locAssert('toBeChecked', async l => {
-        check(l._checkChecked(), `Expected element ${negated ? 'NOT ' : ''}to be checked`);
+        check(await l.isChecked(), `Expected element ${negated ? 'NOT ' : ''}to be checked`);
       }, opts?.timeout);
     },
     async toBeEditable(opts?: { timeout?: number }) {
       await locAssert('toBeEditable', async l => {
-        check(l._checkEditable(), `Expected element ${negated ? 'NOT ' : ''}to be editable`);
+        check(await l.isEditable(), `Expected element ${negated ? 'NOT ' : ''}to be editable`);
       }, opts?.timeout);
     },
     async toBeEmpty(opts?: { timeout?: number }) {
       await locAssert('toBeEmpty', async l => {
-        const got = l._inputValue();
+        const got = await l.inputValue();
         check(got === '', negated ? 'Expected input NOT to be empty' : `Expected empty input, got ${JSON.stringify(got)}`);
       }, opts?.timeout);
     },
     async toHaveText(text: string | RegExp, opts?: { exact?: boolean; timeout?: number }) {
       const exact = opts?.exact ?? false;
       await locAssert('toHaveText', async l => {
-        const got = (l._textContent() ?? '').trim();
+        const got = ((await l.textContent()) ?? '').trim();
         const matches = text instanceof RegExp ? text.test(got) : exact ? got === text : got.includes(text as string);
         check(matches, negated
           ? `Expected text NOT to match ${JSON.stringify(text)}, got ${JSON.stringify(got)}`
@@ -124,7 +124,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
     },
     async toContainText(text: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toContainText', async l => {
-        const got = l._textContent() ?? '';
+        const got = (await l.textContent()) ?? '';
         const matches = text instanceof RegExp ? text.test(got) : got.includes(text as string);
         check(matches, negated
           ? `Expected NOT to contain ${JSON.stringify(text)}, got ${JSON.stringify(got)}`
@@ -133,38 +133,37 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
     },
     async toHaveValue(value: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveValue', async l => {
-        const got = l._inputValue();
+        const got = await l.inputValue();
         const matches = value instanceof RegExp ? value.test(got) : got === value;
         check(matches, `Expected value ${negated ? 'NOT ' : ''}${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout, String(value instanceof RegExp ? value : JSON.stringify(value)));
     },
     async toHaveAttribute(name: string, value: string | RegExp = '', opts?: { timeout?: number }) {
       await locAssert('toHaveAttr', async l => {
-        const got = l._getAttribute(name);
+        const got = await l.getAttribute(name);
         const matches = value instanceof RegExp ? value.test(got ?? '') : got === value;
         check(matches, `Expected [${name}]${negated ? ' NOT' : ''}=${JSON.stringify(value)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout, `[${name}]=${value instanceof RegExp ? value : JSON.stringify(value)}`);
     },
     async toHaveCount(count: number, opts?: { timeout?: number }) {
       await locAssert('toHaveCount', async l => {
-        const got = l._els().length;
+        const got = await l.count();
         check(got === count, `Expected ${negated ? 'NOT ' : ''}${count} elements, got ${got}`);
       }, opts?.timeout, String(count));
     },
     async toHaveClass(cls: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveClass', async l => {
-        const got = l._el()?.className ?? '';
+        const got = (await l.getAttribute('class')) ?? '';
         const matches = cls instanceof RegExp ? cls.test(got) : got.split(/\s+/).includes(cls as string);
         check(matches, `Expected class ${negated ? 'NOT ' : ''}${JSON.stringify(cls)}, got ${JSON.stringify(got)}`);
       }, opts?.timeout, String(cls instanceof RegExp ? cls : JSON.stringify(cls)));
     },
     async toHaveCSS(property: string, value: string | RegExp, opts?: { timeout?: number }) {
       await locAssert('toHaveCSS', async l => {
-        const el = l._el() as HTMLElement | null;
-        if (!el) throw new Error('Element not found');
-        const win = iframeWin();
-        if (!win) throw new Error('no active page');
-        const computed = win.getComputedStyle(el).getPropertyValue(property).trim();
+        const computed = ((await l.evaluate(
+          `(el, prop) => window.getComputedStyle(el).getPropertyValue(prop)`,
+          property,
+        )) ?? '').trim();
         const matches = value instanceof RegExp ? value.test(computed) : computed === (value as string).trim();
         check(matches, `Expected CSS ${JSON.stringify(property)} ${negated ? 'NOT ' : ''}to be ${JSON.stringify(String(value))}, got ${JSON.stringify(computed)}`);
       }, opts?.timeout, String(value instanceof RegExp ? value : JSON.stringify(value)));
@@ -184,7 +183,7 @@ function _makeExpect(target: any, negated: boolean, localMatchers: Record<string
     async toHaveTitle(title: string | RegExp, opts?: { timeout?: number }) {
       await la(pfx + 'toHaveTitle', `${expectCall}(page).${pfx}toHaveTitle(${JSON.stringify(String(title))})`, async () => {
         await _retry(async () => {
-          const got = iframeDoc()?.title ?? '';
+          const got = await page.title();
           const matches = title instanceof RegExp ? title.test(got) : got === title;
           check(matches, `Expected title ${negated ? 'NOT ' : ''}${JSON.stringify(title)}, got "${got}"`);
         }, t(opts?.timeout));

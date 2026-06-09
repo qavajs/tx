@@ -26,8 +26,11 @@ export interface TestServerConfig {
   expectTimeout?: number;
   testTimeout?: number;
   retries?: number;
+  agentProxyUrl?: string;
   onGetCookieJar?: () => string;
   onSetCookieJar?: (jar: string | null) => void;
+  onRestartAgent?: () => void | Promise<void>;
+  onRunEnd?: () => void;
 }
 
 export class TestServer {
@@ -47,12 +50,22 @@ export class TestServer {
   private expectTimeout: number | undefined;
   private testTimeout: number | undefined;
   private retries: number | undefined;
+  private agentProxyUrl: string | undefined;
+  /** Computed in start() — the Hammerhead proxy prefix for the test session (e.g. http://proxy:1836/sessionId/) */
+  private _testSessionProxyPrefix: string = '';
   private _doneResolve: ((r: { passed: number; failed: number }) => void) | null = null;
   private _donePromise: Promise<{ passed: number; failed: number }>;
   private _wss: WebSocketServer | null = null;
-  private _wsClients = new Set<WebSocket>();
+  /** Fully-identified panel clients (sent hello role=panel or old clients without hello) */
+  private _panelClients = new Set<WebSocket>();
+  /** The single connected test-browser agent */
+  private _testBrowserClient: WebSocket | null = null;
+  /** Pending tb-command correlation: id → originating panel WebSocket */
+  private _pendingTbCommands = new Map<string, WebSocket>();
   private _getCookieJarCb: (() => string) | undefined;
   private _setCookieJarCb: ((jar: string | null) => void) | undefined;
+  private _onRestartAgentCb: (() => void | Promise<void>) | undefined;
+  private _onRunEndCb: (() => void) | undefined;
 
   constructor(config: TestServerConfig = {}) {
     this.port = config.port ?? DEFAULT_CONTROL_PANEL_PORT;
@@ -76,8 +89,11 @@ export class TestServer {
     this.expectTimeout = config.expectTimeout;
     this.testTimeout = config.testTimeout;
     this.retries = config.retries;
+    this.agentProxyUrl = config.agentProxyUrl;
     this._getCookieJarCb = config.onGetCookieJar;
     this._setCookieJarCb = config.onSetCookieJar;
+    this._onRestartAgentCb = config.onRestartAgent;
+    this._onRunEndCb = config.onRunEnd;
     this._donePromise = new Promise(resolve => { this._doneResolve = resolve; });
   }
 
@@ -101,16 +117,21 @@ export class TestServer {
   }
 
   start(proxyUrl: string, viewport?: { width: number; height: number }): Promise<void> {
+    // Derive the session proxy prefix from the proxyUrl (which is session/about:blank).
+    // e.g. 'http://localhost:1836/sessionId/about:blank' → 'http://localhost:1836/sessionId/'
+    this._testSessionProxyPrefix = proxyUrl.replace(/[^/]+$/, '');
     return new Promise((resolve) => {
       this.server = http.createServer((req, res) => {
-        if (req.url === '/' && req.method === 'GET') {
+        const url = req.url ?? '/';
+
+        if (url === '/' && req.method === 'GET') {
           const html = generateControlPanelHTML({ proxyUrl, controlPanelPort: this.port, viewport, testMode: this.testMode, snapshot: this.snapshot, grep: this.grep, actionTimeout: this.actionTimeout, expectTimeout: this.expectTimeout, testTimeout: this.testTimeout, retries: this.retries } satisfies ControlPanelConfig);
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(html);
           return;
         }
 
-        if (req.url === '/controller.js' && req.method === 'GET') {
+        if (url === '/controller.js' && req.method === 'GET') {
           const candidates = [
             path.join(__dirname, 'controller.js'),
             path.join(__dirname, 'dist', 'controller.js'),
@@ -126,7 +147,30 @@ export class TestServer {
           return;
         }
 
-        if (req.url === '/about-blank' && req.method === 'GET') {
+        if (url === '/agent' && req.method === 'GET') {
+          const html = generateAgentHTML(this.port, this._testSessionProxyPrefix);
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(html);
+          return;
+        }
+
+        if (url === '/agent.js' && req.method === 'GET') {
+          const candidates = [
+            path.join(__dirname, 'agent.js'),
+            path.join(__dirname, 'dist', 'agent.js'),
+          ];
+          const agentPath = candidates.find(p => fs.existsSync(p));
+          if (!agentPath) {
+            res.writeHead(503, { 'Content-Type': 'text/plain' });
+            res.end('agent.js not found — run: npm run build');
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
+          res.end(fs.readFileSync(agentPath));
+          return;
+        }
+
+        if (url === '/about-blank' && req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(generateMockHTML());
           return;
@@ -138,16 +182,69 @@ export class TestServer {
 
       this._wss = new WebSocketServer({ server: this.server });
       this._wss.on('connection', (ws: WebSocket) => {
-        this._wsClients.add(ws);
-        this._send(ws, { type: 'version', version: this._version });
+        // Hold in staging — wait for hello message to classify role
+        let classified = false;
+        const classifyTimeout = setTimeout(() => {
+          // Treat unclassified client as panel (backward compat)
+          if (!classified) {
+            classified = true;
+            this._addPanelClient(ws);
+          }
+        }, 3000);
 
-        ws.on('close', () => this._wsClients.delete(ws));
-        ws.on('error', () => this._wsClients.delete(ws));
+        ws.on('close', () => {
+          clearTimeout(classifyTimeout);
+          this._panelClients.delete(ws);
+          if (this._testBrowserClient === ws) {
+            this._testBrowserClient = null;
+            // Notify panels the agent disconnected
+            this.sendToClients({ type: 'agent-disconnected' });
+          }
+          // Reject any pending commands from this panel
+          for (const [id, originWs] of this._pendingTbCommands) {
+            if (originWs === ws) {
+              this._pendingTbCommands.delete(id);
+            }
+          }
+        });
+        ws.on('error', () => {
+          this._panelClients.delete(ws);
+          if (this._testBrowserClient === ws) this._testBrowserClient = null;
+        });
 
         ws.on('message', (rawData: Buffer) => {
-          let msg: BrowserMessage;
-          try { msg = JSON.parse(rawData.toString()) as BrowserMessage; } catch { return; }
-          this._handleWsMessage(ws, msg);
+          let msg: any;
+          try { msg = JSON.parse(rawData.toString()); } catch { return; }
+
+          // Handle hello classification
+          if (msg.type === 'hello') {
+            clearTimeout(classifyTimeout);
+            if (!classified) {
+              classified = true;
+              if (msg.role === 'test-browser') {
+                this._testBrowserClient = ws;
+                this.sendToClients({ type: 'agent-connected' });
+                console.log('[tx] Test browser agent connected');
+              } else {
+                this._addPanelClient(ws);
+              }
+            }
+            return;
+          }
+
+          // If not yet classified, treat as panel
+          if (!classified) {
+            clearTimeout(classifyTimeout);
+            classified = true;
+            this._addPanelClient(ws);
+          }
+
+          // Route messages based on who sent them
+          if (ws === this._testBrowserClient) {
+            this._handleAgentMessage(ws, msg);
+          } else if (this._panelClients.has(ws)) {
+            this._handlePanelMessage(ws, msg);
+          }
         });
       });
 
@@ -156,6 +253,76 @@ export class TestServer {
         resolve();
       });
     });
+  }
+
+  private _addPanelClient(ws: WebSocket): void {
+    this._panelClients.add(ws);
+    this._send(ws, { type: 'version', version: this._version });
+    // If agent is already connected, notify this panel
+    if (this._testBrowserClient) {
+      this._send(ws, { type: 'agent-connected' });
+    }
+  }
+
+  private _handlePanelMessage(ws: WebSocket, msg: any): void {
+    // tb-command: forward to agent
+    if (msg.type === 'tb-command') {
+      const { id } = msg;
+      if (!id) return;
+      if (!this._testBrowserClient || this._testBrowserClient.readyState !== WebSocket.OPEN) {
+        this._send(ws, { type: 'tb-result', id, error: 'Test browser agent not connected' });
+        return;
+      }
+      this._pendingTbCommands.set(id, ws);
+      this._send(this._testBrowserClient, msg);
+      return;
+    }
+    // Restart agent browser: tell the agent to reload itself, then spawn a fresh process.
+    if (msg.type === 'restart-agent') {
+      const agentWs = this._testBrowserClient;
+      // Null out immediately so no more agent messages are routed.
+      this._testBrowserClient = null;
+      this.sendToClients({ type: 'agent-disconnected' });
+      if (agentWs) {
+        // Tell the agent page to reload before we terminate the socket.
+        // Give it ~100 ms to receive the message, then terminate + spawn fresh process.
+        this._send(agentWs, { type: 'agent-reload' });
+        setTimeout(() => {
+          agentWs.terminate();
+          if (this._onRestartAgentCb) {
+            Promise.resolve(this._onRestartAgentCb()).catch(e => console.error('[tx] restart-agent error:', e));
+          }
+        }, 100);
+      } else if (this._onRestartAgentCb) {
+        Promise.resolve(this._onRestartAgentCb()).catch(e => console.error('[tx] restart-agent error:', e));
+      }
+      return;
+    }
+    // Regular browser → server messages
+    const browserMsg = msg as BrowserMessage;
+    this._handleWsMessage(ws, browserMsg);
+  }
+
+  private _handleAgentMessage(_ws: WebSocket, msg: any): void {
+    if (msg.type === 'tb-result') {
+      const { id } = msg;
+      if (!id) return;
+      const originWs = this._pendingTbCommands.get(id);
+      this._pendingTbCommands.delete(id);
+      if (originWs && originWs.readyState === WebSocket.OPEN) {
+        // Forward result back to the originating panel
+        this._send(originWs, msg);
+      }
+      return;
+    }
+    if (msg.type === 'tb-event') {
+      // Fan-out to all panel clients
+      const payload = JSON.stringify(msg);
+      for (const client of this._panelClients) {
+        if (client.readyState === WebSocket.OPEN) client.send(payload);
+      }
+      return;
+    }
   }
 
   private _handleWsMessage(ws: WebSocket, msg: BrowserMessage): void {
@@ -199,6 +366,16 @@ export class TestServer {
   private _onRunEnd(msg: Msg<'run-end'>): void {
     const { passed, failed, total, duration } = msg;
     this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
+    const agentWs = this._testBrowserClient;
+    if (agentWs) {
+      this._testBrowserClient = null;
+      this._send(agentWs, { type: 'agent-close' });
+      setTimeout(() => {
+        agentWs.terminate();
+        this.sendToClients({ type: 'agent-disconnected' });
+        this._onRunEndCb?.();
+      }, 100);
+    }
   }
 
   private _onReport(msg: Msg<'report'>): void {
@@ -364,19 +541,23 @@ export class TestServer {
     try { ws.send(JSON.stringify(msg)); } catch { /* ignore sends on closing sockets */ }
   }
 
+  /** Send to all panel clients only (not the test-browser agent) */
   sendToClients(msg: object): void {
     const payload = JSON.stringify(msg);
-    for (const client of this._wsClients) {
+    for (const client of this._panelClients) {
       if (client.readyState === WebSocket.OPEN) client.send(payload);
     }
   }
 
   stop(): Promise<void> {
     return new Promise((resolve) => {
-      for (const client of this._wsClients) {
-        client.terminate();
+      for (const client of this._panelClients) client.terminate();
+      this._panelClients.clear();
+      if (this._testBrowserClient) {
+        this._testBrowserClient.terminate();
+        this._testBrowserClient = null;
       }
-      this._wsClients.clear();
+      this._pendingTbCommands.clear();
       if (this._wss) {
         this._wss.close();
         this._wss = null;
@@ -393,6 +574,32 @@ export class TestServer {
   getPort(): number {
     return this.port;
   }
+}
+
+function generateAgentHTML(port: number, proxyPrefix: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TX Agent</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; }
+  #tab-container { position: relative; width: 100%; height: 100%; }
+  #tab-container iframe { width: 100%; height: 100%; border: none; display: none; position: absolute; top: 0; left: 0; }
+</style>
+<script>
+  window.__AGENT_CONFIG__ = {
+    port: ${port},
+    proxyPrefix: ${JSON.stringify(proxyPrefix)}
+  };
+</script>
+</head>
+<body>
+<div id="tab-container"></div>
+<script src="/agent.js"></script>
+</body>
+</html>`;
 }
 
 function generateMockHTML(): string {

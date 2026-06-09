@@ -896,7 +896,28 @@
             flex-direction: column;
         }
         .tx-browser-pane--hidden { display: none; }
-        #iframe-container { flex: 1; overflow: hidden; background: var(--bg-app); position: relative; }
+
+        .tx-agent-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+        .tx-agent-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: var(--text-dim);
+            transition: background 0.3s;
+        }
+        .tx-agent-status-dot.connected {
+            background: var(--jade);
+            box-shadow: 0 0 5px var(--jade);
+        }
+
         .tx-time-travel-summary {
             display: flex;
             align-items: center;

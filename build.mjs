@@ -59,4 +59,14 @@ await esbuild.build({
   sourcemap: true,
 });
 
+await esbuild.build({
+  ...sharedOpts,
+  entryPoints: ['src/browser/agent.ts'],
+  bundle: true,
+  platform: 'browser',
+  format: 'iife',
+  outfile: 'dist/agent.js',
+  sourcemap: true,
+});
+
 console.log('Build complete → dist/');

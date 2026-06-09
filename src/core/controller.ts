@@ -1,4 +1,4 @@
-import { log, attach, setLogContainer, page, expect, request, initIframe, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsOnMessage, wsRequest } from '../browser/browser';
+import { log, attach, setLogContainer, page, expect, request, initBrowserState, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsOnMessage, wsRequest } from '../browser/browser';
 import { escHtml, escAttr } from '../utils/htmlUtils';
 import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
 import { renderTestFileCard } from '../panel/render';
@@ -271,6 +271,7 @@ async function _singleRun(
   setStopBtnVisible(true);
   setupFn();
   notifyRunBegin(getSpecs());
+  await _restartAgentAndWait();
   try {
     const { passed, failed, duration } = countResults(await runFn());
     notifyRunEnd(passed, failed, passed + failed, duration);
@@ -316,6 +317,7 @@ async function _runMultiFile(
   specs: Array<{ file: string; tests: string[] | null }>,
   total: number,
 ): Promise<{ passed: number; failed: number }> {
+  await _restartAgentAndWait();
   _stopRequested = false;
   _isTestRunning = true;
   setStopBtnVisible(true);
@@ -433,6 +435,29 @@ let _stopRequested = false;
 let _currentTestCancel: ((err: Error) => void) | null = null;
 let _runTotal = 0;
 let _runDone = 0;
+let _agentConnected = false;
+
+function _setAgentStatus(connected: boolean): void {
+  _agentConnected = connected;
+  const dot = document.getElementById('agentStatusDot');
+  const text = document.getElementById('agentStatusText');
+  if (dot) dot.className = 'tx-agent-status-dot' + (connected ? ' connected' : '');
+  if (text) text.textContent = connected ? 'Test browser connected' : 'Waiting for test browser…';
+}
+
+async function _waitForAgent(timeoutMs = 10000): Promise<void> {
+  if (_agentConnected) return;
+  const t0 = Date.now();
+  while (!_agentConnected && Date.now() - t0 < timeoutMs) {
+    await new Promise<void>(r => setTimeout(r, 100));
+  }
+}
+
+async function _restartAgentAndWait(): Promise<void> {
+  _setAgentStatus(false);
+  wsSend('restart-agent', {});
+  await _waitForAgent(30000);
+}
 
 function setStopBtnVisible(visible: boolean) {
   const btn = document.getElementById('stopBtn') as HTMLButtonElement | null;
@@ -750,7 +775,7 @@ window.stopExecution = () => {
 document.addEventListener('DOMContentLoaded', async () => {
   setOnTabsChanged(renderTabBar);
   initNetworkListeners();
-  initIframe();
+  initBrowserState();
   renderTabBar();
   renderBrowserView();
   document.getElementById('testList')?.addEventListener('click', (event: MouseEvent) => {
@@ -823,8 +848,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   wsConnect(
     () => { if (!_isTestRunning) setTopbarStatus('connected', 'Connected'); },
-    () => { if (!_isTestRunning) setTopbarStatus('disconnected', 'Disconnected'); },
+    () => { if (!_isTestRunning) setTopbarStatus('disconnected', 'Disconnected'); _setAgentStatus(false); },
   );
+  wsOnMessage('agent-connected',    () => { _setAgentStatus(true); });
+  wsOnMessage('agent-disconnected', () => { _setAgentStatus(false); });
+  wsOnMessage('tb-event', (msg: { event: string; payload: Record<string, unknown> }) => {
+    if (msg.event === 'framenavigated' || msg.event === 'load') {
+      const url = msg.payload?.url as string | undefined;
+      if (url) {
+        const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
+        if (navInput && document.activeElement !== navInput) navInput.value = url;
+      }
+    }
+  });
   wsOnMessage('version', async (msg: { version: number }) => {
     if (_watchVersion < 0) {
       _watchVersion = msg.version;

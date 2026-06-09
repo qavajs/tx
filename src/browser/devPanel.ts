@@ -1,4 +1,4 @@
-import { fromProxiedUrl, iframeDoc, wsOnMessage, page } from './browser';
+import { fromProxiedUrl, sendCommand, wsOnMessage, page } from './browser';
 import { escHtml } from '../utils/htmlUtils';
 import { SEL } from '../panel/selectors';
 
@@ -325,33 +325,20 @@ function _switchDevTabInternal(tab: 'network' | 'console' | 'selector') {
 const _HIGHLIGHT_CLASS = '__tx_sel_hi__';
 const _HIGHLIGHT_STYLE_ID = '__tx_sel_style__';
 
-function _ensureHighlightStyle(doc: Document) {
-  if (doc.getElementById(_HIGHLIGHT_STYLE_ID)) return;
-  const s = doc.createElement('style');
-  s.id = _HIGHLIGHT_STYLE_ID;
-  s.textContent = `.__tx_sel_hi__ { outline: 2px solid #34a870 !important; outline-offset: 1px !important; background-color: rgba(52,168,112,0.08) !important; }`;
-  (doc.head || doc.documentElement).appendChild(s);
-}
-
+// Clear highlights in agent iframe via evaluate
 function _clearSelectorHighlights() {
-  const doc = iframeDoc();
-  if (!doc) return;
-  for (const el of Array.from(doc.querySelectorAll<Element>('.' + _HIGHLIGHT_CLASS))) {
-    el.classList.remove(_HIGHLIGHT_CLASS);
-  }
-  const styleEl = doc.getElementById(_HIGHLIGHT_STYLE_ID);
-  if (styleEl) styleEl.remove();
+  sendCommand('evaluate', {
+    code: `() => { document.querySelectorAll('.${_HIGHLIGHT_CLASS}').forEach(el => el.classList.remove('${_HIGHLIGHT_CLASS}')); const s = document.getElementById('${_HIGHLIGHT_STYLE_ID}'); if (s) s.remove(); }`,
+  }).catch(() => {});
 }
 
-function _describeElement(el: Element, idx: number): string {
-  const tag = el.tagName.toLowerCase();
+function _describeElementData(el: { tag: string; id: string; classes: string; text: string }, idx: number): string {
   const id = el.id ? `#${el.id}` : '';
-  const cls = Array.from(el.classList).filter(c => c !== _HIGHLIGHT_CLASS).slice(0, 3).map(c => `.${c}`).join('');
-  const text = (el.textContent || '').trim().slice(0, 40);
-  return `<span class="tx-selector-match-idx">${idx + 1}</span><span class="tx-selector-match-tag">${escHtml(tag)}</span><span class="tx-selector-match-id">${escHtml(id)}</span><span class="tx-selector-match-cls">${escHtml(cls)}</span>${text ? `<span class="tx-selector-match-text">${escHtml(text)}</span>` : ''}`;
+  const cls = el.classes ? el.classes.split(' ').map(c => `.${c}`).join('') : '';
+  return `<span class="tx-selector-match-idx">${idx + 1}</span><span class="tx-selector-match-tag">${escHtml(el.tag)}</span><span class="tx-selector-match-id">${escHtml(id)}</span><span class="tx-selector-match-cls">${escHtml(cls)}</span>${el.text ? `<span class="tx-selector-match-text">${escHtml(el.text)}</span>` : ''}`;
 }
 
-function _runSelectorQuery(selector: string) {
+async function _runSelectorQuery(selector: string) {
   const input = document.getElementById(SEL.selectorInput) as HTMLInputElement | null;
   const status = document.getElementById(SEL.selectorStatus);
   const matchList = document.getElementById(SEL.selectorMatches);
@@ -367,48 +354,50 @@ function _runSelectorQuery(selector: string) {
     return;
   }
 
-  const doc = iframeDoc();
-  if (!doc) {
-    status.textContent = 'No page loaded in iframe';
-    status.className = 'tx-selector-status error';
-    matchList.innerHTML = '';
-    return;
-  }
-
-  let matches: Element[];
   try {
-    matches = Array.from(doc.querySelectorAll(selector));
+    type ElDesc = { tag: string; id: string; classes: string; text: string };
+    const result = await sendCommand<ElDesc[] | null>('evaluate', {
+      code: `(selector) => {
+        try {
+          const hi = '${_HIGHLIGHT_CLASS}', sid = '${_HIGHLIGHT_STYLE_ID}';
+          const els = Array.from(document.querySelectorAll(selector));
+          let s = document.getElementById(sid);
+          if (!s) { s = document.createElement('style'); s.id = sid; s.textContent = '.'+hi+'{outline:2px solid #34a870!important;outline-offset:1px!important;background:rgba(52,168,112,.08)!important}'; (document.head||document.documentElement).appendChild(s); }
+          els.forEach(el => el.classList.add(hi));
+          return els.map(el => ({ tag: el.tagName.toLowerCase(), id: el.id||'', classes: Array.from(el.classList).filter(c=>c!==hi).slice(0,3).join(' '), text: (el.textContent||'').trim().slice(0,40) }));
+        } catch { return null; }
+      }`,
+      arg: selector,
+    });
+
+    if (result === null) {
+      status.textContent = 'Invalid selector';
+      status.className = 'tx-selector-status error';
+      matchList.innerHTML = '';
+      if (input) input.className = 'tx-selector-input error';
+      return;
+    }
+
     if (input) input.className = 'tx-selector-input';
+
+    if (result.length === 0) {
+      status.textContent = 'No elements matched';
+      status.className = 'tx-selector-status zero';
+      matchList.innerHTML = '';
+      return;
+    }
+
+    status.textContent = `${result.length} element${result.length === 1 ? '' : 's'} matched`;
+    status.className = 'tx-selector-status match';
+    matchList.innerHTML = result.map((el, i) =>
+      `<div class="tx-selector-match-item" data-idx="${i}">${_describeElementData(el, i)}</div>`,
+    ).join('');
   } catch {
-    status.textContent = 'Invalid selector';
+    status.textContent = 'No page loaded';
     status.className = 'tx-selector-status error';
     matchList.innerHTML = '';
-    if (input) input.className = 'tx-selector-input error';
-    return;
+    if (input) input.className = 'tx-selector-input';
   }
-
-  _ensureHighlightStyle(doc);
-  for (const el of matches) el.classList.add(_HIGHLIGHT_CLASS);
-
-  if (matches.length === 0) {
-    status.textContent = 'No elements matched';
-    status.className = 'tx-selector-status zero';
-    matchList.innerHTML = '';
-    return;
-  }
-
-  status.textContent = `${matches.length} element${matches.length === 1 ? '' : 's'} matched`;
-  status.className = 'tx-selector-status match';
-
-  matchList.innerHTML = matches.map((el, i) => {
-    return `<div class="tx-selector-match-item" data-idx="${i}">${_describeElement(el, i)}</div>`;
-  }).join('');
-
-  matchList.querySelectorAll<HTMLElement>('.tx-selector-match-item').forEach((row, i) => {
-    row.addEventListener('click', () => {
-      matches[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  });
 }
 
 (window as any).runSelectorQuery = _runSelectorQuery;

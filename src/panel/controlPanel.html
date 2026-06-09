@@ -69,7 +69,10 @@
             <div class="tx-tab-bar" id="tabBar"></div>
             <div class="tx-browser-main">
                 <div class="tx-browser-pane" id="liveBrowserPane">
-                    <div id="iframe-container"></div>
+                    <div id="agentStatus" class="tx-agent-status">
+                        <span class="tx-agent-status-dot" id="agentStatusDot"></span>
+                        <span id="agentStatusText">Waiting for test browser…</span>
+                    </div>
                 </div>
                 <div class="tx-browser-pane tx-browser-pane--hidden" id="snapshotPane">
                     <div class="tx-snapshot-header">
