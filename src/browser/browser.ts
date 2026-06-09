@@ -45,6 +45,7 @@ let viewportW: number | null = null;
 let viewportH: number | null = null;
 
 export function reapplyViewport() {
+  if (typeof document === 'undefined') return;
   const tag = document.getElementById('viewportTag');
   if (tag) tag.textContent = viewportW && viewportH ? `${viewportW} × ${viewportH}` : '—';
 }
@@ -62,10 +63,16 @@ let _tabs: TabEntry[] = [];
 let _activeTabId: string | null = null;
 function _activeTab(): TabEntry | null { return _tabs.find(t => t.id === _activeTabId) ?? null; }
 
-export const API_BASE = 'http://localhost:' + window.__CONFIG__.port;
+export let API_BASE: string = typeof window !== 'undefined' ? 'http://localhost:' + window.__CONFIG__.port : '';
 
 // Derive proxy prefix by stripping the trailing page URL from the session URL
-const _proxyPrefix = window.__CONFIG__.proxyUrl.replace(/[^/]+$/, '');
+let _proxyPrefix: string = typeof window !== 'undefined' ? window.__CONFIG__.proxyUrl.replace(/[^/]+$/, '') : '';
+
+/** Called by NodeTestRunner before first use in Node.js context. */
+export function initNodeBrowserApi(port: number, proxyUrl: string): void {
+  API_BASE = 'http://localhost:' + port;
+  _proxyPrefix = proxyUrl.replace(/[^/]+$/, '');
+}
 
 // ── Navigation state cache ────────────────────────────────────────────────────
 
@@ -756,7 +763,7 @@ export function initBrowserState() {
   _initScripts.length = 0;
   _locatorHandlers.length = 0;
   _routeHandlers.length = 0;
-  if (window.__CONFIG__.viewport) {
+  if (typeof window !== 'undefined' && window.__CONFIG__?.viewport) {
     const { width, height } = window.__CONFIG__.viewport;
     viewportW = width; viewportH = height;
     reapplyViewport();
@@ -826,7 +833,7 @@ wsOnMessage('tb-event', (msg: Record<string, unknown>) => {
       if (tab) { tab.url = url; tab.title = title; }
       _onTabsChanged?.();
       _emitPage('load');
-      if (window.__CONFIG__.snapshot) _captureSnapshot('load');
+      if (typeof window !== 'undefined' && window.__CONFIG__?.snapshot) _captureSnapshot('load');
       break;
     }
 

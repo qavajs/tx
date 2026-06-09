@@ -29,8 +29,20 @@ export function parseFixtureDeps(fn: FixtureFn<any>): string[] {
 
 // window.tx is injected by the browser-side controller bundle — these stubs bridge
 // the Node-authored fixture API to the live browser globals at test runtime.
+// In Node.js (NodeTestRunner), call setNodeTxContext() to provide the same APIs.
 
-const tx = (): any => (window as any).tx;
+let _nodeTx: any = null;
+let _getNodeTestInfo: (() => any) | null = null;
+
+export function setNodeTxContext(txApi: any, getTestInfo: () => any): void {
+  _nodeTx = txApi;
+  _getNodeTestInfo = getTestInfo;
+}
+
+const tx = (): any => {
+  if (_nodeTx !== null) return _nodeTx;
+  return (window as any).tx;
+};
 
 export const defaultFixtureDefs: FixtureDefs = {
   page:    async (_f, use) => { await use(tx().page); },
@@ -40,8 +52,8 @@ export const defaultFixtureDefs: FixtureDefs = {
   request: async (_f, use) => { await use(tx().request); },
   log:     async (_f, use) => { await use(tx().log); },
   attach:  async (_f, use) => { await use(tx().attach); },
-  
-  testInfo: async (_f, use) => { await use((window as any).__CURRENT_TEST_INFO__); },
+
+  testInfo: async (_f, use) => { await use(_getNodeTestInfo ? _getNodeTestInfo() : (window as any).__CURRENT_TEST_INFO__); },
   step:    async (_f, use) => {
     
     await use((title: string, fn: () => any): any => {

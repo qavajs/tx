@@ -1,3 +1,4 @@
+import * as vm from 'vm';
 import { type HookScope, type QueueItem, type FixtureDefs, parseFixtureDeps, defaultFixtureDefs, buildTestRegistrar } from './testRegistrar';
 export type { QueueItem, FixtureDefs };
 
@@ -14,10 +15,10 @@ import type { LogEntry } from '../browser/browser';
 
 export async function runWithFixtures(
   fixtureDefs: FixtureDefs,
-  
+
   testFn: (fixtures: Record<string, any>) => unknown,
 ): Promise<void> {
-  
+
   const resolved: Record<string, any> = {};
   const ordered: string[] = [];
   const visiting = new Set<string>();
@@ -55,7 +56,8 @@ export async function runWithFixtures(
 
 export function buildTestQueue(
   code: string,
-  filters: { filterSuite?: string; filterTest?: string; filterTests?: string[] }
+  filters: { filterSuite?: string; filterTest?: string; filterTests?: string[] },
+  vmContext: Record<string, unknown>
 ): QueueItem[] | { parseError: string } {
   const queue: QueueItem[] = [];
   const stack: string[] = [];
@@ -64,15 +66,24 @@ export function buildTestQueue(
 
   const baseTest = buildTestRegistrar({ queue, stack, tagStack, hookStack, ...filters }, defaultFixtureDefs);
 
-  const _txModule = { ...(window as any).tx, test: baseTest, describe: baseTest.describe, beforeEach: baseTest.beforeEach, afterEach: baseTest.afterEach, beforeAll: baseTest.beforeAll, afterAll: baseTest.afterAll };
-  (window as any).require = (id: string) => {
+  // Inject test registrar globals into the vm context
+  vmContext.describe = baseTest.describe;
+  vmContext.it = baseTest;
+  vmContext.test = baseTest;
+  vmContext.beforeEach = baseTest.beforeEach;
+  vmContext.afterEach = baseTest.afterEach;
+  vmContext.beforeAll = baseTest.beforeAll;
+  vmContext.afterAll = baseTest.afterAll;
+
+  // Set up require('@qavajs/tx') to return the full test API
+  const _txModule = { ...vmContext.tx as object, test: baseTest, describe: baseTest.describe, beforeEach: baseTest.beforeEach, afterEach: baseTest.afterEach, beforeAll: baseTest.beforeAll, afterAll: baseTest.afterAll };
+  vmContext.require = (id: string) => {
     if (id === '@qavajs/tx') return _txModule;
     throw new Error(`Cannot require '${id}' in test context`);
   };
 
   try {
-    // @ts-ignore
-    new window['%hammerhead%'].nativeMethods.Function(code)();
+    vm.runInNewContext(code, vm.createContext(vmContext));
   } catch (e: unknown) {
     const err = e instanceof Error ? e : new Error(String(e));
     return { parseError: err.stack || err.message };

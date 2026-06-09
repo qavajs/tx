@@ -56,6 +56,7 @@ export function stopCollectingLogs(): LogEntry[] {
 // ── DOM log entry helpers ─────────────────────────────────────────────────────
 
 function createLogEntry(message: string, state: LogState, cmd?: string, duration?: number): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
   const container = _logContainer ?? document.getElementById('console');
   if (!container) return null;
   const cls = state;
@@ -111,6 +112,7 @@ export function attach(label: string, body: string, contentType = 'text/plain'):
   }
   createLogEntry(label, 'info', 'attach');
 
+  if (typeof document === 'undefined') return;
   const container = _logContainer ?? document.getElementById('console');
   if (!container) return;
 
@@ -150,7 +152,7 @@ export function logCommand(message: string, cmd: string): TxCommandHandle {
       const dur = duration ?? Math.max(0, Date.now() - startedAt);
       updateLogEntry(entry, 'pass', dur);
       if (_collectedLogs) _collectedLogs.push({ cmd, message, state: 'pass', duration: dur });
-      if (window.__CONFIG__?.snapshot && _snapshotCommands.has(cmd) && _snapshotCaptureFn) {
+      if (typeof window !== 'undefined' && window.__CONFIG__?.snapshot && _snapshotCommands.has(cmd) && _snapshotCaptureFn) {
         try {
           const snapshotId = _snapshotCaptureFn(message || cmd);
           if (snapshotId > 0 && entry) {
@@ -201,7 +203,7 @@ function logGroup(message: string, cmdOrFn?: string | (() => any), fn?: () => an
   const resolvedCmd = typeof cmdOrFn === 'string' ? cmdOrFn : 'group';
   const resolvedFn = typeof cmdOrFn === 'function' ? cmdOrFn : fn;
 
-  const container = _logContainer ?? document.getElementById('console');
+  const container = (typeof document !== 'undefined') ? (_logContainer ?? document.getElementById('console')) : null;
   let groupEl: HTMLElement | null = null;
   let bodyEl: HTMLElement | null = null;
 
@@ -259,6 +261,59 @@ function logGroup(message: string, cmdOrFn?: string | (() => any), fn?: () => an
 }
 
 export const log = Object.assign(_log, { open: logCommand, group: logGroup });
+
+const _LOG_ICONS: Record<string, string> = { pass: '✓', fail: '✗', info: '›', warn: '~' };
+
+export function renderLogsToContainer(logs: LogEntry[], container: HTMLElement): void {
+  function renderEntry(entry: LogEntry, parent: HTMLElement): void {
+    if (entry.children) {
+      const hasFail = entry.children.some(c => c.state === 'fail');
+      const hasWarn = entry.children.some(c => c.state === 'warn');
+      const hasPass = entry.children.some(c => c.state === 'pass');
+      const groupEl = document.createElement('div');
+      groupEl.className = 'tx-cmd-group open';
+      groupEl.classList.toggle('fail', hasFail);
+      groupEl.classList.toggle('warn', !hasFail && hasWarn);
+      groupEl.classList.toggle('pass', !hasFail && !hasWarn && hasPass);
+      const hdrEl = document.createElement('div');
+      hdrEl.className = 'tx-cmd-group-hdr';
+      hdrEl.onclick = () => groupEl.classList.toggle('open');
+      const chevEl = document.createElement('span'); chevEl.className = 'tx-cmd-group-chevron'; chevEl.textContent = '▶';
+      const msgEl = document.createElement('span'); msgEl.className = 'tx-cmd-group-msg'; msgEl.textContent = entry.message;
+      hdrEl.appendChild(chevEl); hdrEl.appendChild(msgEl);
+      const bodyEl = document.createElement('div'); bodyEl.className = 'tx-cmd-group-body';
+      for (const child of entry.children) renderEntry(child, bodyEl);
+      groupEl.appendChild(hdrEl); groupEl.appendChild(bodyEl);
+      parent.appendChild(groupEl);
+    } else {
+      const el = document.createElement('div');
+      el.className = `tx-cmd ${entry.state}`;
+      const iconEl = document.createElement('span'); iconEl.className = `tx-cmd-icon ${entry.state}`; iconEl.textContent = _LOG_ICONS[entry.state] ?? '›';
+      const msgEl = document.createElement('span'); msgEl.className = 'tx-cmd-msg'; msgEl.textContent = entry.message;
+      el.appendChild(iconEl); el.appendChild(msgEl);
+      if (entry.duration != null) {
+        const durEl = document.createElement('span'); durEl.className = 'tx-cmd-dur'; durEl.textContent = entry.duration + 'ms';
+        el.appendChild(durEl);
+      }
+      parent.appendChild(el);
+      if (entry.attachment) {
+        const { body, contentType } = entry.attachment;
+        if (contentType.startsWith('image/')) {
+          const img = document.createElement('img');
+          img.src = body.startsWith('data:') ? body : `data:${contentType};base64,${body}`;
+          img.className = 'tx-attachment-img'; img.title = entry.message;
+          parent.appendChild(img);
+        } else if (contentType === 'text/html') {
+          const btn = document.createElement('button');
+          btn.className = 'tx-attachment-html-btn'; btn.textContent = '⊞ View HTML';
+          btn.onclick = () => (window as any).openHtmlAttachment?.(body, entry.message);
+          parent.appendChild(btn);
+        }
+      }
+    }
+  }
+  for (const entry of logs) renderEntry(entry, container);
+}
 
 export async function _withCommand<T>(message: string, cmd: string, fn: () => Promise<T>): Promise<T> {
   const entry = logCommand(message, cmd);

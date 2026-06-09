@@ -31,9 +31,13 @@ export type BrowserMessage =
   | { type: 'set-cookie-jar'; id: string; jar: object }
   | { type: 'save-storage-state'; id: string; filePath: string; data: string }
   | { type: 'load-storage-state'; id: string; filePath: string }
-  | { type: 'restart-agent' };
+  | { type: 'restart-agent' }
+  | { type: 'start-run'; files: string[]; filterSuite?: string; filterTest?: string; filterTests?: string[] }
+  | { type: 'stop-run' };
 
 // ── Server → Browser ──────────────────────────────────────────────────────────
+
+import type { TestResult } from './runner/executor';
 
 export type ServerMessage =
   | { type: 'version'; version: number }
@@ -43,7 +47,11 @@ export type ServerMessage =
   | { type: 'cookie-jar'; id: string; jar?: object; error?: string }
   | { type: 'cookie-jar-set'; id: string; error?: string }
   | { type: 'storage-state-saved'; id: string; error?: string }
-  | { type: 'storage-state-loaded'; id: string; data?: string; error?: string };
+  | { type: 'storage-state-loaded'; id: string; data?: string; error?: string }
+  | { type: 'runner-begin'; files: string[]; tests: Array<{ file: string; name: string }> }
+  | { type: 'runner-test-begin'; file: string; testName: string; attempt: number }
+  | { type: 'runner-test-end'; file: string; result: TestResult }
+  | { type: 'runner-end'; passed: number; failed: number; duration: number; stopped: boolean };
 
 // Helper: narrow a BrowserMessage to the variant with a given type tag
 export type Msg<T extends BrowserMessage['type']> = Extract<BrowserMessage, { type: T }>;

@@ -45,13 +45,13 @@ export async function _checkLocatorHandlers(): Promise<void> {
   try {
     for (let i = _locatorHandlers.length - 1; i >= 0; i--) {
       const h = _locatorHandlers[i];
-      if (!await h.locator.isVisible()) continue;
+      if (!await h.locator._isVisible()) continue;
       h.invocations++;
       await h.handler(h.locator);
       if (!h.noWaitAfter) {
         const waitMs = actionTimeout();
         const t0 = Date.now();
-        while (Date.now() - t0 < waitMs && await h.locator.isVisible()) {
+        while (Date.now() - t0 < waitMs && await h.locator._isVisible()) {
           await _awaitOrAbort(50);
         }
       }
@@ -235,9 +235,41 @@ export class Locator {
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
+  // ── Raw queries (no logging — used internally by assertions) ─────────────
+
+  _textContent(): Promise<string | null> {
+    return sendCommand<string | null>('textContent', _specParam(this._spec));
+  }
+  _inputValue(): Promise<string> {
+    return sendCommand<string>('inputValue', _specParam(this._spec));
+  }
+  _getAttribute(name: string): Promise<string | null> {
+    return sendCommand<string | null>('getAttribute', { ..._specParam(this._spec), name });
+  }
+  _isVisible(): Promise<boolean> {
+    return sendCommand<boolean>('isVisible', _specParam(this._spec));
+  }
+  _isEnabled(): Promise<boolean> {
+    return sendCommand<boolean>('isEnabled', _specParam(this._spec));
+  }
+  _isChecked(): Promise<boolean> {
+    return sendCommand<boolean>('isChecked', _specParam(this._spec));
+  }
+  _isEditable(): Promise<boolean> {
+    return sendCommand<boolean>('isEditable', _specParam(this._spec));
+  }
+  _count(): Promise<number> {
+    return sendCommand<number>('count', _specParam(this._spec));
+  }
+  _evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T> {
+    const code = typeof pageFunction === 'function' ? pageFunction.toString() : pageFunction;
+    return sendCommand<T>('locatorEvaluate', { ..._specParam(this._spec), code, arg });
+  }
+
+  // ── Public queries (logged) ───────────────────────────────────────────────
+
   async textContent(): Promise<string | null> {
-    return _withCommand(`${this._desc}.textContent()`, 'textContent', () =>
-      sendCommand<string | null>('textContent', _specParam(this._spec)));
+    return _withCommand(`${this._desc}.textContent()`, 'textContent', () => this._textContent());
   }
 
   async innerText(): Promise<string> {
@@ -246,55 +278,43 @@ export class Locator {
   }
 
   async inputValue(): Promise<string> {
-    return _withCommand(`${this._desc}.inputValue()`, 'inputValue', () =>
-      sendCommand<string>('inputValue', _specParam(this._spec)));
+    return _withCommand(`${this._desc}.inputValue()`, 'inputValue', () => this._inputValue());
   }
 
   async getAttribute(name: string): Promise<string | null> {
-    return _withCommand(`${this._desc}.getAttribute(${JSON.stringify(name)})`, 'getAttribute', () =>
-      sendCommand<string | null>('getAttribute', { ..._specParam(this._spec), name }));
+    return _withCommand(`${this._desc}.getAttribute(${JSON.stringify(name)})`, 'getAttribute', () => this._getAttribute(name));
   }
 
   async isVisible(): Promise<boolean> {
-    return _withCommand(`${this._desc}.isVisible()`, 'isVisible', () =>
-      sendCommand<boolean>('isVisible', _specParam(this._spec)));
+    return _withCommand(`${this._desc}.isVisible()`, 'isVisible', () => this._isVisible());
   }
 
   async isHidden(): Promise<boolean> {
-    return _withCommand(`${this._desc}.isHidden()`, 'isHidden', async () =>
-      !(await sendCommand<boolean>('isVisible', _specParam(this._spec))));
+    return _withCommand(`${this._desc}.isHidden()`, 'isHidden', async () => !(await this._isVisible()));
   }
 
   async isEnabled(): Promise<boolean> {
-    return _withCommand(`${this._desc}.isEnabled()`, 'isEnabled', () =>
-      sendCommand<boolean>('isEnabled', _specParam(this._spec)));
+    return _withCommand(`${this._desc}.isEnabled()`, 'isEnabled', () => this._isEnabled());
   }
 
   async isDisabled(): Promise<boolean> {
-    return _withCommand(`${this._desc}.isDisabled()`, 'isDisabled', async () =>
-      !(await sendCommand<boolean>('isEnabled', _specParam(this._spec))));
+    return _withCommand(`${this._desc}.isDisabled()`, 'isDisabled', async () => !(await this._isEnabled()));
   }
 
   async isChecked(): Promise<boolean> {
-    return _withCommand(`${this._desc}.isChecked()`, 'isChecked', () =>
-      sendCommand<boolean>('isChecked', _specParam(this._spec)));
+    return _withCommand(`${this._desc}.isChecked()`, 'isChecked', () => this._isChecked());
   }
 
   async isEditable(): Promise<boolean> {
-    return _withCommand(`${this._desc}.isEditable()`, 'isEditable', () =>
-      sendCommand<boolean>('isEditable', _specParam(this._spec)));
+    return _withCommand(`${this._desc}.isEditable()`, 'isEditable', () => this._isEditable());
   }
 
   async count(): Promise<number> {
-    return _withCommand(`${this._desc}.count()`, 'count', () =>
-      sendCommand<number>('count', _specParam(this._spec)));
+    return _withCommand(`${this._desc}.count()`, 'count', () => this._count());
   }
 
   async evaluate<T = any>(pageFunction: string | ((element: Element, arg?: any) => T | Promise<T>), arg?: any): Promise<T> {
-    return _withCommand(`${this._desc}.evaluate(...)`, 'evaluate', () => {
-      const code = typeof pageFunction === 'function' ? pageFunction.toString() : pageFunction;
-      return sendCommand<T>('locatorEvaluate', { ..._specParam(this._spec), code, arg });
-    });
+    return _withCommand(`${this._desc}.evaluate(...)`, 'evaluate', () => this._evaluate(pageFunction, arg));
   }
 
   async waitFor(opts?: { state?: 'visible' | 'hidden' | 'attached' | 'detached'; timeout?: number }): Promise<void> {

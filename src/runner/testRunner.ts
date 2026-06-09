@@ -1,8 +1,6 @@
 import { SourceMapConsumer } from 'source-map-js';
-import { actionTimeout, expectTimeout, testTimeout } from '../browser/config';
-import type { WindowConfig } from '../types';
+import { actionTimeout, expectTimeout, testTimeout, getRetries } from '../browser/config';
 
-declare global { interface Window { __CONFIG__: WindowConfig; __CURRENT_TEST_INFO__: unknown; } }
 import { type TestResult, runWithFixtures, buildTestQueue } from './executor';
 import { page, closeExtraTabs, setTestAbort, startCollectingLogs, stopCollectingLogs, setLogContainer } from '../browser/browser';
 import { _clearSoftErrors, _flushSoftErrors } from '../browser/assertions';
@@ -39,6 +37,9 @@ export interface ExecuteTestsOptions {
   filterTest?: string;
   filterTests?: string[];
   filename?: string;
+  retries?: number;
+  vmContext?: Record<string, unknown>;
+  setCurrentTestInfo?: (info: unknown) => void;
   onTestEnd?: (result: TestResult) => void;
   isStopRequested?: () => boolean;
   setCancelFn?: (fn: ((err: Error) => void) | null) => void;
@@ -49,7 +50,8 @@ export interface ExecuteTestsOptions {
 
 export async function executeTests(code: string, opts?: ExecuteTestsOptions): Promise<TestResult[]> {
   const remap = makeRemapper(code);
-  const queue = buildTestQueue(code, opts ?? {});
+  const vmContext = opts?.vmContext ?? {};
+  const queue = buildTestQueue(code, opts ?? {}, vmContext);
 
   if ('parseError' in queue) {
     const err = remap ? remap(queue.parseError) : queue.parseError;
@@ -57,7 +59,7 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
   }
 
   const results: TestResult[] = [];
-  const maxRetries = window.__CONFIG__?.retries ?? 0;
+  const maxRetries = opts?.retries ?? getRetries();
   for (const t of queue) {
     if (opts?.isStopRequested?.()) break;
     let attempt = 0;
@@ -68,16 +70,19 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
     while (attempt <= maxRetries && !passed && !opts?.isStopRequested?.()) {
       opts?.onAttemptBegin?.(t.name, attempt);
       const titlePath = t.name.split(' > ');
-      window.__CURRENT_TEST_INFO__ = {
+      const testInfo = {
         title: titlePath[titlePath.length - 1],
         titlePath,
         retry: attempt,
         tags: t.tags,
         timeout: testTimeout(),
-        retries: window.__CONFIG__?.retries ?? 0,
+        retries: maxRetries,
         actionTimeout: actionTimeout(),
         expectTimeout: expectTimeout(),
       };
+      if (opts?.setCurrentTestInfo) {
+        opts.setCurrentTestInfo(testInfo);
+      }
       const t0 = Date.now();
       let _timeoutId: ReturnType<typeof setTimeout> | undefined;
       startCollectingLogs();

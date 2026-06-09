@@ -137,6 +137,7 @@ function headlessArgs(exePath: string): string[] {
 }
 
 import { TestServer } from './server';
+import { NodeTestRunner } from '../runner/node-runner';
 import { startWatcher } from '../runner/watcher';
 import { setPreprocessor } from '../runner/runner';
 import { ProxyCollector } from '../proxy/collector';
@@ -195,6 +196,7 @@ export class TxWrapper {
   private controlPanelProxyUrl: string = '';
   private agentProxyUrl: string = '';
   private server: TestServer | null = null;
+  private _nodeRunner: NodeTestRunner | null = null;
   private _browserChild: ChildProcess | null = null;
   private _agentBrowserChild: ChildProcess | null = null;
   private _agentSafariPid: number | null = null;
@@ -449,6 +451,18 @@ export class TxWrapper {
       });
       await this.server.start(this.proxyUrl, this.config.viewport);
       this._collector?.attach();
+
+      // Wire Node test runner
+      this._nodeRunner = new NodeTestRunner(this.server, {
+        port: this.config.controlPanelPort!,
+        proxyUrl: this.proxyUrl,
+        retries: this.config.retries,
+        actionTimeout: this.config.actionTimeout,
+        expectTimeout: this.config.expectTimeout,
+        testTimeout: this.config.testTimeout,
+        snapshot: this.config.snapshot,
+      });
+      this.server.setNodeRunner(this._nodeRunner);
 
       console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);
       console.log(`✅ Control Panel via proxy at ${this.controlPanelProxyUrl}`);

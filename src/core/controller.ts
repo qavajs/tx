@@ -1,9 +1,10 @@
 import { log, attach, setLogContainer, page, expect, request, initBrowserState, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsOnMessage, wsRequest } from '../browser/browser';
+import { renderLogsToContainer } from '../browser/log';
 import { escHtml, escAttr } from '../utils/htmlUtils';
 import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
 import { renderTestFileCard } from '../panel/render';
-import { fetchAndRun, type TestResult, type RunSpec } from '../panel/runner-bridge';
 import type { ParsedFile } from '../panel/render';
+import type { TestResult } from '../runner/executor';
 
 declare global {
   interface Window {
@@ -12,9 +13,9 @@ declare global {
     toggleCard: (filename: string) => void;
     toggleSuite: (filename: string, suiteName: string) => void;
     runTestByFilename:(filename: string) => void;
-    runAll: () => Promise<{ passed: number; failed: number }>;
+    runAll: () => void;
     applyFilter: (query: string) => void;
-    runFiltered: () => Promise<{ passed: number; failed: number }>;
+    runFiltered: () => void;
     stopExecution: () => void;
   }
 }
@@ -117,16 +118,17 @@ function setTestItemStatus(filename: string, fullName: string, state: 'running'|
   if (state === 'pass' || state === 'fail') refreshRunnerStatus();
 }
 
-function resetTestItems(filename: string) {
-  const card = document.getElementById('card-' + escAttr(filename));
-  card?.querySelectorAll('.tx-test-item, .tx-test-dot')
-    .forEach(el => el.classList.remove('running', 'pass', 'fail'));
-  card?.querySelectorAll<HTMLElement>('.tx-test-badge')
-    .forEach(el => { el.className = 'tx-test-badge'; el.textContent = ''; });
-  card?.querySelectorAll<HTMLElement>('.tx-suite-badges')
-    .forEach(el => { el.innerHTML = ''; });
-  card?.querySelectorAll<HTMLElement>('.tx-test-log')
-    .forEach(el => { el.innerHTML = ''; el.classList.remove('open'); });
+function resetSingleTestItem(filename: string, fullName: string) {
+  const key = escAttr(filename + '\x01' + fullName);
+  const item = document.querySelector<HTMLElement>(`[data-testkey="${key}"]`);
+  if (!item) return;
+  item.classList.remove('running', 'pass', 'fail');
+  item.querySelector('.tx-test-dot')?.classList.remove('running', 'pass', 'fail');
+  const badge = item.querySelector<HTMLElement>('.tx-test-badge');
+  if (badge) { badge.className = 'tx-test-badge'; badge.textContent = ''; }
+  const logEl = item.nextElementSibling as HTMLElement | null;
+  if (logEl?.classList.contains('tx-test-log')) { logEl.innerHTML = ''; logEl.classList.remove('open'); }
+  refreshSuiteBadge(filename, item.dataset.suite ?? '');
 }
 
 function refreshSuiteBadge(filename: string, suiteName: string) {
@@ -198,22 +200,27 @@ window.toggleSuite = (filename: string, suiteName: string) => {
   const collapsed = suiteRow.classList.toggle('collapsed');
   const card = document.getElementById('card-' + escAttr(filename));
   card?.querySelectorAll<HTMLElement>('.tx-test-item').forEach(item => {
-    if (item.dataset.suite === suiteName) {
-      item.style.display = collapsed ? 'none' : '';
-      const logEl = item.nextElementSibling as HTMLElement | null;
-      if (logEl?.classList.contains('tx-test-log')) logEl.style.display = collapsed ? 'none' : '';
-    }
+    if (item.dataset.suite !== suiteName) return;
+    item.style.display = collapsed ? 'none' : '';
+    const logEl = item.nextElementSibling as HTMLElement | null;
+    if (logEl?.classList.contains('tx-test-log')) logEl.style.display = collapsed ? 'none' : '';
   });
 };
 
-// ── Server communication ──────────────────────────────────────────────────────
+// ── Run state ─────────────────────────────────────────────────────────────────
 
-function notifyRunBegin(specs: Array<{ file: string; tests: string[] | null }>): void {
-  wsSend('run-begin', { specs } as Record<string, unknown>);
-}
+let _watchVersion = -1;
+let _isTestRunning = false;
+let _runDone = 0;
+let _runTotal = 0;
+let _agentConnected = false;
 
-function notifyRunEnd(passed: number, failed: number, total: number, duration: number): void {
-  wsSend('run-end', { passed, failed, total, duration });
+function _setAgentStatus(connected: boolean): void {
+  _agentConnected = connected;
+  const dot = document.getElementById('agentStatusDot');
+  const text = document.getElementById('agentStatusText');
+  if (dot) dot.className = 'tx-agent-status-dot' + (connected ? ' connected' : '');
+  if (text) text.textContent = connected ? 'Test browser connected' : 'Waiting for test browser…';
 }
 
 function refreshRunnerStatus() {
@@ -239,225 +246,6 @@ function renderTestResults(results: TestResult[], filename?: string) {
   if (filename) updateCardStatus(filename, passed, failed);
 }
 
-// ── Run helpers ───────────────────────────────────────────────────────────────
-
-function openAndResetCard(filename: string) {
-  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
-  resetTestItems(filename);
-  setCardRunning(filename);
-}
-
-function countResults(results: TestResult[]): { passed: number; failed: number; duration: number } {
-  let passed = 0, failed = 0, duration = 0;
-  for (const r of results) {
-    if (r.passed) passed++
-    else failed++;
-    duration += r.duration;
-  }
-  return { passed, failed, duration };
-}
-
-async function _singleRun(
-  setupFn: () => void,
-  getSpecs: () => Array<{ file: string; tests: string[] | null }>,
-  runFn: () => Promise<TestResult[]>,
-  onError: (e: any) => void,
-  total = 0,
-): Promise<void> {
-  _stopRequested = false;
-  _runDone = 0;
-  _runTotal = total;
-  if (total > 0) showProgress(0, total);
-  setStopBtnVisible(true);
-  setupFn();
-  notifyRunBegin(getSpecs());
-  await _restartAgentAndWait();
-  try {
-    const { passed, failed, duration } = countResults(await runFn());
-    notifyRunEnd(passed, failed, passed + failed, duration);
-  } catch (e: any) {
-    log('Error: ' + (e as Error).message, { type: 'error' });
-    onError(e);
-    notifyRunEnd(0, 1, 1, 0);
-  }
-  hideProgress();
-  setStopBtnVisible(false);
-}
-
-async function _fetchAndRunFile(
-  filename: string,
-  spec: RunSpec | null,
-  uiFilename?: string,
-): Promise<TestResult[]> {
-  const results = await fetchAndRun(filename, spec, {
-    isStopRequested: () => _stopRequested,
-    setCancelFn: (fn) => { _currentTestCancel = fn; },
-    onAttemptBegin: uiFilename ? (testName, attempt) => {
-      setTestItemStatus(uiFilename, testName, 'running');
-      activateTestLog(uiFilename, testName, attempt);
-    } : undefined,
-    onAttemptError: uiFilename ? appendErrorToLog : undefined,
-    onAttemptFinally: uiFilename ? (testName) => {
-      const logEl = document.getElementById('tlog-' + escAttr(uiFilename + '\x01' + testName));
-      logEl?.classList.remove('open');
-      _activeTestLog = null;
-    } : undefined,
-    onTestEnd: (r) => {
-      wsSend('report', { filename, tests: [r] } as Record<string, unknown>);
-      if (uiFilename) setTestItemStatus(uiFilename, r.name, r.passed ? 'pass' : 'fail', r.duration, r.retry);
-      if (_runTotal > 0) showProgress(++_runDone, _runTotal);
-    },
-  });
-  renderTestResults(results, filename);
-  return results;
-}
-
-async function _runMultiFile(
-  byFile: Map<string, string[] | null>,
-  specs: Array<{ file: string; tests: string[] | null }>,
-  total: number,
-): Promise<{ passed: number; failed: number }> {
-  await _restartAgentAndWait();
-  _stopRequested = false;
-  _isTestRunning = true;
-  setStopBtnVisible(true);
-  _runDone = 0;
-  _runTotal = total;
-  if (total > 0) showProgress(0, total);
-  setTopbarStatus('running', 'Running…');
-  notifyRunBegin(specs);
-  let totalPass = 0, totalFail = 0, totalDuration = 0;
-  for (const [filename, tests] of byFile) {
-    if (_stopRequested) break;
-    openAndResetCard(filename);
-    log(`run  ${filename}`);
-    try {
-      const spec: RunSpec | null = tests ? { filterTests: tests } : null;
-      const { passed, failed, duration } = countResults(
-        await _fetchAndRunFile(filename, spec, filename)
-      );
-      totalPass += passed; totalFail += failed; totalDuration += duration;
-    } catch (e: any) {
-      log('Error: ' + e.message, { type: 'error' });
-      updateCardStatus(filename, 0, 1);
-      totalFail++;
-    }
-  }
-  notifyRunEnd(totalPass, totalFail, totalPass + totalFail, totalDuration);
-  _isTestRunning = false;
-  hideProgress();
-  setStopBtnVisible(false);
-  setTopbarStatus(
-    _stopRequested ? 'ready' : (totalFail === 0 ? 'passed' : 'failed'),
-    _stopRequested
-      ? `Stopped — ${totalPass} passed, ${totalFail} failed`
-      : `${totalPass} passed, ${totalFail} failed`,
-  );
-  return { passed: totalPass, failed: totalFail };
-}
-
-// ── Window actions ────────────────────────────────────────────────────────────
-
-window.runTestByFilename = async (filename: string) => {
-  const total = document.getElementById('card-' + escAttr(filename))?.querySelectorAll('.tx-test-item').length ?? 0;
-  await _singleRun(
-    () => { openAndResetCard(filename); log(`run  ${filename}`); },
-    () => [{ file: filename, tests: null }],
-    () => _fetchAndRunFile(filename, null, filename),
-    () => updateCardStatus(filename, 0, 1),
-    total,
-  );
-};
-
-window.runSuite = async (filename: string, suiteName: string) => {
-  let suiteTests: string[] = [];
-  await _singleRun(
-    () => {
-      const card = document.getElementById('card-' + escAttr(filename));
-      card?.classList.add('open');
-      card?.querySelectorAll<HTMLElement>('.tx-test-item').forEach(item => {
-        if (item.dataset.suite !== suiteName) return;
-        item.classList.remove('running', 'pass', 'fail');
-        item.querySelector('.tx-test-dot')?.classList.remove('running', 'pass', 'fail');
-        const badge = item.querySelector<HTMLElement>('.tx-test-badge');
-        if (badge) { badge.className = 'tx-test-badge'; badge.textContent = ''; }
-        const logEl = item.nextElementSibling as HTMLElement | null;
-        if (logEl?.classList.contains('tx-test-log')) { logEl.innerHTML = ''; logEl.classList.remove('open'); }
-      });
-      const sbadge = document.getElementById('sbadges-' + escAttr(filename + '\x01' + suiteName));
-      if (sbadge) sbadge.innerHTML = '<span class="tx-badge tx-badge--running">●</span>';
-      setCardRunning(filename);
-      suiteTests = Array.from(
-        document.getElementById('card-' + escAttr(filename))
-          ?.querySelectorAll<HTMLElement>('.tx-test-item') ?? []
-      ).filter(el => el.dataset.suite === suiteName).map(el => el.dataset.fullname!).filter(Boolean);
-    },
-    () => [{ file: filename, tests: suiteTests.length ? suiteTests : null }],
-    () => _fetchAndRunFile(filename, { filterSuite: suiteName }, filename),
-    () => updateCardStatus(filename, 0, 1),
-    suiteTests.length,
-  );
-};
-
-window.runTest = async (filename: string, fullName: string) => {
-  await _singleRun(
-    () => {
-      document.getElementById('card-' + escAttr(filename))?.classList.add('open');
-      setTestItemStatus(filename, fullName, 'running');
-      setCardRunning(filename);
-    },
-    () => [{ file: filename, tests: [fullName] }],
-    () => _fetchAndRunFile(filename, { filterTest: fullName }, filename),
-    () => setTestItemStatus(filename, fullName, 'fail'),
-    1,
-  );
-};
-
-window.runAll = async (): Promise<{ passed: number; failed: number }> => {
-  const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
-  if (filterInput?.value.trim()) return window.runFiltered();
-  const btn = document.getElementById('runAllBtn') as HTMLButtonElement | null;
-  if (btn) btn.disabled = true;
-  const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'));
-  const byFile = new Map(allCards.map(c => [c.dataset.filename!, null] as [string, null]));
-  const specs = allCards.map(c => ({ file: c.dataset.filename!, tests: null }));
-  const total = document.querySelectorAll('.tx-test-item').length;
-  const result = await _runMultiFile(byFile, specs, total);
-  if (btn) btn.disabled = false;
-  return result;
-};
-
-// ── State ─────────────────────────────────────────────────────────────────────
-
-let _watchVersion = -1;
-let _isTestRunning = false;
-let _stopRequested = false;
-let _currentTestCancel: ((err: Error) => void) | null = null;
-let _runTotal = 0;
-let _runDone = 0;
-let _agentConnected = false;
-
-function _setAgentStatus(connected: boolean): void {
-  _agentConnected = connected;
-  const dot = document.getElementById('agentStatusDot');
-  const text = document.getElementById('agentStatusText');
-  if (dot) dot.className = 'tx-agent-status-dot' + (connected ? ' connected' : '');
-  if (text) text.textContent = connected ? 'Test browser connected' : 'Waiting for test browser…';
-}
-
-async function _waitForAgent(timeoutMs = 10000): Promise<void> {
-  if (_agentConnected) return;
-  const t0 = Date.now();
-  while (!_agentConnected && Date.now() - t0 < timeoutMs) {
-    await new Promise<void>(r => setTimeout(r, 100));
-  }
-}
-
-async function _restartAgentAndWait(): Promise<void> {
-  _setAgentStatus(false);
-  wsSend('restart-agent', {});
-  await _waitForAgent(30000);
-}
 
 function setStopBtnVisible(visible: boolean) {
   const btn = document.getElementById('stopBtn') as HTMLButtonElement | null;
@@ -465,6 +253,121 @@ function setStopBtnVisible(visible: boolean) {
   btn.classList.toggle('tx-hidden', !visible);
   btn.disabled = false;
 }
+
+// ── Window actions ─────────────────────────────────────────────────────────────
+
+window.runTestByFilename = (filename: string) => {
+  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+  log(`run  ${filename}`);
+  wsSend('start-run', { files: [filename] } as Record<string, unknown>);
+};
+
+window.runSuite = (filename: string, suiteName: string) => {
+  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+  wsSend('start-run', { files: [filename], filterSuite: suiteName } as Record<string, unknown>);
+};
+
+window.runTest = (filename: string, fullName: string) => {
+  document.getElementById('card-' + escAttr(filename))?.classList.add('open');
+  wsSend('start-run', { files: [filename], filterTest: fullName } as Record<string, unknown>);
+};
+
+window.runAll = () => {
+  const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
+  if (filterInput?.value.trim()) return window.runFiltered();
+  const allCards = Array.from(document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]'));
+  const files = allCards.map(c => c.dataset.filename!);
+  wsSend('start-run', { files } as Record<string, unknown>);
+};
+
+window.stopExecution = () => {
+  wsSend('stop-run', {});
+  const btn = document.getElementById('stopBtn') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  setTopbarStatus('running', 'Stopping…');
+};
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+
+function parseStatusFilter(query: string): { statusFilter: 'pass' | 'fail' | null; remainingQuery: string } {
+  let statusFilter: 'pass' | 'fail' | null = null;
+  let remaining = query;
+  if (/:passed\b/.test(remaining)) {
+    statusFilter = 'pass';
+    remaining = remaining.replace(/:passed\b/, '').trim();
+  } else if (/:failed\b/.test(remaining)) {
+    statusFilter = 'fail';
+    remaining = remaining.replace(/:failed\b/, '').trim();
+  }
+  return { statusFilter, remainingQuery: remaining };
+}
+
+function buildFilterMatcher(query: string): ((name: string) => boolean) | null {
+  const q = query.trim();
+  if (!q) return null;
+  const reMatch = q.match(/^\/(.+)\/([gimsuy]*)$/);
+  if (reMatch) {
+    try {
+      const re = new RegExp(reMatch[1], reMatch[2]);
+      return name => re.test(name);
+    } catch { /* fall through to substring */ }
+  }
+  const lower = q.toLowerCase();
+  return name => name.toLowerCase().includes(lower);
+}
+
+window.applyFilter = (query: string) => {
+  const { statusFilter, remainingQuery } = parseStatusFilter(query);
+  const matcher = buildFilterMatcher(remainingQuery);
+  const hasFilter = !!(matcher || statusFilter);
+  const runBtn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
+  if (runBtn) runBtn.classList.toggle('tx-hidden', !hasFilter);
+
+  for (const card of document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]')) {
+    let cardHasMatch = false;
+
+    for (const item of card.querySelectorAll<HTMLElement>('.tx-test-item')) {
+      const name = item.querySelector('.tx-test-name')?.textContent ?? '';
+      const fullName = item.dataset.fullname ?? name;
+      const itemTags = (item.dataset.tags ?? '').split(/\s+/).filter(Boolean);
+      const nameMatches = !matcher || matcher(name) || matcher(fullName) || itemTags.some(t => matcher!(t));
+      const statusMatches = !statusFilter || item.classList.contains(statusFilter);
+      const matches = nameMatches && statusMatches;
+      item.style.display = matches ? '' : 'none';
+      const logEl = item.nextElementSibling as HTMLElement | null;
+      if (logEl?.classList.contains('tx-test-log')) logEl.style.display = matches ? '' : 'none';
+      if (matches) cardHasMatch = true;
+    }
+
+    for (const suiteRow of card.querySelectorAll<HTMLElement>('.tx-suite-row')) {
+      const suiteName = suiteRow.querySelector<HTMLElement>('.tx-suite-name')?.textContent ?? '';
+      const hasSuiteVisible = Array.from(card.querySelectorAll<HTMLElement>('.tx-test-item'))
+        .some(item => item.dataset.suite === suiteName && item.style.display !== 'none');
+      suiteRow.style.display = !hasFilter || hasSuiteVisible ? '' : 'none';
+    }
+
+    card.style.display = !hasFilter || cardHasMatch ? '' : 'none';
+    if (hasFilter && cardHasMatch) card.classList.add('open');
+  }
+};
+
+window.runFiltered = () => {
+  const btn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  const byFile = new Map<string, string[]>();
+  for (const item of document.querySelectorAll<HTMLElement>('.tx-test-item')) {
+    if (item.style.display === 'none') continue;
+    const card = item.closest<HTMLElement>('.tx-spec-card[data-filename]');
+    if (!card?.dataset.filename) continue;
+    const list = byFile.get(card.dataset.filename) ?? [];
+    list.push(item.dataset.fullname!);
+    byFile.set(card.dataset.filename, list);
+  }
+  const files = Array.from(byFile.keys());
+  const filterTests = Array.from(byFile.values()).flat();
+  wsSend('start-run', { files, filterTests } as Record<string, unknown>);
+  if (btn) btn.disabled = false;
+};
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
@@ -595,89 +498,6 @@ function openSnapshot(id: number) {
   setBrowserView('snapshot');
 };
 
-// ── Filter ────────────────────────────────────────────────────────────────────
-
-function parseStatusFilter(query: string): { statusFilter: 'pass' | 'fail' | null; remainingQuery: string } {
-  let statusFilter: 'pass' | 'fail' | null = null;
-  let remaining = query;
-  if (/:passed\b/.test(remaining)) {
-    statusFilter = 'pass';
-    remaining = remaining.replace(/:passed\b/, '').trim();
-  } else if (/:failed\b/.test(remaining)) {
-    statusFilter = 'fail';
-    remaining = remaining.replace(/:failed\b/, '').trim();
-  }
-  return { statusFilter, remainingQuery: remaining };
-}
-
-function buildFilterMatcher(query: string): ((name: string) => boolean) | null {
-  const q = query.trim();
-  if (!q) return null;
-  const reMatch = q.match(/^\/(.+)\/([gimsuy]*)$/);
-  if (reMatch) {
-    try {
-      const re = new RegExp(reMatch[1], reMatch[2]);
-      return name => re.test(name);
-    } catch { /* fall through to substring */ }
-  }
-  const lower = q.toLowerCase();
-  return name => name.toLowerCase().includes(lower);
-}
-
-window.applyFilter = (query: string) => {
-  const { statusFilter, remainingQuery } = parseStatusFilter(query);
-  const matcher = buildFilterMatcher(remainingQuery);
-  const hasFilter = !!(matcher || statusFilter);
-  const runBtn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
-  if (runBtn) runBtn.classList.toggle('tx-hidden', !hasFilter);
-
-  for (const card of document.querySelectorAll<HTMLElement>('.tx-spec-card[data-filename]')) {
-    let cardHasMatch = false;
-
-    for (const item of card.querySelectorAll<HTMLElement>('.tx-test-item')) {
-      const name = item.querySelector('.tx-test-name')?.textContent ?? '';
-      const fullName = item.dataset.fullname ?? name;
-      const itemTags = (item.dataset.tags ?? '').split(/\s+/).filter(Boolean);
-      const nameMatches = !matcher || matcher(name) || matcher(fullName) || itemTags.some(t => matcher!(t));
-      const statusMatches = !statusFilter || item.classList.contains(statusFilter);
-      const matches = nameMatches && statusMatches;
-      item.style.display = matches ? '' : 'none';
-      const logEl = item.nextElementSibling as HTMLElement | null;
-      if (logEl?.classList.contains('tx-test-log')) logEl.style.display = matches ? '' : 'none';
-      if (matches) cardHasMatch = true;
-    }
-
-    for (const suiteRow of card.querySelectorAll<HTMLElement>('.tx-suite-row')) {
-      const suiteName = suiteRow.querySelector<HTMLElement>('.tx-suite-name')?.textContent ?? '';
-      const hasSuiteVisible = Array.from(card.querySelectorAll<HTMLElement>('.tx-test-item'))
-        .some(item => item.dataset.suite === suiteName && item.style.display !== 'none');
-      suiteRow.style.display = !hasFilter || hasSuiteVisible ? '' : 'none';
-    }
-
-    card.style.display = !hasFilter || cardHasMatch ? '' : 'none';
-    if (hasFilter && cardHasMatch) card.classList.add('open');
-  }
-};
-
-window.runFiltered = async (): Promise<{ passed: number; failed: number }> => {
-  const btn = document.getElementById('filterRunBtn') as HTMLButtonElement | null;
-  if (btn) btn.disabled = true;
-  const byFile = new Map<string, string[]>();
-  for (const item of document.querySelectorAll<HTMLElement>('.tx-test-item')) {
-    if (item.style.display === 'none') continue;
-    const card = item.closest<HTMLElement>('.tx-spec-card[data-filename]');
-    if (!card?.dataset.filename) continue;
-    const list = byFile.get(card.dataset.filename) ?? [];
-    list.push(item.dataset.fullname!);
-    byFile.set(card.dataset.filename, list);
-  }
-  const specs = Array.from(byFile.entries()).map(([file, tests]) => ({ file, tests }));
-  const total = Array.from(byFile.values()).reduce((sum, arr) => sum + arr.length, 0);
-  const result = await _runMultiFile(byFile as Map<string, string[] | null>, specs, total);
-  if (btn) btn.disabled = false;
-  return result;
-};
-
 // ── Keyboard navigation ───────────────────────────────────────────────────────
 
 let _kbFocusedTestKey: string | null = null;
@@ -762,14 +582,6 @@ function initResizers() {
   });
 }
 
-window.stopExecution = () => {
-  _stopRequested = true;
-  _currentTestCancel?.(new Error('Test stopped'));
-  const btn = document.getElementById('stopBtn') as HTMLButtonElement | null;
-  if (btn) btn.disabled = true;
-  setTopbarStatus('running', 'Stopping…');
-};
-
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -846,6 +658,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     new ResizeObserver(() => { if (_activeBrowserView === 'snapshot') applySnapshotViewport(); })
       .observe(snapshotWrapper);
   }
+
   wsConnect(
     () => { if (!_isTestRunning) setTopbarStatus('connected', 'Connected'); },
     () => { if (!_isTestRunning) setTopbarStatus('disconnected', 'Disconnected'); _setAgentStatus(false); },
@@ -873,6 +686,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (!_isTestRunning) setTopbarStatus('connected', 'Connected');
   });
+
+  // ── Node runner event handlers ─────────────────────────────────────────────
+
+  wsOnMessage('runner-begin', (msg: { files: string[]; tests: Array<{ file: string; name: string }> }) => {
+    _isTestRunning = true;
+    setTopbarStatus('running', 'Running…');
+    setStopBtnVisible(true);
+    _runDone = 0;
+    _runTotal = msg.tests.length;
+    if (_runTotal > 0) showProgress(0, _runTotal);
+    for (const file of msg.files) {
+      document.getElementById('card-' + escAttr(file))?.classList.add('open');
+      setCardRunning(file);
+    }
+    for (const { file, name } of msg.tests) resetSingleTestItem(file, name);
+  });
+
+  wsOnMessage('runner-test-begin', (msg: { file: string; testName: string; attempt: number }) => {
+    setTestItemStatus(msg.file, msg.testName, 'running');
+    activateTestLog(msg.file, msg.testName, msg.attempt);
+  });
+
+  wsOnMessage('runner-test-end', (msg: { file: string; result: TestResult }) => {
+    const { file, result } = msg;
+    const state = result.passed ? 'pass' : 'fail';
+    setTestItemStatus(file, result.name, state, result.duration, result.retry);
+    if (_activeTestLog && result.logs?.length) renderLogsToContainer(result.logs, _activeTestLog);
+    if (!result.passed && result.error) appendErrorToLog(result.error);
+    const logEl = document.getElementById('tlog-' + escAttr(file + '\x01' + result.name));
+    logEl?.classList.remove('open');
+    _activeTestLog = null;
+    renderTestResults([result], file);
+    if (_runTotal > 0) showProgress(++_runDone, _runTotal);
+  });
+
+  wsOnMessage('runner-end', (msg: { passed: number; failed: number; duration: number; stopped: boolean }) => {
+    _isTestRunning = false;
+    hideProgress();
+    setStopBtnVisible(false);
+    const { passed, failed, stopped } = msg;
+    setTopbarStatus(
+      stopped ? 'ready' : (failed === 0 ? 'passed' : 'failed'),
+      stopped
+        ? `Stopped — ${passed} passed, ${failed} failed`
+        : `${passed} passed, ${failed} failed`,
+    );
+    if (window.__CONFIG__?.autorun) {
+      wsSend('done', { passed, failed });
+    }
+  });
+
   await loadTestList();
   if (window.__CONFIG__.grep) {
     const grepSource = window.__CONFIG__.grep;
@@ -885,7 +749,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   if (window.__CONFIG__.autorun) {
-    const { passed, failed } = await window.runAll();
-    wsSend('done', { passed, failed });
+    window.runAll();
   }
 });

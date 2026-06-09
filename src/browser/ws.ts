@@ -1,5 +1,16 @@
 // WebSocket client — browser-side connection to the test server.
 
+export interface WsTransport {
+  request(type: string, payload: Record<string, unknown>): Promise<unknown>;
+  send(type: string, payload: Record<string, unknown>): void;
+}
+
+let _nodeTransport: WsTransport | null = null;
+
+export function setWsTransport(impl: WsTransport): void {
+  _nodeTransport = impl;
+}
+
 let _ws: WebSocket | null = null;
 let _wsReqCounter = 0;
 const _wsCallbacks = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
@@ -57,13 +68,20 @@ export function wsOnMessage(type: string, fn: (msg: any) => void): () => void {
   return () => _wsListeners.get(type)?.delete(fn);
 }
 
+export function _dispatchWsMessage(type: string, msg: Record<string, unknown>): void {
+  const fns = _wsListeners.get(type);
+  if (fns) for (const fn of fns) { try { fn(msg); } catch { /* ignore */ } }
+}
+
 export function wsSend(type: string, data?: Record<string, unknown>): void {
+  if (_nodeTransport) { _nodeTransport.send(type, data ?? {}); return; }
   if (_ws?.readyState === WebSocket.OPEN) {
     _ws.send(JSON.stringify({ type, ...data }));
   }
 }
 
 export async function wsRequest<T>(type: string, data?: Record<string, unknown>): Promise<T> {
+  if (_nodeTransport) return _nodeTransport.request(type, data ?? {}) as Promise<T>;
   const t0 = Date.now();
   while ((!_ws || _ws.readyState !== WebSocket.OPEN) && Date.now() - t0 < 10000) {
     await new Promise<void>(r => setTimeout(r, 50));

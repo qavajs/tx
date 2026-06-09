@@ -12,6 +12,7 @@ import { DEFAULT_CONTROL_PANEL_PORT } from '../constants';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from '../runner/reporter';
 import type { TaskHandler } from '../types';
 import type { BrowserMessage, Msg } from '../ws-protocol';
+import type { NodeTestRunner } from '../runner/node-runner';
 
 export interface TestServerConfig {
   port?: number;
@@ -63,6 +64,12 @@ export class TestServer {
   private _testBrowserClient: WebSocket | null = null;
   /** Pending tb-command correlation: id → originating panel WebSocket */
   private _pendingTbCommands = new Map<string, WebSocket>();
+  /** Pending in-process tb-command correlation: id → { resolve, reject } */
+  private _pendingNodeCommands = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private _agentEventHandlers = new Set<(event: string, payload: unknown) => void>();
+  private _agentConnectedCallbacks = new Set<() => void>();
+  private _nodeRunner: NodeTestRunner | null = null;
+  private _stopSignal: { stop: boolean } | null = null;
   private _getCookieJarCb: (() => string) | undefined;
   private _setCookieJarCb: ((jar: string | null) => void) | undefined;
   private _onRestartAgentCb: (() => void | Promise<void>) | undefined;
@@ -202,6 +209,11 @@ export class TestServer {
             this._testBrowserClient = null;
             // Notify panels the agent disconnected
             this.sendToClients({ type: 'agent-disconnected' });
+            // Reject any pending in-process node commands
+            for (const [id, { reject }] of this._pendingNodeCommands) {
+              this._pendingNodeCommands.delete(id);
+              reject(new Error('Agent disconnected'));
+            }
           }
           // Reject any pending commands from this panel
           for (const [id, originWs] of this._pendingTbCommands) {
@@ -227,6 +239,8 @@ export class TestServer {
               if (msg.role === 'test-browser') {
                 this._testBrowserClient = ws;
                 this.sendToClients({ type: 'agent-connected' });
+                for (const cb of this._agentConnectedCallbacks) cb();
+                this._agentConnectedCallbacks.clear();
                 console.log('[tx] Test browser agent connected');
               } else {
                 this._addPanelClient(ws);
@@ -301,6 +315,79 @@ export class TestServer {
       }
       return;
     }
+    // start-run / stop-run: Node runner handles execution
+    if (msg.type === 'start-run') {
+      if (this._nodeRunner) {
+        const { files, filterSuite, filterTest, filterTests } = msg;
+        const spec = (filterSuite || filterTest || filterTests) ? { filterSuite, filterTest, filterTests } : undefined;
+        this._stopSignal = { stop: false };
+        const signal = this._stopSignal;
+        const doRun = async () => {
+          // Start agent browser on demand if not connected
+          if (!this._testBrowserClient || this._testBrowserClient.readyState !== WebSocket.OPEN) {
+            if (this._onRestartAgentCb) {
+              await this._onRestartAgentCb();
+              await this._waitForAgent(15000);
+            }
+          }
+          return this._nodeRunner!.run(files, spec, signal, {
+            onBegin: (runFiles) => {
+              const allTests = runFiles.flatMap(f => {
+                const parsed = this.parsedCache.get(f);
+                return (parsed?.tests ?? []).map(t => ({
+                  title: t.name,
+                  fullTitle: t.suite ? `${t.suite} > ${t.name}` : t.name,
+                  file: f,
+                }));
+              });
+              const runningTests = spec ? allTests.filter(t => {
+                if (spec.filterSuite) return t.fullTitle.startsWith(spec.filterSuite + ' > ');
+                if (spec.filterTest) return t.fullTitle === spec.filterTest;
+                if (spec.filterTests?.length) return spec.filterTests.includes(t.fullTitle);
+                return true;
+              }) : allTests;
+              this.pushToAllPanels({
+                type: 'runner-begin',
+                files: runFiles,
+                tests: runningTests.map(t => ({ file: t.file, name: t.fullTitle })),
+              });
+              const suite: Suite = { title: '', tests: allTests, allTests() { return this.tests; } };
+              this.emitter.emitBegin({ testFiles: runFiles }, suite);
+            },
+            onTestBegin: (file, testName) => {
+              const parts = testName.split(' > ');
+              this.emitter.emitTestBegin(
+                { title: parts[parts.length - 1], fullTitle: testName, file },
+                { status: 'passed', duration: 0 },
+              );
+            },
+            onTestEnd: (file, result) => {
+              const parts = result.name.split(' > ');
+              this.emitter.emitTestEnd(
+                { title: parts[parts.length - 1], fullTitle: result.name, file },
+                { status: result.passed ? 'passed' : 'failed', duration: result.duration, error: result.error, logs: result.logs, retry: result.retry },
+              );
+            },
+            onEnd: (summary) => {
+              this.emitter.emitEnd({ status: summary.failed > 0 ? 'failed' : 'passed', passed: summary.passed, failed: summary.failed, total: summary.passed + summary.failed, duration: summary.duration });
+            },
+          });
+        };
+        doRun().then(summary => {
+          this._doneResolve?.({ passed: summary.passed, failed: summary.failed });
+          this._closeAgentAfterRun();
+        }).catch(e => {
+          console.error('[tx] NodeTestRunner error:', e);
+          this._doneResolve?.({ passed: 0, failed: 1 });
+          this._closeAgentAfterRun();
+        });
+      }
+      return;
+    }
+    if (msg.type === 'stop-run') {
+      if (this._stopSignal) this._stopSignal.stop = true;
+      return;
+    }
     // Regular browser → server messages
     const browserMsg = msg as BrowserMessage;
     this._handleWsMessage(ws, browserMsg);
@@ -310,6 +397,14 @@ export class TestServer {
     if (msg.type === 'tb-result') {
       const { id } = msg;
       if (!id) return;
+      // Check in-process node command first
+      const nodeCmd = this._pendingNodeCommands.get(id);
+      if (nodeCmd) {
+        this._pendingNodeCommands.delete(id);
+        if (msg.error) nodeCmd.reject(new Error(msg.error as string));
+        else nodeCmd.resolve(msg.result);
+        return;
+      }
       const originWs = this._pendingTbCommands.get(id);
       this._pendingTbCommands.delete(id);
       if (originWs && originWs.readyState === WebSocket.OPEN) {
@@ -323,6 +418,10 @@ export class TestServer {
       const payload = JSON.stringify(msg);
       for (const client of this._panelClients) {
         if (client.readyState === WebSocket.OPEN) client.send(payload);
+      }
+      // Notify in-process agent event handlers
+      for (const handler of this._agentEventHandlers) {
+        try { handler(msg.event as string, msg.payload); } catch { /* ignore */ }
       }
       return;
     }
@@ -366,9 +465,7 @@ export class TestServer {
     } catch (e) { console.error('[tx] run-begin error:', e); }
   }
 
-  private _onRunEnd(msg: Msg<'run-end'>): void {
-    const { passed, failed, total, duration } = msg;
-    this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
+  private _closeAgentAfterRun(): void {
     const agentWs = this._testBrowserClient;
     if (agentWs) {
       this._testBrowserClient = null;
@@ -379,9 +476,14 @@ export class TestServer {
         this._onRunEndCb?.();
       }, 100);
     } else {
-      // Agent already disconnected before run-end arrived — still run cleanup
       this._onRunEndCb?.();
     }
+  }
+
+  private _onRunEnd(msg: Msg<'run-end'>): void {
+    const { passed, failed, total, duration } = msg;
+    this.emitter.emitEnd({ status: failed > 0 ? 'failed' : 'passed', passed, failed, total, duration });
+    this._closeAgentAfterRun();
   }
 
   private _onReport(msg: Msg<'report'>): void {
@@ -547,6 +649,60 @@ export class TestServer {
     try { ws.send(JSON.stringify(msg)); } catch { /* ignore sends on closing sockets */ }
   }
 
+  /** Push a message to all panel clients (alias kept for clarity in Node runner). */
+  pushToAllPanels(msg: object): void {
+    this.sendToClients(msg);
+  }
+
+  /** Register the NodeTestRunner instance. */
+  setNodeRunner(runner: NodeTestRunner): void {
+    this._nodeRunner = runner;
+  }
+
+  /** In-process task dispatch — calls registered task handlers directly. */
+  async execTask(name: string, payload: unknown): Promise<unknown> {
+    const handler = this.tasks[name];
+    if (!handler) throw new Error(`Task not found: "${name}"`);
+    return handler(payload);
+  }
+
+  /** In-process tb-command dispatch — routes through the agent WebSocket. */
+  async execTbCommand(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    if (!this._testBrowserClient || this._testBrowserClient.readyState !== WebSocket.OPEN) {
+      throw new Error('Test browser agent not connected');
+    }
+    const id = 'node-' + (++this._version) + '-' + Date.now();
+    return new Promise<unknown>((resolve, reject) => {
+      this._pendingNodeCommands.set(id, { resolve, reject });
+      this._send(this._testBrowserClient!, { type: 'tb-command', id, method, params: params ?? {} });
+      setTimeout(() => {
+        if (this._pendingNodeCommands.has(id)) {
+          this._pendingNodeCommands.delete(id);
+          reject(new Error(`execTbCommand(${method}) timed out`));
+        }
+      }, 30000);
+    });
+  }
+
+  /** Wait until the agent WebSocket is connected (or resolve immediately if already connected). */
+  private _waitForAgent(timeoutMs: number): Promise<void> {
+    if (this._testBrowserClient?.readyState === WebSocket.OPEN) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._agentConnectedCallbacks.delete(cb);
+        reject(new Error(`Agent browser did not connect within ${timeoutMs}ms`));
+      }, timeoutMs);
+      const cb = () => { clearTimeout(timer); resolve(); };
+      this._agentConnectedCallbacks.add(cb);
+    });
+  }
+
+  /** Subscribe to agent tb-events for the duration of a test run. Returns unsubscribe fn. */
+  onAgentEvent(handler: (event: string, payload: unknown) => void): () => void {
+    this._agentEventHandlers.add(handler);
+    return () => { this._agentEventHandlers.delete(handler); };
+  }
+
   /** Send to all panel clients only (not the test-browser agent) */
   sendToClients(msg: object): void {
     const payload = JSON.stringify(msg);
@@ -579,6 +735,11 @@ export class TestServer {
 
   getPort(): number {
     return this.port;
+  }
+
+  /** Resolve a file key (relative/basename) to its absolute path. Returns null if not found. */
+  resolveTestFile(fileKey: string): string | null {
+    return this.testFileMap.get(fileKey) ?? null;
   }
 }
 
