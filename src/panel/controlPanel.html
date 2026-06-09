@@ -64,28 +64,15 @@
                     <button class="tx-go-btn" onclick="window.tx && window.tx.page.goto(document.getElementById('navUrl').value)">Go</button>
                 </div>
                 <span class="tx-viewport-tag" id="viewportTag">—</span>
-                <button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle DevTools panel">DevTools <span id="consoleErrorBadge" class="tx-console-error-badge tx-hidden"></span></button>
+<button class="tx-network-toggle-btn" id="networkToggleBtn" onclick="window.toggleNetworkPanel && window.toggleNetworkPanel()" title="Toggle DevTools panel">DevTools <span id="consoleErrorBadge" class="tx-console-error-badge tx-hidden"></span></button>
             </div>
-            <div class="tx-tab-bar" id="tabBar"></div>
-            <div class="tx-browser-main">
-                <div class="tx-browser-pane" id="liveBrowserPane">
+<div class="tx-browser-main">
+                <div class="tx-browser-pane" id="browserPane">
                     <div id="agentStatus" class="tx-agent-status">
                         <span class="tx-agent-status-dot" id="agentStatusDot"></span>
                         <span id="agentStatusText">Waiting for test browser…</span>
                     </div>
-                </div>
-                <div class="tx-browser-pane tx-browser-pane--hidden" id="snapshotPane">
-                    <div class="tx-snapshot-header">
-                        <div class="tx-snapshot-header-meta">
-                            <div class="tx-snapshot-header-text">
-                                <div class="tx-snapshot-title" id="snapshotTitle">Snapshot</div>
-                                <div class="tx-snapshot-url" id="snapshotUrl"></div>
-                            </div>
-                            <span class="tx-viewport-tag" id="snapshotViewportTag">—</span>
-                        </div>
-                        <button class="tx-snapshot-close-btn" onclick="window.setBrowserView && window.setBrowserView('browser')" title="Return to browser" aria-label="Close snapshot view">Close</button>
-                    </div>
-                    <div id="snapshotViewportWrapper">
+<div id="snapshotViewportWrapper" class="tx-hidden">
                         <iframe id="snapshotFrame" sandbox="allow-same-origin"></iframe>
                     </div>
                 </div>

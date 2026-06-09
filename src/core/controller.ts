@@ -1,4 +1,4 @@
-import { log, attach, setLogContainer, page, expect, request, initBrowserState, setOnTabsChanged, getTabsSnapshot, createTab, closeTab, setActiveTab, browser, node, getSnapshots, clearSnapshots, wsConnect, wsSend, wsOnMessage, wsRequest } from '../browser/browser';
+import { log, attach, setLogContainer, page, expect, request, initBrowserState, reapplyViewport, browser, node, getSnapshots, clearSnapshots, addSnapshot, wsConnect, wsSend, wsOnMessage, wsRequest } from '../browser/browser';
 import { renderLogsToContainer } from '../browser/log';
 import { escHtml, escAttr } from '../utils/htmlUtils';
 import { initNetworkListeners, initNetworkResizer } from '../browser/devPanel';
@@ -209,7 +209,6 @@ window.toggleSuite = (filename: string, suiteName: string) => {
 
 // ── Run state ─────────────────────────────────────────────────────────────────
 
-let _watchVersion = -1;
 let _isTestRunning = false;
 let _runDone = 0;
 let _runTotal = 0;
@@ -369,45 +368,10 @@ window.runFiltered = () => {
   if (btn) btn.disabled = false;
 };
 
-// ── Tab bar ───────────────────────────────────────────────────────────────────
-
-function renderTabBar() {
-  const bar = document.getElementById('tabBar');
-  if (!bar) return;
-  bar.innerHTML = '';
-  for (const t of getTabsSnapshot()) {
-    const item = document.createElement('div');
-    item.className = 'tx-tab-item' + (t.active ? ' active' : '');
-    item.onclick = () => setActiveTab(t.id);
-    const title = document.createElement('span');
-    title.className = 'tx-tab-title';
-    title.textContent = t.title || t.url || 'New Tab';
-    title.title = t.url || '';
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'tx-tab-close';
-    closeBtn.textContent = '×';
-    closeBtn.title = 'Close tab';
-    closeBtn.setAttribute('aria-label', 'Close tab');
-    closeBtn.onclick = (e) => { e.stopPropagation(); closeTab(t.id); };
-    item.appendChild(title);
-    item.appendChild(closeBtn);
-    bar.appendChild(item);
-  }
-  const newBtn = document.createElement('button');
-  newBtn.className = 'tx-new-tab-btn';
-  newBtn.title = 'New tab';
-  newBtn.setAttribute('aria-label', 'New tab');
-  newBtn.textContent = '+';
-  newBtn.onclick = () => createTab();
-  bar.appendChild(newBtn);
-}
 
 let _selectedSnapshotId: number | null = null;
 let _activeBrowserView: 'browser' | 'snapshot' = 'browser';
 
-function formatSnapshotTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
 
 function setBrowserView(view: 'browser' | 'snapshot') {
   _activeBrowserView = view;
@@ -417,7 +381,7 @@ function setBrowserView(view: 'browser' | 'snapshot') {
 function applySnapshotViewport() {
   const frame = document.getElementById('snapshotFrame') as HTMLIFrameElement | null;
   const wrapper = document.getElementById('snapshotViewportWrapper') as HTMLElement | null;
-  const tag = document.getElementById('snapshotViewportTag') as HTMLElement | null;
+  const tag = document.getElementById('viewportTag') as HTMLElement | null;
   if (!frame || !wrapper) return;
 
   const snapshot = _selectedSnapshotId != null
@@ -453,24 +417,27 @@ function applySnapshotViewport() {
   if (tag) tag.textContent = `${vp.width} × ${vp.height} @ ${Math.round(scale * 100)}%`;
 }
 
+let _savedNavUrl = '';
+
 function renderBrowserView() {
-  const livePane = document.getElementById('liveBrowserPane');
-  const snapshotPane = document.getElementById('snapshotPane');
-  if (livePane && snapshotPane) {
-    livePane.classList.toggle('tx-browser-pane--hidden', _activeBrowserView !== 'browser');
-    snapshotPane.classList.toggle('tx-browser-pane--hidden', _activeBrowserView !== 'snapshot');
+  const isSnapshot = _activeBrowserView === 'snapshot';
+  document.getElementById('agentStatus')?.classList.toggle('tx-hidden', isSnapshot);
+  document.getElementById('snapshotViewportWrapper')?.classList.toggle('tx-hidden', !isSnapshot);
+if (isSnapshot) {
+    applySnapshotViewport();
+  } else {
+    reapplyViewport();
+    const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
+    if (navInput) navInput.value = _savedNavUrl;
   }
-  if (_activeBrowserView === 'snapshot') applySnapshotViewport();
 }
 
 function openSnapshot(id: number) {
   const snapshot = getSnapshots().find(item => item.id === id);
   const frame = document.getElementById('snapshotFrame') as HTMLIFrameElement | null;
   if (!snapshot || !frame) return;
-  const titleEl = document.getElementById('snapshotTitle');
-  const urlEl = document.getElementById('snapshotUrl');
-  if (titleEl) titleEl.textContent = snapshot.label || snapshot.title || 'Snapshot';
-  if (urlEl) urlEl.textContent = `${snapshot.url} · ${formatSnapshotTime(snapshot.timestamp)}`;
+  const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
+  if (navInput) { _savedNavUrl = navInput.value; navInput.value = snapshot.url; }
   frame.srcdoc = snapshot.html;
   _selectedSnapshotId = id;
   setBrowserView('snapshot');
@@ -488,11 +455,9 @@ function openSnapshot(id: number) {
 (window as any).setBrowserView = setBrowserView;
 
 (window as any).openHtmlAttachment = (html: string, label: string) => {
-  const titleEl = document.getElementById('snapshotTitle');
-  const urlEl = document.getElementById('snapshotUrl');
+  const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
   const frame = document.getElementById('snapshotFrame') as HTMLIFrameElement | null;
-  if (titleEl) titleEl.textContent = label || 'Attachment';
-  if (urlEl) urlEl.textContent = '';
+  if (navInput) { _savedNavUrl = navInput.value; navInput.value = label || ''; }
   if (frame) frame.srcdoc = html;
   _selectedSnapshotId = null;
   setBrowserView('snapshot');
@@ -585,10 +550,8 @@ function initResizers() {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-  setOnTabsChanged(renderTabBar);
   initNetworkListeners();
   initBrowserState();
-  renderTabBar();
   renderBrowserView();
   document.getElementById('testList')?.addEventListener('click', (event: MouseEvent) => {
     const item = (event.target as Element).closest<HTMLElement>('.tx-test-item');
@@ -674,16 +637,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
   });
-  wsOnMessage('version', async (msg: { version: number }) => {
-    if (_watchVersion < 0) {
-      _watchVersion = msg.version;
-    } else if (msg.version !== _watchVersion) {
-      _watchVersion = msg.version;
-      await loadTestList();
-      const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
-      if (filterInput?.value) window.applyFilter(filterInput.value);
-      log('test files updated');
-    }
+  wsOnMessage('tests-updated', (msg: { data: ParsedFile[] }) => {
+    const container = document.getElementById('testList')!;
+    const isUpdate = container.children.length > 0;
+    const files = [...msg.data].sort((a, b) => a.filename.localeCompare(b.filename));
+    container.innerHTML = files.length
+      ? files.map(renderTestFileCard).join('')
+      : '<div class="tx-empty">No test files found</div>';
+    refreshRunnerStatus();
+    const filterInput = document.getElementById('testFilter') as HTMLInputElement | null;
+    if (filterInput?.value) window.applyFilter(filterInput.value);
+    if (isUpdate) log('test files updated');
     if (!_isTestRunning) setTopbarStatus('connected', 'Connected');
   });
 
@@ -712,6 +676,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { file, result } = msg;
     const state = result.passed ? 'pass' : 'fail';
     setTestItemStatus(file, result.name, state, result.duration, result.retry);
+    if (result.snapshots?.length) {
+      for (const s of result.snapshots) addSnapshot(s);
+    }
     if (_activeTestLog && result.logs?.length) renderLogsToContainer(result.logs, _activeTestLog);
     if (!result.passed && result.error) appendErrorToLog(result.error);
     const logEl = document.getElementById('tlog-' + escAttr(file + '\x01' + result.name));
@@ -737,7 +704,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  await loadTestList();
   if (window.__CONFIG__.grep) {
     const grepSource = window.__CONFIG__.grep;
     const grepFlags = window.__CONFIG__.grepFlags ?? '';

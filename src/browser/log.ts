@@ -1,5 +1,4 @@
-import type { WindowConfig } from '../types';
-declare global { interface Window { __CONFIG__: WindowConfig; } }
+import { getSnapshot } from './config';
 
 // ── Snapshot injection ────────────────────────────────────────────────────────
 
@@ -41,6 +40,7 @@ export interface LogEntry {
   duration?: number;
   attachment?: { body: string; contentType: string };
   children?: LogEntry[];
+  snapshotId?: number;
 }
 
 let _collectedLogs: LogEntry[] | null = null;
@@ -151,24 +151,28 @@ export function logCommand(message: string, cmd: string): TxCommandHandle {
     success(duration?: number) {
       const dur = duration ?? Math.max(0, Date.now() - startedAt);
       updateLogEntry(entry, 'pass', dur);
-      if (_collectedLogs) _collectedLogs.push({ cmd, message, state: 'pass', duration: dur });
-      if (typeof window !== 'undefined' && window.__CONFIG__?.snapshot && _snapshotCommands.has(cmd) && _snapshotCaptureFn) {
+      const logEntry: LogEntry = { cmd, message, state: 'pass', duration: dur };
+      if (_collectedLogs) _collectedLogs.push(logEntry);
+      if (getSnapshot() && _snapshotCommands.has(cmd) && _snapshotCaptureFn) {
         try {
           const snapshotId = _snapshotCaptureFn(message || cmd);
-          if (snapshotId > 0 && entry) {
-            entry.dataset.snapshotId = String(snapshotId);
-            entry.title = 'Click to open snapshot';
-            entry.classList.add('has-snapshot');
-            entry.onclick = () => {
-              const id = Number(entry.dataset.snapshotId);
-              if (id && (window as any).openSnapshot) (window as any).openSnapshot(id);  
-            };
-            if (!entry.querySelector('.tx-cmd-snapshot-badge')) {
-              const badge = document.createElement('span');
-              badge.className = 'tx-cmd-snapshot-badge';
-              badge.title = 'Snapshot available';
-              const durEl = entry.querySelector<HTMLElement>('.tx-cmd-dur');
-              entry.insertBefore(badge, durEl || null);
+          if (snapshotId > 0) {
+            logEntry.snapshotId = snapshotId;
+            if (entry) {
+              entry.dataset.snapshotId = String(snapshotId);
+              entry.title = 'Click to open snapshot';
+              entry.classList.add('has-snapshot');
+              entry.onclick = () => {
+                const id = Number(entry.dataset.snapshotId);
+                if (id && (window as any).openSnapshot) (window as any).openSnapshot(id);
+              };
+              if (!entry.querySelector('.tx-cmd-snapshot-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'tx-cmd-snapshot-badge';
+                badge.title = 'Snapshot available';
+                const durEl = entry.querySelector<HTMLElement>('.tx-cmd-dur');
+                entry.insertBefore(badge, durEl || null);
+              }
             }
           }
         } catch { /* ignore */ }
@@ -294,6 +298,20 @@ export function renderLogsToContainer(logs: LogEntry[], container: HTMLElement):
       if (entry.duration != null) {
         const durEl = document.createElement('span'); durEl.className = 'tx-cmd-dur'; durEl.textContent = entry.duration + 'ms';
         el.appendChild(durEl);
+      }
+      if (entry.snapshotId) {
+        el.dataset.snapshotId = String(entry.snapshotId);
+        el.title = 'Click to open snapshot';
+        el.classList.add('has-snapshot');
+        el.onclick = () => {
+          const id = Number(el.dataset.snapshotId);
+          if (id && (window as any).openSnapshot) (window as any).openSnapshot(id);
+        };
+        const badge = document.createElement('span');
+        badge.className = 'tx-cmd-snapshot-badge';
+        badge.title = 'Snapshot available';
+        const durEl = el.querySelector<HTMLElement>('.tx-cmd-dur');
+        el.insertBefore(badge, durEl || null);
       }
       parent.appendChild(el);
       if (entry.attachment) {

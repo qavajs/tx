@@ -18,3 +18,4 @@ export const waitTimeout = (ms?: number) => ms ?? _cfg().actionTimeout ?? 30000;
 export const expectTimeout = (ms?: number) => ms ?? _cfg().expectTimeout ?? 5000;
 export const testTimeout = () => _cfg().testTimeout ?? 30000;
 export const getRetries = () => _cfg().retries ?? 0;
+export const getSnapshot = () => _cfg().snapshot ?? true;

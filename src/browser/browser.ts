@@ -1,4 +1,4 @@
-import { actionTimeout, waitTimeout } from './config';
+import { actionTimeout, waitTimeout, getSnapshot } from './config';
 import type { WindowConfig } from '../types';
 import type { TbCommandMethod, AgentLocatorSpec } from '../ws-protocol';
 import { Route, routeHandlers as _routeHandlers, matchesRoutePattern as _matchesRoutePattern, dispatchRoute } from './route';
@@ -95,6 +95,7 @@ const _snapshots: SnapshotEntry[] = [];
 let _snapshotCounter = 0;
 const MAX_SNAPSHOTS = 40;
 const _snapshotListeners = new Set<() => void>();
+const _pendingSnapshotPromises: Promise<void>[] = [];
 
 function _notifySnapshotListeners(): void {
   for (const fn of _snapshotListeners) {
@@ -118,10 +119,14 @@ function _captureSnapshot(label: string): number {
   if (_snapshots.length > MAX_SNAPSHOTS) _snapshots.shift();
   _notifySnapshotListeners();
   // Async fill-in via agent
-  sendCommand<string>('snapshot').then(html => {
+  const p: Promise<void> = sendCommand<string>('snapshot').then(html => {
     const entry = _snapshots.find(s => s.id === snapshotId);
     if (entry) { entry.html = html; _notifySnapshotListeners(); }
-  }).catch(() => {});
+  }).catch(() => {}).then(() => {
+    const idx = _pendingSnapshotPromises.indexOf(p);
+    if (idx !== -1) _pendingSnapshotPromises.splice(idx, 1);
+  });
+  _pendingSnapshotPromises.push(p);
   return snapshotId;
 }
 
@@ -133,7 +138,19 @@ export function getSnapshots(): SnapshotEntry[] {
 
 export function clearSnapshots(): void {
   _snapshots.length = 0;
-  _snapshotCounter = 0;
+  _pendingSnapshotPromises.length = 0;
+  _notifySnapshotListeners();
+}
+
+export async function flushSnapshots(): Promise<void> {
+  if (_pendingSnapshotPromises.length > 0) {
+    await Promise.all([..._pendingSnapshotPromises]);
+  }
+}
+
+export function addSnapshot(s: SnapshotEntry): void {
+  _snapshots.push(s);
+  if (_snapshots.length > MAX_SNAPSHOTS) _snapshots.shift();
   _notifySnapshotListeners();
 }
 
@@ -208,7 +225,7 @@ export async function closeTab(tabId: string) {
 
 export async function closeExtraTabs() {
   const extra = _tabs.slice(1).map(t => t.id);
-  for (const id of extra) await closeTab(id);
+  for (const id of extra) await closeTab(id).catch(() => {});
 }
 
 // ── Init scripts ─────────────────────────────────────────────────────────────
@@ -489,7 +506,13 @@ export const page = {
     _routeHandlers.length = 0;
     clearPageListeners();
     _initScripts.length = 0;
-    await sendCommand('resetSession');
+    try {
+      await sendCommand('resetSession');
+    } catch (err) {
+      const handle = logCommand('page.resetSession()', 'reset');
+      handle.fail(err instanceof Error ? err.message : String(err));
+      throw err;
+    }
   },
 
   // ── Route interception ────────────────────────────────────────────────────────
@@ -833,7 +856,7 @@ wsOnMessage('tb-event', (msg: Record<string, unknown>) => {
       if (tab) { tab.url = url; tab.title = title; }
       _onTabsChanged?.();
       _emitPage('load');
-      if (typeof window !== 'undefined' && window.__CONFIG__?.snapshot) _captureSnapshot('load');
+      if (getSnapshot()) _captureSnapshot('load');
       break;
     }
 

@@ -26,7 +26,6 @@ export type BrowserMessage =
   | { type: 'artifact'; name: string; ext: string; data: string }
   | { type: 'save-download'; id: string; path: string; data: string }
   | { type: 'get-tests'; id: string }
-  | { type: 'get-test-source'; id: string; file: string }
   | { type: 'get-cookie-jar'; id: string }
   | { type: 'set-cookie-jar'; id: string; jar: object }
   | { type: 'save-storage-state'; id: string; filePath: string; data: string }
@@ -40,10 +39,9 @@ export type BrowserMessage =
 import type { TestResult } from './runner/executor';
 
 export type ServerMessage =
-  | { type: 'version'; version: number }
+  | { type: 'tests-updated'; data: ParsedFile[] }
   | { type: 'task-result'; id: string; result?: unknown; error?: string }
   | { type: 'tests'; id: string; data?: ParsedFile[]; error?: string }
-  | { type: 'test-source'; id: string; data?: string; error?: string }
   | { type: 'cookie-jar'; id: string; jar?: object; error?: string }
   | { type: 'cookie-jar-set'; id: string; error?: string }
   | { type: 'storage-state-saved'; id: string; error?: string }

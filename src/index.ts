@@ -21,6 +21,11 @@ export function defineConfig(config: TxConfig): TxConfig {
   return config;
 }
 
+// Re-export the public test API so that `require('@qavajs/tx')` — which is redirected
+// to this bundle by tsLoader — returns the live singleton instances used by the runner.
+export { page, browser, request, node, expect, log, attach } from './browser/browser';
+export { test, describe, beforeEach, afterEach, beforeAll, afterAll } from './runner/testRegistrar';
+
 // ── Deep merge ────────────────────────────────────────────────────────────────
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -344,7 +349,7 @@ async function main() {
     browser:          cliConfig.browser ?? fileConfig.browser,
     viewport:         fileConfig.viewport,
     testMode:         cliConfig.testMode ?? fileConfig.testMode ?? false,
-    snapshot:         fileConfig.snapshot ?? false,
+    snapshot:         fileConfig.snapshot ?? true,
     actionTimeout:    fileConfig.actionTimeout,
     expectTimeout:    fileConfig.expectTimeout,
     testTimeout:      fileConfig.testTimeout,

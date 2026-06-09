@@ -70,7 +70,7 @@ export interface TxConfig {
   /** Run all tests automatically, then close — exit code 0 = all passed, 1 = any failed */
   testMode?: boolean;
 
-  /** Capture DOM snapshots after each command (default: false) */
+  /** Capture DOM snapshots after each command (default: true) */
   snapshot?: boolean;
 
   /** Default timeout for actions like click(), fill(), locator waits in ms (default: 5000) */

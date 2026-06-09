@@ -471,8 +471,7 @@ export class TxWrapper {
       setPreprocessor(this.config.preprocessor);
 
       if (this.config.testFiles?.length) {
-        // In test mode, await initial bundling so all sources are ready before the browser opens
-        await startWatcher(
+        startWatcher(
           this.config.testFiles,
           this.config.testPatterns ?? [],
           this.config.watchBaseDir ?? process.cwd(),
@@ -494,7 +493,7 @@ export class TxWrapper {
         controlPanel:  `http://localhost:${this.config.controlPanelPort}`,
         proxy:         this.proxyUrl,
         testMode:      this.config.testMode ?? false,
-        snapshot:      this.config.snapshot ?? false,
+        snapshot:      this.config.snapshot ?? true,
         testFiles:     this.config.testFiles?.length ?? 0,
         grep:          this.config.grep ? String(this.config.grep) : '-',
         viewport:      this.config.viewport ? `${this.config.viewport.width}×${this.config.viewport.height}` : '-',

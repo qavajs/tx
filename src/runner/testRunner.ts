@@ -1,44 +1,15 @@
-import { SourceMapConsumer } from 'source-map-js';
 import { actionTimeout, expectTimeout, testTimeout, getRetries } from '../browser/config';
 
 import { type TestResult, runWithFixtures, buildTestQueue } from './executor';
-import { page, closeExtraTabs, setTestAbort, startCollectingLogs, stopCollectingLogs, setLogContainer } from '../browser/browser';
+import { page, closeExtraTabs, setTestAbort, startCollectingLogs, stopCollectingLogs, setLogContainer, clearSnapshots, getSnapshots, flushSnapshots } from '../browser/browser';
+import type { SnapshotEntry } from '../browser/browser';
 import { _clearSoftErrors, _flushSoftErrors } from '../browser/assertions';
-
-function makeRemapper(code: string): ((s: string) => string) | null {
-  const m = code.match(/\/\/# sourceMappingURL=data:application\/json[^,]*,([^\s]+)/);
-  if (!m) return null;
-  try {
-    const consumer = new SourceMapConsumer(JSON.parse(atob(m[1])));
-    return (stack: string) => {
-      const kept: string[] = [];
-      for (const line of stack.split('\n')) {
-        if (!/^\s+at\s/.test(line)) { kept.push(line); continue; }
-        const anon = /<anonymous>:(\d+):(\d+)/.exec(line);
-        if (!anon) continue;
-        const ln = +anon[1] - 2; // Function() wrapper prepends 2 lines before the body
-        const col = +anon[2];
-        const pos = consumer.originalPositionFor({ line: ln, column: col - 1 });
-        if (pos.source == null || pos.line == null) continue;
-        const loc = `${pos.source}:${pos.line}:${(pos.column ?? 0) + 1}`;
-        const fn = /at\s+([\w$.<>[\] ]+?)\s+\(/.exec(line)?.[1];
-        kept.push(fn && fn !== 'eval' && !/^eval /.test(fn) ? `    at ${fn} (${loc})` : `    at ${loc}`);
-      }
-      return kept.join('\n');
-    };
-  } catch (err) {
-    console.error('[tx] source map init failed:', err);
-    return null;
-  }
-}
 
 export interface ExecuteTestsOptions {
   filterSuite?: string;
   filterTest?: string;
   filterTests?: string[];
-  filename?: string;
   retries?: number;
-  vmContext?: Record<string, unknown>;
   setCurrentTestInfo?: (info: unknown) => void;
   onTestEnd?: (result: TestResult) => void;
   isStopRequested?: () => boolean;
@@ -48,14 +19,11 @@ export interface ExecuteTestsOptions {
   onAttemptFinally?: (testName: string, passed: boolean, attemptsLeft: number) => void;
 }
 
-export async function executeTests(code: string, opts?: ExecuteTestsOptions): Promise<TestResult[]> {
-  const remap = makeRemapper(code);
-  const vmContext = opts?.vmContext ?? {};
-  const queue = buildTestQueue(code, opts ?? {}, vmContext);
+export async function executeTests(filePath: string, opts?: ExecuteTestsOptions): Promise<TestResult[]> {
+  const queue = buildTestQueue(filePath, opts ?? {});
 
   if ('parseError' in queue) {
-    const err = remap ? remap(queue.parseError) : queue.parseError;
-    return [{ name: '(parse/compile error)', passed: false, error: err, duration: 0, logs: [] }];
+    return [{ name: '(parse/compile error)', passed: false, error: queue.parseError, duration: 0, logs: [] }];
   }
 
   const results: TestResult[] = [];
@@ -67,6 +35,7 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
     let passed = false;
     let duration = 0;
     let finalLogs: ReturnType<typeof stopCollectingLogs> = [];
+    let finalSnapshots: SnapshotEntry[] = [];
     while (attempt <= maxRetries && !passed && !opts?.isStopRequested?.()) {
       opts?.onAttemptBegin?.(t.name, attempt);
       const titlePath = t.name.split(' > ');
@@ -85,11 +54,12 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
       }
       const t0 = Date.now();
       let _timeoutId: ReturnType<typeof setTimeout> | undefined;
+      clearSnapshots();
       startCollectingLogs();
       _clearSoftErrors();
       let testError: unknown = undefined;
       try {
-        closeExtraTabs();
+        await closeExtraTabs();
         await page.resetSession();
         for (const hook of t.setupBeforeAlls) await Promise.resolve(hook());
         for (const hook of t.beforeEachs) {
@@ -127,6 +97,8 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
       }
       duration = Date.now() - t0;
       finalLogs = stopCollectingLogs();
+      await flushSnapshots();
+      finalSnapshots = getSnapshots();
       try {
         if (testError === undefined) {
           passed = true;
@@ -134,11 +106,10 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
           const e: any = testError;
           lastError = e;
           const errStr = e.stack || e.message || String(e);
-          const remapped = remap ? remap(errStr) : errStr;
           if (attempt < maxRetries && !opts?.isStopRequested?.()) {
-            opts?.onAttemptError?.(`Attempt ${attempt + 1} failed — retrying…\n` + remapped);
+            opts?.onAttemptError?.(`Attempt ${attempt + 1} failed — retrying…\n` + errStr);
           } else {
-            opts?.onAttemptError?.(remapped);
+            opts?.onAttemptError?.(errStr);
           }
         }
       } finally {
@@ -150,15 +121,16 @@ export async function executeTests(code: string, opts?: ExecuteTestsOptions): Pr
       }
       attempt++;
     }
+    const snapshots = finalSnapshots.length > 0 ? finalSnapshots : undefined;
     if (passed) {
-      const r: TestResult = { name: t.name, passed: true, duration, logs: finalLogs, retry: attempt - 1 };
+      const r: TestResult = { name: t.name, passed: true, duration, logs: finalLogs, retry: attempt - 1, snapshots };
       results.push(r);
-      opts?.onTestEnd?.(r);
+      try { opts?.onTestEnd?.(r); } catch (e) { console.error('[tx] onTestEnd error:', e); }
     } else {
       const rawErr = lastError?.stack || lastError?.message || String(lastError);
-      const r: TestResult = { name: t.name, passed: false, error: remap ? remap(rawErr) : rawErr, duration, logs: finalLogs, retry: attempt - 1 };
+      const r: TestResult = { name: t.name, passed: false, error: rawErr, duration, logs: finalLogs, retry: attempt - 1, snapshots };
       results.push(r);
-      opts?.onTestEnd?.(r);
+      try { opts?.onTestEnd?.(r); } catch (e) { console.error('[tx] onTestEnd error:', e); }
     }
   }
   return results;

@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { generateControlPanelHTML, type ControlPanelConfig } from '../panel/controlPanel';
-import { parseTestFile, bundleTestFile, ParsedFile } from '../runner/runner';
+import { parseTestFile, ParsedFile } from '../runner/runner';
 import { DEFAULT_CONTROL_PANEL_PORT } from '../constants';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from '../runner/reporter';
 import type { TaskHandler } from '../types';
@@ -39,9 +39,8 @@ export class TestServer {
   private server: http.Server | null = null;
   private port: number;
   private testFileMap: Map<string, string>; // relPath (or basename) → absolute path
-  private bundledCodeMap = new Map<string, string>(); // relPath (or basename) → bundled browser JS
   private parsedCache = new Map<string, ParsedFile>(); // relPath (or basename) → parsed test structure
-  private _version = 0;
+  private _cmdCounter = 0;
   private reporters: Reporter[];
   private emitter: ReporterEmitter;
   private testMode: boolean;
@@ -91,7 +90,7 @@ export class TestServer {
       }
     }
     this.testMode = config.testMode ?? false;
-    this.snapshot = config.snapshot ?? false;
+    this.snapshot = config.snapshot ?? true;
     this.tasks = config.tasks ?? {};
     this.grep = config.grep;
     this.actionTimeout = config.actionTimeout;
@@ -111,19 +110,15 @@ export class TestServer {
     return this._donePromise;
   }
 
-  updateFile(basename: string, bundledCode: string, parsed: ParsedFile): void {
-    this.bundledCodeMap.set(basename, bundledCode);
+  updateFile(basename: string, parsed: ParsedFile): void {
     this.parsedCache.set(basename, parsed);
-    this._version++;
-    this.sendToClients({ type: 'version', version: this._version });
+    this.sendToClients({ type: 'tests-updated', data: this._getParsedFiles() });
   }
 
   removeFile(basename: string): void {
-    this.bundledCodeMap.delete(basename);
     this.parsedCache.delete(basename);
     this.testFileMap.delete(basename);
-    this._version++;
-    this.sendToClients({ type: 'version', version: this._version });
+    this.sendToClients({ type: 'tests-updated', data: this._getParsedFiles() });
   }
 
   start(proxyUrl: string, viewport?: { width: number; height: number }): Promise<void> {
@@ -274,11 +269,35 @@ export class TestServer {
 
   private _addPanelClient(ws: WebSocket): void {
     this._panelClients.add(ws);
-    this._send(ws, { type: 'version', version: this._version });
-    // If agent is already connected, notify this panel
+    this._send(ws, { type: 'tests-updated', data: this._getParsedFiles() });
     if (this._testBrowserClient) {
       this._send(ws, { type: 'agent-connected' });
     }
+  }
+
+  private _getParsedFiles(): ParsedFile[] {
+    let files: ParsedFile[];
+    if (this.testFileMap.size > 0) {
+      files = Array.from(this.testFileMap.entries()).map(([fileKey, absPath]) => {
+        const cached = this.parsedCache.get(fileKey);
+        if (cached) return cached;
+        const parsed = parseTestFile(absPath);
+        parsed.filename = fileKey;
+        return parsed;
+      });
+    } else {
+      files = Array.from(this.parsedCache.values());
+    }
+    if (this.grep) {
+      const grep = this.grep;
+      files = files
+        .map(f => ({ ...f, tests: f.tests.filter(t => {
+          const fullName = t.suite ? `${t.suite} > ${t.name}` : t.name;
+          return grep.test(fullName) || grep.test(t.name) || (t.tags ?? []).some(tag => grep.test(tag));
+        }) }))
+        .filter(f => f.tests.length > 0);
+    }
+    return files;
   }
 
   private _handlePanelMessage(ws: WebSocket, msg: any): void {
@@ -438,7 +457,6 @@ export class TestServer {
       'artifact':           () => this._onArtifact(m),
       'save-download':      () => this._onSaveDownload(ws, m),
       'get-tests':          () => this._onGetTests(ws, m),
-      'get-test-source':    () => this._onGetTestSource(ws, m),
       'get-cookie-jar':     () => this._onGetCookieJar(ws, m),
       'set-cookie-jar':     () => this._onSetCookieJar(ws, m),
       'save-storage-state': () => this._onSaveStorageState(ws, m),
@@ -576,31 +594,6 @@ export class TestServer {
     }
   }
 
-  private _onGetTestSource(ws: WebSocket, msg: Msg<'get-test-source'>): void | Promise<void> {
-    const { id, file } = msg;
-    const isAbsolutePath = (f: string) => f.startsWith('/') || f.startsWith('\\') || /^[A-Za-z]:/.test(f);
-    if (!file || file.includes('..') || file.includes('\\') || isAbsolutePath(file)) {
-      this._send(ws, { type: 'test-source', id, error: 'Invalid filename' });
-      return;
-    }
-    const bundled = this.bundledCodeMap.get(file);
-    if (bundled) {
-      this._send(ws, { type: 'test-source', id, data: bundled });
-      return;
-    }
-    const filePath = this.testFileMap.get(file) ?? path.join(__dirname, 'examples', path.basename(file));
-    if (!fs.existsSync(filePath)) {
-      this._send(ws, { type: 'test-source', id, error: 'Not found' });
-      return;
-    }
-    return bundleTestFile(filePath).then(code => {
-      this.bundledCodeMap.set(file, code);
-      this._send(ws, { type: 'test-source', id, data: code });
-    }).catch((err: any) => {
-      this._send(ws, { type: 'test-source', id, error: `Bundle error: ${err.message}` });
-    });
-  }
-
   private _onGetCookieJar(ws: WebSocket, msg: Msg<'get-cookie-jar'>): void {
     const { id } = msg;
     try {
@@ -671,7 +664,7 @@ export class TestServer {
     if (!this._testBrowserClient || this._testBrowserClient.readyState !== WebSocket.OPEN) {
       throw new Error('Test browser agent not connected');
     }
-    const id = 'node-' + (++this._version) + '-' + Date.now();
+    const id = 'node-' + (++this._cmdCounter) + '-' + Date.now();
     return new Promise<unknown>((resolve, reject) => {
       this._pendingNodeCommands.set(id, { resolve, reject });
       this._send(this._testBrowserClient!, { type: 'tb-command', id, method, params: params ?? {} });

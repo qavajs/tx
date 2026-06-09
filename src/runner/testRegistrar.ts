@@ -167,3 +167,29 @@ export function buildTestRegistrar(ctx: RegistrationCtx, fixtureDefs: FixtureDef
 
   return makeTestFn(fixtureDefs);
 }
+
+// ---------------------------------------------------------------------------
+// Global singleton — used by the Node require() execution path
+// ---------------------------------------------------------------------------
+
+const _globalCtx: RegistrationCtx = { queue: [], stack: [], tagStack: [], hookStack: [] };
+
+export function beginCollecting(filters: Pick<RegistrationCtx, 'filterSuite' | 'filterTest' | 'filterTests'> = {}): void {
+  _globalCtx.queue.length = 0;
+  _globalCtx.stack.length = 0;
+  _globalCtx.tagStack.length = 0;
+  _globalCtx.hookStack.length = 0;
+  _globalCtx.filterSuite = filters.filterSuite;
+  _globalCtx.filterTest  = filters.filterTest;
+  _globalCtx.filterTests = filters.filterTests;
+}
+
+export function endCollecting(): QueueItem[] { return [..._globalCtx.queue]; }
+
+const _globalRegistrar = buildTestRegistrar(_globalCtx, defaultFixtureDefs);
+export const test       = _globalRegistrar;
+export const describe   = _globalRegistrar.describe as (name: string, optsOrFn: (() => void) | { tag?: string[] }, maybeFn?: () => void) => void;
+export const beforeEach = _globalRegistrar.beforeEach as (fn: HookFn) => void;
+export const afterEach  = _globalRegistrar.afterEach  as (fn: HookFn) => void;
+export const beforeAll  = _globalRegistrar.beforeAll  as (fn: HookFn) => void;
+export const afterAll   = _globalRegistrar.afterAll   as (fn: HookFn) => void;

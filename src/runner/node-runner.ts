@@ -1,10 +1,9 @@
 import * as path from 'path';
 import { setRuntimeConfig } from '../browser/config';
 import { setWsTransport, _dispatchWsMessage } from '../browser/ws';
-import { page, browser, request, expect, log, attach, initNodeBrowserApi } from '../browser/browser';
-import { node } from '../browser/browser';
+import { page, browser, request, expect, log, attach, node, initNodeBrowserApi } from '../browser/browser';
 import { executeTests } from './testRunner';
-import { bundleTestFile } from './runner';
+import { register as registerTsLoader } from '../core/tsLoader';
 import { setNodeTxContext } from './testRegistrar';
 import type { TestResult } from './executor';
 import type { TestServer } from '../core/server';
@@ -42,7 +41,12 @@ export class NodeTestRunner {
     stopSignal?: { stop: boolean },
     reporterHooks?: RunnerReporterHooks,
   ): Promise<RunSummary> {
-    // 1. Init Node transport so browser.ts wsRequest/wsSend route through the server
+    // 1. Register .ts loader so test-file local imports resolve without bundling.
+    // tsLoader patches Module._resolveFilename so require('@qavajs/tx') resolves to
+    // __filename (this bundle), whose exports already contain all live tx entities.
+    registerTsLoader();
+
+    // 2. Init Node transport so browser.ts wsRequest/wsSend route through the server
     setRuntimeConfig(this.config);
     initNodeBrowserApi(this.config.port, this.config.proxyUrl);
     setWsTransport({
@@ -63,8 +67,7 @@ export class NodeTestRunner {
       send: () => { /* no-op — Node runner doesn't use wsSend */ },
     });
 
-    // 2. Subscribe to agent events so page-events (load, navigate, etc.) are emitted
-    const fakeWindow: Record<string, unknown> = {};
+    // 3. Subscribe to agent events so page-events (load, navigate, etc.) are emitted
     const unsubscribe = this.server.onAgentEvent((event, payload) => {
       _dispatchWsMessage('tb-event', { type: 'tb-event', event, payload });
     });
@@ -72,8 +75,11 @@ export class NodeTestRunner {
     // Build the tx api object for test contexts
     const txApi = { page, expect, browser, node, request, log, attach };
 
+    // Holder for current test info (replaces fakeWindow.__CURRENT_TEST_INFO__)
+    const _testInfo = { current: undefined as unknown };
+
     // Set Node.js fallback for testRegistrar's defaultFixtureDefs (avoids window.tx ReferenceError)
-    setNodeTxContext(txApi, () => fakeWindow.__CURRENT_TEST_INFO__);
+    setNodeTxContext(txApi, () => _testInfo.current);
 
     let totalPass = 0;
     let totalFail = 0;
@@ -81,112 +87,63 @@ export class NodeTestRunner {
     let stopped = false;
 
     try {
-      if (reporterHooks?.onBegin) {
-        reporterHooks.onBegin(files);
-      } else {
-        this.server.pushToAllPanels({ type: 'runner-begin', files, tests: [] });
+      try {
+        if (reporterHooks?.onBegin) {
+          try { reporterHooks.onBegin(files); } catch (e) { console.error('[tx] onBegin error:', e); }
+        } else {
+          this.server.pushToAllPanels({ type: 'runner-begin', files, tests: [] });
+        }
+
+        for (const fileKey of files) {
+          if (stopSignal?.stop) { stopped = true; break; }
+
+          // Resolve to absolute path
+          const absPath = this._resolveFile(fileKey);
+          if (!absPath) {
+            console.error(`[NodeTestRunner] Could not resolve file: ${fileKey}`);
+            continue;
+          }
+
+          const fileResults: TestResult[] = await executeTests(absPath, {
+            filterSuite: spec?.filterSuite,
+            filterTest: spec?.filterTest,
+            filterTests: spec?.filterTests,
+            retries: this.config.retries,
+            setCurrentTestInfo: (info) => { _testInfo.current = info; },
+            isStopRequested: () => stopSignal?.stop ?? false,
+            onAttemptBegin: (testName, attempt) => {
+              this.server.pushToAllPanels({ type: 'runner-test-begin', file: fileKey, testName, attempt });
+              if (attempt === 0) reporterHooks?.onTestBegin?.(fileKey, testName);
+            },
+            onTestEnd: (result) => {
+              this.server.pushToAllPanels({ type: 'runner-test-end', file: fileKey, result });
+              try { reporterHooks?.onTestEnd?.(fileKey, result); } catch (e) { console.error('[tx] onTestEnd error:', e); }
+              if (result.passed) totalPass++;
+              else totalFail++;
+              totalDuration += result.duration;
+            },
+          });
+
+          // Report parse/compile errors (these are returned but onTestEnd is not called for them)
+          if (fileResults.length === 1 && fileResults[0].name === '(parse/compile error)') {
+            const r = fileResults[0];
+            this.server.pushToAllPanels({ type: 'runner-test-end', file: fileKey, result: r });
+            totalFail++;
+            totalDuration += r.duration;
+          }
+
+          if (stopSignal?.stop) { stopped = true; break; }
+        }
+      } finally {
+        unsubscribe();
       }
-
-      for (const fileKey of files) {
-        if (stopSignal?.stop) { stopped = true; break; }
-
-        // Resolve to absolute path
-        const absPath = this._resolveFile(fileKey);
-        if (!absPath) {
-          console.error(`[NodeTestRunner] Could not resolve file: ${fileKey}`);
-          continue;
-        }
-
-        // Bundle the test file
-        let code: string;
-        try {
-          code = await bundleTestFile(absPath);
-        } catch (e: any) {
-          console.error(`[NodeTestRunner] Bundle error for ${fileKey}:`, e.message);
-          const r: TestResult = { name: '(bundle error)', passed: false, error: e.message, duration: 0, logs: [] };
-          this.server.pushToAllPanels({ type: 'runner-test-end', file: fileKey, result: r });
-          totalFail++;
-          continue;
-        }
-
-        // Build vm context
-        fakeWindow.__CURRENT_TEST_INFO__ = undefined;
-        fakeWindow.tx = txApi;
-        const vmContext: Record<string, unknown> = {
-          tx: txApi,
-          page,
-          expect,
-          browser,
-          node,
-          request,
-          log,
-          attach,
-          window: fakeWindow,
-          console,
-          setTimeout,
-          clearTimeout,
-          setInterval,
-          clearInterval,
-          Promise,
-          Error,
-          JSON,
-          Math,
-          Date,
-          Array,
-          Object,
-          String,
-          Number,
-          Boolean,
-          RegExp,
-          Map,
-          Set,
-          Symbol,
-          parseInt,
-          parseFloat,
-          isNaN,
-          isFinite,
-          encodeURIComponent,
-          decodeURIComponent,
-        };
-
-        const fileResults: TestResult[] = await executeTests(code, {
-          filterSuite: spec?.filterSuite,
-          filterTest: spec?.filterTest,
-          filterTests: spec?.filterTests,
-          retries: this.config.retries,
-          vmContext,
-          setCurrentTestInfo: (info) => { fakeWindow.__CURRENT_TEST_INFO__ = info; },
-          isStopRequested: () => stopSignal?.stop ?? false,
-          onAttemptBegin: (testName, attempt) => {
-            this.server.pushToAllPanels({ type: 'runner-test-begin', file: fileKey, testName, attempt });
-            if (attempt === 0) reporterHooks?.onTestBegin?.(fileKey, testName);
-          },
-          onTestEnd: (result) => {
-            this.server.pushToAllPanels({ type: 'runner-test-end', file: fileKey, result });
-            reporterHooks?.onTestEnd?.(fileKey, result);
-            if (result.passed) totalPass++;
-            else totalFail++;
-            totalDuration += result.duration;
-          },
-        });
-
-        // Report parse/compile errors (these are returned but onTestEnd is not called for them)
-        if (fileResults.length === 1 && fileResults[0].name === '(parse/compile error)') {
-          const r = fileResults[0];
-          this.server.pushToAllPanels({ type: 'runner-test-end', file: fileKey, result: r });
-          totalFail++;
-          totalDuration += r.duration;
-        }
-
-        if (stopSignal?.stop) { stopped = true; break; }
-      }
-    } finally {
-      unsubscribe();
+    } catch (e) {
+      console.error('[tx] run error:', e);
     }
 
     const summary: RunSummary = { passed: totalPass, failed: totalFail, duration: totalDuration, stopped };
     this.server.pushToAllPanels({ type: 'runner-end', passed: totalPass, failed: totalFail, duration: totalDuration, stopped });
-    reporterHooks?.onEnd?.(summary);
+    try { reporterHooks?.onEnd?.(summary); } catch (e) { console.error('[tx] onEnd error:', e); }
     return summary;
   }
 

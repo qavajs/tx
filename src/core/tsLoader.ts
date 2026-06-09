@@ -17,6 +17,7 @@ export function register(): void {
       target: 'node18',
       format: 'cjs',
       sourcefile: filename,
+      sourcemap: 'inline',
     });
     mod._compile(code, filename);
   };
@@ -36,4 +37,17 @@ export function register(): void {
     }
     originalJsExt(mod, filename);
   };
+
+  // Redirect '@qavajs/tx' → this bundle (__filename). The bundle already exports all
+  // tx entities (page, test, describe, …) and is in require.cache from the moment it
+  // starts, so test files that call require('@qavajs/tx') get the live bundle exports
+  // with no extra cache injection or file-system lookup needed.
+  if (!((Module as any)._resolveFilename as any).__txPatched) {
+    const origResolve = (Module as any)._resolveFilename;
+    (Module as any)._resolveFilename = function(request: string, parent: unknown, isMain: boolean, options: unknown) {
+      if (request === '@qavajs/tx') return __filename;
+      return origResolve.call(this, request, parent, isMain, options);
+    };
+    ((Module as any)._resolveFilename as any).__txPatched = true;
+  }
 }

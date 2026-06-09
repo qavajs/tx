@@ -5,35 +5,34 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { TestServer } from '../core/server';
-import { bundleTestFile, parseTestFile } from './runner';
+import { parseTestFile } from './runner';
 import { matchGlob } from '../utils/glob';
 
-async function processFile(filePath: string, server: TestServer, baseDir?: string): Promise<void> {
+function processFile(filePath: string, server: TestServer, baseDir?: string): void {
   const basename = path.basename(filePath);
   const relPath = baseDir ? path.relative(baseDir, filePath).replace(/\\/g, '/') : undefined;
   const fileKey = relPath ?? basename;
   try {
-    const code = await bundleTestFile(filePath);
     const parsed = parseTestFile(filePath);
     parsed.filename = fileKey;
     parsed.relPath = relPath;
-    server.updateFile(fileKey, code, parsed);
-    console.log(`📦 Bundled: ${fileKey}`);
+    server.updateFile(fileKey, parsed);
+    console.log(`📝 Parsed: ${fileKey}`);
   } catch (err: any) {
-    console.error(`❌ Bundle error [${fileKey}]: ${err.message}`);
+    console.error(`❌ Parse error [${fileKey}]: ${err.message}`);
   }
 }
 
-export async function startWatcher(
+export function startWatcher(
   testFiles: string[],
   patterns: string[],
   baseDir: string,
   server: TestServer,
-): Promise<void> {
+): void {
   if (testFiles.length === 0) return;
 
-  // Bundle all files immediately on startup, await so callers can wait before opening browser
-  await Promise.all(testFiles.map(f => processFile(f, server, baseDir)));
+  // Parse all files immediately on startup
+  for (const f of testFiles) processFile(f, server, baseDir);
   console.log(`👀 Watching ${testFiles.length} test file(s) for changes...`);
 
   // Resolve which directories to watch
