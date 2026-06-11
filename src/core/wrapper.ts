@@ -371,7 +371,7 @@ export class TxWrapper {
         // Safari must be launched via `open` — launching the binary directly triggers
         // WebKit's WebProcess sandbox and blocks all resource loads.
         spawnCmd = 'open';
-        args = ['-a', 'Safari', controlPanelUrl];
+        args = ['-n', '--fresh', '-a', 'Safari', controlPanelUrl];
       } else {
         spawnCmd = exePath;
         const isFirefox = exePath.toLowerCase().includes('firefox');
@@ -385,6 +385,10 @@ export class TxWrapper {
             'user_pref("browser.rights.3.shown", true);',
             'user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);',
             'user_pref("dom.disable_open_during_load", false);',
+            'user_pref("dom.webnotifications.enabled", false);',
+            'user_pref("geo.enabled", false);',
+            'user_pref("media.volume_scale", "0.0");',
+            'user_pref("network.http.phishy-userpass-length", 255);',
           ].join('\n'));
           args = [
             '--no-remote',
@@ -415,6 +419,13 @@ export class TxWrapper {
             '--enable-automation',
             '--disable-popup-blocking',
             '--incognito',
+            '--mute-audio',
+            '--disable-notifications',
+            '--disable-background-timer-throttling',
+            '--disable-renderer-backgrounding',
+            '--ignore-certificate-errors',
+            '--disable-translate',
+            '--disable-dev-shm-usage',
             ...(this.config.headless ? headlessArgs(exePath) : []),
             controlPanelUrl,
           ];
