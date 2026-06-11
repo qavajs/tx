@@ -2,9 +2,8 @@ import { test, expect } from '@qavajs/tx';
 
 const API_BASE = 'http://localhost:3000';
 
-async function loadTestPage({ page, node }: any) {
-    const dirname = await node.task('dirname');
-    await page.goto(`file://${dirname}/app/testPage.html`);
+async function loadTestPage({ page }: any) {
+    await page.goto('http://localhost:3000/testPage.html');
 }
 
 // ── getBy* locator factories ───────────────────────────────────────────────────
@@ -906,19 +905,17 @@ test.describe('Page events – pageerror', () => {
 // ── Page events – frame ───────────────────────────────────────────────────────
 
 test.describe('Page events – frameattached / framenavigated / framedetached', () => {
-    test('frameattached fires when a page with an iframe is loaded', async ({ page, node }) => {
-        const dirname = await node.task('dirname');
+    test('frameattached fires when a page with an iframe is loaded', async ({ page }) => {
         const attached: any[] = [];
         page.on('frameattached', frame => { attached.push(frame); });
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         expect(attached.length).toBeGreaterThan(0);
     });
 
-    test('framenavigated fires during page navigation', async ({ page, node }) => {
-        const dirname = await node.task('dirname');
+    test('framenavigated fires during page navigation', async ({ page }) => {
         let navigated = false;
         page.on('framenavigated', () => { navigated = true; });
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         expect(navigated).toBe(true);
     });
 

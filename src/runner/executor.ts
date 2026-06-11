@@ -71,8 +71,7 @@ export function buildTestQueue(
   };
 
   try {
-    // @ts-ignore
-    new window['%hammerhead%'].nativeMethods.Function(code)();
+    new Function(code)();
   } catch (e: unknown) {
     const err = e instanceof Error ? e : new Error(String(e));
     return { parseError: err.stack || err.message };

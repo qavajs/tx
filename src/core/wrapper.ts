@@ -11,6 +11,38 @@ import { execSync, spawn, ChildProcess } from 'node:child_process';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const hammerhead = require('testcafe-hammerhead');
 
+// Patch hammerhead's client bundle for two cases where it dereferences an object
+// that is undefined when the control panel is hosted on the same origin as the proxy.
+//
+// Because the control panel (/tx) and the proxied test page (/{session}/...) share
+// the same origin (localhost:proxyPort), hammerhead's getTopSameDomainWindow() walks
+// up to the control-panel parent window.  That window has no hammerhead instance,
+// so two accesses crash:
+//
+//  1. parentLocationWrapper.origin  — LocationWrapper is undefined for the parent.
+//     Fix: treat a missing wrapper as cross-domain (empty origin).
+//
+//  2. topSameDomainHammerhead.sandbox.storageSandbox  — hammerhead is undefined on
+//     the parent.  Fix: fall back to the sandbox of the iframe itself so it creates
+//     its own storage wrappers rather than reusing the parent's.
+//
+// Both patches are idempotent file patches; safe to run on every process start.
+{
+  const bundlePath = require.resolve('testcafe-hammerhead/lib/client/hammerhead.js');
+  let src = fs.readFileSync(bundlePath, 'utf8');
+  let dirty = false;
+
+  const BUGGY1 = 'isCrossDomainParent ? \'\' : parentLocationWrapper.origin';
+  const FIXED1 = '(isCrossDomainParent || !parentLocationWrapper) ? \'\' : parentLocationWrapper.origin';
+  if (src.includes(BUGGY1)) { src = src.replace(BUGGY1, FIXED1); dirty = true; }
+
+  const BUGGY2 = 'var topSameDomainStorageSandbox = topSameDomainHammerhead.sandbox.storageSandbox;';
+  const FIXED2 = 'var topSameDomainStorageSandbox = topSameDomainHammerhead ? topSameDomainHammerhead.sandbox.storageSandbox : this.sandbox;';
+  if (src.includes(BUGGY2)) { src = src.replace(BUGGY2, FIXED2); dirty = true; }
+
+  if (dirty) fs.writeFileSync(bundlePath, src, 'utf8');
+}
+
 // Hammerhead passes X-Frame-Options: DENY/SAMEORIGIN through unchanged, which
 // blocks the proxied page from loading in our iframe.  Strip those values so
 // the browser does not enforce them.  ALLOW-FROM is still rewritten by the
@@ -142,7 +174,7 @@ import { setPreprocessor } from '../runner/runner';
 import { ProxyCollector } from '../proxy/collector';
 import type { Reporter } from '../runner/reporter';
 import type { TxConfig } from '../types';
-import { DEFAULT_PROXY_PORT_1, DEFAULT_PROXY_PORT_2, DEFAULT_CONTROL_PANEL_PORT } from '../constants';
+import { DEFAULT_PROXY_PORT_1, DEFAULT_PROXY_PORT_2 } from '../constants';
 
 type TxWrapperConfig = Omit<TxConfig, 'reporters' | 'profiles' | 'shard' | 'grep' | 'testFiles'> & {
   reporters?: Reporter[];
@@ -159,7 +191,7 @@ function checkPortAvailable(port: number, host: string): Promise<void> {
       if (err.code === 'EADDRINUSE') {
         reject(new Error(
           `Port ${port} is already in use on ${host}. ` +
-          `Set a different port in your config (port1, port2, controlPanelPort).`
+          `Set a different port in your config (port1, port2).`
         ));
       } else {
         reject(err);
@@ -189,10 +221,8 @@ function waitForPort(port: number, host: string, timeoutMs = 5000): Promise<void
 export class TxWrapper {
   private proxy: any;
   private session: any;
-  private controlPanelSession: any;
   private _collector: ProxyCollector | null = null;
   private proxyUrl: string = '';
-  private controlPanelProxyUrl: string = '';
   private server: TestServer | null = null;
   private _browserChild: ChildProcess | null = null;
   private _isSafariBrowser = false;
@@ -202,7 +232,6 @@ export class TxWrapper {
     config.proxyHost = config.proxyHost || 'localhost';
     config.port1 = config.port1 || DEFAULT_PROXY_PORT_1;
     config.port2 = config.port2 || DEFAULT_PROXY_PORT_2;
-    config.controlPanelPort = config.controlPanelPort || DEFAULT_CONTROL_PANEL_PORT;
   }
 
   /**
@@ -238,14 +267,7 @@ export class TxWrapper {
     this.session = new ProxySession([], {});
     this.proxyUrl = this.proxy.openSession('about:blank', this.session);
 
-    // Create a second session for the control panel server (localhost:11339)
-    // This bypasses CSP and allows the control panel to access the iframe
-    // @ts-ignore
-    this.controlPanelSession = new ProxySession([], {});
-    const controlPanelLocalUrl = `http://localhost:${this.config.controlPanelPort}`;
-    this.controlPanelProxyUrl = this.proxy.openSession(controlPanelLocalUrl, this.controlPanelSession);
-
-    this._collector = new ProxyCollector([this.session, this.controlPanelSession], (msg) => this.server?.sendToClients(msg));
+    this._collector = new ProxyCollector([this.session], (msg) => this.server?.sendToClients(msg));
   }
 
   /**
@@ -260,7 +282,6 @@ export class TxWrapper {
       await Promise.all([
         checkPortAvailable(this.config.port1!, host),
         checkPortAvailable(this.config.port2!, host),
-        checkPortAvailable(this.config.controlPanelPort!, 'localhost'),
       ]);
 
       // Initialize proxy
@@ -269,10 +290,14 @@ export class TxWrapper {
 
       await waitForPort(this.config.port1!, this.config.proxyHost ?? 'localhost');
 
-      // Start control panel server (on localhost:11339)
-      const cpSession = this.controlPanelSession;
+      const proxyHost = this.config.proxyHost ?? 'localhost';
+      const port1 = this.config.port1!;
+      const wsUrl = `ws://${proxyHost}:${port1}/tx-ws`;
+      const apiBase = `http://${proxyHost}:${port1}/tx`;
+
+      // Start control panel — served directly from the proxy port
+      const session = this.session;
       this.server = new TestServer({
-        port:          this.config.controlPanelPort,
         testFiles:     this.config.testFiles,
         watchBaseDir:  this.config.watchBaseDir,
         reporters:     this.config.reporters,
@@ -284,14 +309,20 @@ export class TxWrapper {
         expectTimeout: this.config.expectTimeout,
         testTimeout:   this.config.testTimeout,
         retries:         this.config.retries,
-        onGetCookieJar:  () => cpSession.cookies.serializeJar(),
-        onSetCookieJar:  (jar) => cpSession.cookies.setJar(jar),
+        onGetCookieJar:  () => session.cookies.serializeJar(),
+        onSetCookieJar:  (jar) => session.cookies.setJar(jar),
       });
-      await this.server.start(this.proxyUrl, this.config.viewport);
+      this.server.startOnProxy(this.proxyUrl, this.config.viewport, wsUrl, apiBase);
+
+      // Register control panel routes on the proxy
+      this.proxy.GET('/tx',            (req: any, res: any) => this.server!.handleHttpRequest(req, res));
+      this.proxy.GET('/controller.js', (req: any, res: any) => this.server!.handleHttpRequest(req, res));
+      this.proxy.GET('/tx/about-blank',(req: any, res: any) => this.server!.handleHttpRequest(req, res));
+      this.proxy.GET('/tx-ws',         (req: any, socket: any) => this.server!.handleWsUpgrade(req, socket));
+
       this._collector?.attach();
 
-      console.log(`✅ Control Panel server started at http://localhost:${this.config.controlPanelPort}`);
-      console.log(`✅ Control Panel via proxy at ${this.controlPanelProxyUrl}`);
+      console.log(`✅ Control Panel on proxy at http://${proxyHost}:${port1}/tx`);
       console.log(`📦 Proxy URL: ${this.proxyUrl}`);
 
       setPreprocessor(this.config.preprocessor);
@@ -314,10 +345,12 @@ export class TxWrapper {
         );
       }
 
+      const controlPanelUrl = `http://${proxyHost}:${port1}/tx`;
+
       console.table({
         browser:       path.basename(exePath),
         headless:      this.config.headless ?? false,
-        controlPanel:  `http://localhost:${this.config.controlPanelPort}`,
+        controlPanel:  controlPanelUrl,
         proxy:         this.proxyUrl,
         testMode:      this.config.testMode ?? false,
         snapshot:      this.config.snapshot ?? false,
@@ -338,7 +371,7 @@ export class TxWrapper {
         // Safari must be launched via `open` — launching the binary directly triggers
         // WebKit's WebProcess sandbox and blocks all resource loads.
         spawnCmd = 'open';
-        args = ['-a', 'Safari', this.controlPanelProxyUrl];
+        args = ['-a', 'Safari', controlPanelUrl];
       } else {
         spawnCmd = exePath;
         const isFirefox = exePath.toLowerCase().includes('firefox');
@@ -349,7 +382,7 @@ export class TxWrapper {
             '--new-instance',
             '--disable-popup-blocking',
             ...(this.config.headless ? ['--headless'] : []),
-            this.controlPanelProxyUrl,
+            controlPanelUrl,
           ];
         } else {
           // Chromium-based: isolated user data dir so we always spawn a fresh instance
@@ -372,7 +405,7 @@ export class TxWrapper {
             '--enable-automation',
             '--disable-popup-blocking',
             ...(this.config.headless ? headlessArgs(exePath) : []),
-            this.controlPanelProxyUrl,
+            controlPanelUrl,
           ];
         }
       }
@@ -387,8 +420,7 @@ export class TxWrapper {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       console.log(`\n✨ Control Panel ready for use`);
-      console.log(`\n💡 Open via proxy: ${this.controlPanelProxyUrl}`);
-      console.log(`💡 Or locally: http://localhost:${this.config.controlPanelPort}\n`);
+      console.log(`\n💡 Control Panel: ${controlPanelUrl}\n`);
 
     } catch (error) {
       console.error('❌ Failed to start wrapper:', error);

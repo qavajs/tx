@@ -6,15 +6,13 @@ import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { generateControlPanelHTML, type ControlPanelConfig } from '../panel/controlPanel';
+import { generateControlPanelHTML } from '../panel/controlPanel';
 import { parseTestFile, bundleTestFile, ParsedFile } from '../runner/runner';
-import { DEFAULT_CONTROL_PANEL_PORT } from '../constants';
 import { ReporterEmitter, type Reporter, type Suite, type TestResult as ReporterTestResult } from '../runner/reporter';
 import type { TaskHandler } from '../types';
 import type { BrowserMessage, Msg } from '../ws-protocol';
 
 export interface TestServerConfig {
-  port?: number;
   testFiles?: string[];
   watchBaseDir?: string;
   reporters?: Reporter[];
@@ -32,7 +30,6 @@ export interface TestServerConfig {
 
 export class TestServer {
   private server: http.Server | null = null;
-  private port: number;
   private testFileMap: Map<string, string>; // relPath (or basename) → absolute path
   private bundledCodeMap = new Map<string, string>(); // relPath (or basename) → bundled browser JS
   private parsedCache = new Map<string, ParsedFile>(); // relPath (or basename) → parsed test structure
@@ -53,9 +50,12 @@ export class TestServer {
   private _wsClients = new Set<WebSocket>();
   private _getCookieJarCb: (() => string) | undefined;
   private _setCookieJarCb: ((jar: string | null) => void) | undefined;
+  private _proxyUrl: string = '';
+  private _wsUrl: string = '';
+  private _apiBase: string = '';
+  private _viewport: { width: number; height: number } | undefined;
 
   constructor(config: TestServerConfig = {}) {
-    this.port = config.port ?? DEFAULT_CONTROL_PANEL_PORT;
     this.reporters = config.reporters ?? [];
     this.emitter = new ReporterEmitter();
     for (const r of this.reporters) this.emitter.add(r);
@@ -100,62 +100,82 @@ export class TestServer {
     this.sendToClients({ type: 'version', version: this._version });
   }
 
-  start(proxyUrl: string, viewport?: { width: number; height: number }): Promise<void> {
-    return new Promise((resolve) => {
-      this.server = http.createServer((req, res) => {
-        if (req.url === '/' && req.method === 'GET') {
-          const html = generateControlPanelHTML({ proxyUrl, controlPanelPort: this.port, viewport, testMode: this.testMode, snapshot: this.snapshot, grep: this.grep, actionTimeout: this.actionTimeout, expectTimeout: this.expectTimeout, testTimeout: this.testTimeout, retries: this.retries } satisfies ControlPanelConfig);
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(html);
-          return;
-        }
+  startOnProxy(
+    proxyUrl: string,
+    viewport: { width: number; height: number } | undefined,
+    wsUrl: string,
+    apiBase: string,
+  ): void {
+    this._proxyUrl = proxyUrl;
+    this._viewport = viewport;
+    this._wsUrl = wsUrl;
+    this._apiBase = apiBase;
 
-        if (req.url === '/controller.js' && req.method === 'GET') {
-          const candidates = [
-            path.join(__dirname, 'controller.js'),
-            path.join(__dirname, 'dist', 'controller.js'),
-          ];
-          const panelPath = candidates.find(p => fs.existsSync(p));
-          if (!panelPath) {
-            res.writeHead(503, { 'Content-Type': 'text/plain' });
-            res.end('controller.js not found — run: npm run build');
-            return;
-          }
-          res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
-          res.end(fs.readFileSync(panelPath));
-          return;
-        }
-
-        if (req.url === '/about-blank' && req.method === 'GET') {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(generateMockHTML());
-          return;
-        }
-
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Not Found');
-      });
-
-      this._wss = new WebSocketServer({ server: this.server });
-      this._wss.on('connection', (ws: WebSocket) => {
-        this._wsClients.add(ws);
-        this._send(ws, { type: 'version', version: this._version });
-
-        ws.on('close', () => this._wsClients.delete(ws));
-        ws.on('error', () => this._wsClients.delete(ws));
-
-        ws.on('message', (rawData: Buffer) => {
-          let msg: BrowserMessage;
-          try { msg = JSON.parse(rawData.toString()) as BrowserMessage; } catch { return; }
-          this._handleWsMessage(ws, msg);
-        });
-      });
-
-      this.server.listen(this.port, 'localhost', () => {
-        console.log(`\n🧪 Test Control Panel: http://localhost:${this.port}`);
-        resolve();
+    this._wss = new WebSocketServer({ noServer: true });
+    this._wss.on('connection', (ws: WebSocket) => {
+      this._wsClients.add(ws);
+      this._send(ws, { type: 'version', version: this._version });
+      ws.on('close', () => this._wsClients.delete(ws));
+      ws.on('error', () => this._wsClients.delete(ws));
+      ws.on('message', (rawData: Buffer) => {
+        let msg: BrowserMessage;
+        try { msg = JSON.parse(rawData.toString()) as BrowserMessage; } catch { return; }
+        this._handleWsMessage(ws, msg);
       });
     });
+  }
+
+  handleWsUpgrade(req: http.IncomingMessage, socket: any): void {
+    this._wss?.handleUpgrade(req, socket, Buffer.alloc(0), (ws) => {
+      this._wss!.emit('connection', ws, req);
+    });
+  }
+
+  handleHttpRequest(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    const pathname = (req.url ?? '').split('?')[0];
+
+    if (pathname === '/tx' && req.method === 'GET') {
+      const html = generateControlPanelHTML({
+        proxyUrl: this._proxyUrl,
+        wsUrl: this._wsUrl,
+        apiBase: this._apiBase,
+        viewport: this._viewport,
+        testMode: this.testMode,
+        snapshot: this.snapshot,
+        grep: this.grep,
+        actionTimeout: this.actionTimeout,
+        expectTimeout: this.expectTimeout,
+        testTimeout: this.testTimeout,
+        retries: this.retries,
+      });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+      return true;
+    }
+
+    if (pathname === '/controller.js' && req.method === 'GET') {
+      const candidates = [
+        path.join(__dirname, 'controller.js'),
+        path.join(__dirname, 'dist', 'controller.js'),
+      ];
+      const panelPath = candidates.find(p => fs.existsSync(p));
+      if (!panelPath) {
+        res.writeHead(503, { 'Content-Type': 'text/plain' });
+        res.end('controller.js not found — run: npm run build');
+        return true;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
+      res.end(fs.readFileSync(panelPath));
+      return true;
+    }
+
+    if (pathname === '/tx/about-blank' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(generateMockHTML());
+      return true;
+    }
+
+    return false;
   }
 
   private _handleWsMessage(ws: WebSocket, msg: BrowserMessage): void {
@@ -390,9 +410,6 @@ export class TestServer {
     });
   }
 
-  getPort(): number {
-    return this.port;
-  }
 }
 
 function generateMockHTML(): string {

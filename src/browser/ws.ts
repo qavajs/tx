@@ -9,7 +9,7 @@ let _wsDisconnectedCb: (() => void) | null = null;
 
 function _wsConnectInternal(): void {
   try {
-    const ws = new WebSocket('ws://localhost:' + window.__CONFIG__.port);
+    const ws = new WebSocket(window.__CONFIG__.wsUrl);
     _ws = ws;
 
     ws.addEventListener('open', () => { _wsConnectedCb?.(); });

@@ -3,7 +3,8 @@ import { actionTimeout, waitTimeout } from './config';
 import type { WindowConfig } from '../types';
 import { Route, routeHandlers as _routeHandlers, matchesRoutePattern as _matchesRoutePattern } from './route';
 export { Route };
-import { installEventBridges as _installEventBridges, installWindowBridges as _installWindowBridges } from './bridges';
+import { installEventBridges as _installEventBridges, installWindowBridges as _installWindowBridges, cleanupBridges as _cleanupBridges } from './bridges';
+import { _clearRouteOrigFetch } from './route';
 import { Locator, resolveSelector, _locatorHandlers } from './locator';
 import { isXPath, resolveXPath, queryXPath } from './locator-utils';
 import { makeLocatorQueries } from './locator-queries';
@@ -106,7 +107,7 @@ let _activeTabId: string | null = null;
 let _tabCounter = 0;
 function _activeTab(): TabEntry | null { return _tabs.find(t => t.id === _activeTabId) ?? null; }
 
-export const API_BASE = 'http://localhost:' + window.__CONFIG__.port;
+export const API_BASE = window.__CONFIG__.apiBase;
 
 // Derive proxy prefix by stripping the trailing page URL (e.g. "about:blank") from the session URL
 // e.g. "http://host/proxy/SESSION/about:blank" → "http://host/proxy/SESSION/"
@@ -306,6 +307,8 @@ export function closeTab(tabId: string) {
   if (tab.iframe) tab.iframe.remove();
   if (tab.popup) tab.popup.close();
   _tabs = _tabs.filter(t => t.id !== tabId);
+  _cleanupBridges();
+  _clearRouteOrigFetch();
   if (_activeTabId === tabId) {
     if (_tabs.length > 0) {
       setActiveTab(_tabs[_tabs.length - 1].id);
@@ -967,6 +970,8 @@ export function _resetBrowserState(): void {
 // ── iframe init ───────────────────────────────────────────────────────────────
 
 export function initIframe() {
+  _cleanupBridges();
+  _clearRouteOrigFetch();
   _tabs = []; _activeTabId = null; _tabCounter = 0;
   _initScripts.length = 0;
   _locatorHandlers.length = 0;
@@ -1092,7 +1097,7 @@ export function createWindow(url?: string) {
   let popupWin: Window | null = null;
   try {
     // @ts-ignore
-    popupWin = window['%hammerhead%'].nativeMethods.windowOpen.call(window, targetUrl, tabId, winFeatures);
+    popupWin = window.open.call(window, targetUrl, tabId, winFeatures);
   } catch (_) {}
 
   if (!popupWin) {
