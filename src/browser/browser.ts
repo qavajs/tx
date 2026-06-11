@@ -306,6 +306,17 @@ export function closeTab(tabId: string) {
   if (!tab) return;
   const tabWin = tab.iframe ? tab.iframe.contentWindow : tab.popup ?? null;
   if (tabWin && tabWin === _lastBridgedWin) _lastBridgedWin = null;
+  if (tabWin) {
+    _clearHammerheadStorages(tabWin);
+    try {
+      const ws = (window as any)['hammerhead|windows-storage'];
+      if (ws && typeof ws.length === 'number') {
+        for (let i = ws.length - 1; i >= 0; i--) {
+          if (ws[i] === tabWin) ws.splice(i, 1);
+        }
+      }
+    } catch { /* cross-origin */ }
+  }
   if (tab.iframe) tab.iframe.remove();
   if (tab.popup) tab.popup.close();
   _tabs = _tabs.filter(t => t.id !== tabId);
@@ -991,6 +1002,7 @@ export function initIframe() {
   _locatorHandlers.length = 0;
   _routeHandlers.length = 0;
   document.getElementById('iframe-container')!.innerHTML = '';
+  _clearHammerheadStorages(window);
   viewportObserver?.disconnect();
   viewportObserver = new ResizeObserver(reapplyViewport);
   viewportObserver.observe(document.getElementById('iframe-container')!);
