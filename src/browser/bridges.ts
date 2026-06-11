@@ -313,10 +313,6 @@ function _bridgeWebSocket(win: any): void {
       _emitPage('websocket', this);
     }
   };
-  // win.WebSocket.CONNECTING = OrigWS.CONNECTING;
-  // win.WebSocket.OPEN = OrigWS.OPEN;
-  // win.WebSocket.CLOSING = OrigWS.CLOSING;
-  // win.WebSocket.CLOSED = OrigWS.CLOSED;
 }
 
 function _bridgeWorker(win: any): void {

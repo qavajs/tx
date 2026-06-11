@@ -315,10 +315,10 @@ export class TxWrapper {
       this.server.startOnProxy(this.proxyUrl, this.config.viewport, wsUrl, apiBase);
 
       // Register control panel routes on the proxy
-      this.proxy.GET('/tx',            (req: any, res: any) => this.server!.handleHttpRequest(req, res));
+      this.proxy.GET('/tx', (req: any, res: any) => this.server!.handleHttpRequest(req, res));
       this.proxy.GET('/controller.js', (req: any, res: any) => this.server!.handleHttpRequest(req, res));
       this.proxy.GET('/tx/about-blank',(req: any, res: any) => this.server!.handleHttpRequest(req, res));
-      this.proxy.GET('/tx-ws',         (req: any, socket: any) => this.server!.handleWsUpgrade(req, socket));
+      this.proxy.GET('/tx-ws', (req: any, socket: any) => this.server!.handleWsUpgrade(req, socket));
 
       this._collector?.attach();
 
