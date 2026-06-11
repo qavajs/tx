@@ -2,9 +2,8 @@ import { test, expect } from '@qavajs/tx';
 
 test.describe('Playground', () => {
 
-    test.beforeEach(async ({ page, node }) => {
-        const dirname = await node.task('dirname');
-        await page.goto(`file://${dirname}/app/testPage.html`);
+    test.beforeEach(async ({ page }) => {
+        await page.goto('http://localhost:3000/testPage.html');
     });
 
     test('click', async ({ page }) => {
@@ -179,9 +178,8 @@ test.describe('Playground', () => {
 });
 
 test.describe('nth/first/last verify', () => {
-    test.beforeEach(async ({ page, node }) => {
-        const dirname = await node.task('dirname');
-        await page.goto(`file://${dirname}/app/testPage.html`);
+    test.beforeEach(async ({ page }) => {
+        await page.goto('http://localhost:3000/testPage.html');
     });
 
     test('first() returns the first card heading', async ({ page }) => {

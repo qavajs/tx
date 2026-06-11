@@ -304,6 +304,8 @@ export function createTab(url?: string) {
 export function closeTab(tabId: string) {
   const tab = _tabs.find(t => t.id === tabId);
   if (!tab) return;
+  const tabWin = tab.iframe ? tab.iframe.contentWindow : tab.popup ?? null;
+  if (tabWin && tabWin === _lastBridgedWin) _lastBridgedWin = null;
   if (tab.iframe) tab.iframe.remove();
   if (tab.popup) tab.popup.close();
   _tabs = _tabs.filter(t => t.id !== tabId);
@@ -821,6 +823,7 @@ export const page = {
   async resetSession(): Promise<void> {
     _locatorHandlers.length = 0;
     _routeHandlers.length = 0;
+    _clearHammerheadStorages(window);
     clearPageListeners();
 
     try {
@@ -935,16 +938,26 @@ export const page = {
 // are captured.
 
 let _earlyWatcherStarted = false;
+let _lastBridgedWin: object | null = null;
+
+function _clearHammerheadStorages(win: any): void {
+  if (!win) return;
+  try {
+    const sb = win['hammerhead|sandbox-backup'];
+    if (sb?.length) sb.length = 0;
+    const ws = win['hammerhead|windows-storage'];
+    if (ws?.length) ws.length = 0;
+  } catch { /* cross-origin */ }
+}
 
 function _startEarlyBridgeWatcher(): void {
   if (_earlyWatcherStarted) return;
   _earlyWatcherStarted = true;
-  let lastWin: object | null = null;
   const tick = () => {
     try {
       const win = iframeWin() as any;
-      if (win && win !== lastWin) {
-        lastWin = win;
+      if (win && win !== _lastBridgedWin) {
+        _lastBridgedWin = win;
         _installWindowBridges(win);
       }
     } catch { /* cross-origin — ignore */ }
@@ -972,6 +985,7 @@ export function _resetBrowserState(): void {
 export function initIframe() {
   _cleanupBridges();
   _clearRouteOrigFetch();
+  _lastBridgedWin = null;
   _tabs = []; _activeTabId = null; _tabCounter = 0;
   _initScripts.length = 0;
   _locatorHandlers.length = 0;
