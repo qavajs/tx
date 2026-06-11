@@ -376,12 +376,22 @@ export class TxWrapper {
         spawnCmd = exePath;
         const isFirefox = exePath.toLowerCase().includes('firefox');
         if (isFirefox) {
-          // --no-remote / --new-instance prevent Firefox from reusing an existing window
+          // Firefox needs an isolated profile dir so it can always start a new instance
+          // even when a Firefox window is already open (which would lock the default profile).
+          this._tempUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tx-firefox-'));
+          fs.writeFileSync(path.join(this._tempUserDataDir, 'user.js'), [
+            'user_pref("browser.shell.checkDefaultBrowser", false);',
+            'user_pref("browser.disableResetPrompt", true);',
+            'user_pref("browser.rights.3.shown", true);',
+            'user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);',
+            'user_pref("dom.disable_open_during_load", false);',
+          ].join('\n'));
           args = [
             '--no-remote',
             '--new-instance',
-            '--disable-popup-blocking',
+            '--profile', this._tempUserDataDir,
             ...(this.config.headless ? ['--headless'] : []),
+            '--private-window',
             controlPanelUrl,
           ];
         } else {
@@ -404,6 +414,7 @@ export class TxWrapper {
             '--no-default-browser-check',
             '--enable-automation',
             '--disable-popup-blocking',
+            '--incognito',
             ...(this.config.headless ? headlessArgs(exePath) : []),
             controlPanelUrl,
           ];

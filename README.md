@@ -1920,6 +1920,20 @@ Running 12 test(s)
 |--------------|----------|-----------------|-------------|
 | `outputPath` | `string` | `"report.html"` | Path for the generated HTML file |
 
+**JUnitReporter** — writes a JUnit-compatible XML file after the run. Accepts one config option:
+
+| Option       | Type     | Default                    | Description |
+|--------------|----------|----------------------------|-------------|
+| `outputPath` | `string` | `"test-results/junit.xml"` | Path for the generated XML file |
+
+```js
+reporters: [
+  ['@qavajs/tx/reporters/JunitReporter', { outputPath: 'results/junit.xml' }],
+],
+```
+
+The XML follows the standard JUnit schema (`<testsuites>` → `<testsuite>` per file → `<testcase>` per test). Failed tests include a `<failure>` element; skipped tests include `<skipped/>`. Compatible with Jenkins, GitHub Actions test summaries, and most CI result dashboards.
+
 ### Writing a custom reporter
 
 ```ts
@@ -2090,18 +2104,18 @@ Use `--workers` when you have spare CPU cores on one machine. Use `--shard` to d
 ## Architecture
 
 ```
-CLI (start.ts)
-  └── TxWrapper (wrapper.ts)
-        ├── Hammerhead Proxy      ports 11337 / 11338
-        ├── TestServer (server.ts) port 11339
-        │     ├── GET /           → control panel HTML
-        │     ├── GET /panel.js   → bundled browser runtime
-        │     ├── GET /about-blank       → blank page served through proxy
+CLI (src/index.ts)
+  └── TxWrapper (src/core/wrapper.ts)
+        ├── Hammerhead Proxy           ports 11337 / 11338
+        ├── TestServer (src/core/server.ts)  port 11339
+        │     ├── GET /                → control panel HTML
+        │     ├── GET /panel.js        → bundled browser runtime
+        │     ├── GET /about-blank     → blank page served through proxy
         │     ├── POST /api/run-test
         │     ├── POST /api/task
         │     ├── GET /api/tests
         │     └── GET /api/version
-        └── Watcher (watcher.ts)
+        └── Watcher (src/runner/watcher.ts)
               └── esbuild bundles *.spec.ts → browser IIFE modules
 ```
 
@@ -2241,22 +2255,58 @@ Assert.less(actual, threshold, message?)
 ```
 @qavajs/tx/
 ├── src/
-│   ├── start.ts          # CLI entry point; parses args, loads config, starts the wrapper
-│   ├── wrapper.ts        # Orchestrates proxy, HTTP server, and browser lifecycle
-│   ├── browser.ts        # page / browser / expect / request API implementations
-│   ├── controller.ts     # Control panel frontend logic (test runner, UI panels)
-│   ├── testRunner.ts     # Server-side spec file parsing
-│   ├── iframeInjector.ts # iframe lifecycle management
-│   ├── server.ts         # HTTP server (serves control panel + API endpoints)
-│   ├── controlPanel.ts   # Control panel HTML generation
-│   ├── reporter.ts       # Reporter interface and ReporterEmitter
-│   ├── watcher.ts        # File-change watcher (live reload)
-│   ├── tsLoader.ts       # TypeScript require hook for spec files
-│   └── types.ts          # Shared TypeScript types
+│   ├── index.ts                      # CLI entry point; parses args, loads config, starts the wrapper
+│   ├── types.ts                      # Shared TypeScript types
+│   ├── constants.ts                  # Shared constants (ports, timeouts, …)
+│   ├── ws-protocol.ts                # WebSocket message type definitions
+│   ├── browser/
+│   │   ├── browser.ts                # page / browser / request API implementations
+│   │   ├── locator.ts                # Locator and FrameLocator classes
+│   │   ├── locator-queries.ts        # getBy* factory (shared by page and FrameLocator)
+│   │   ├── locator-utils.ts          # Shared locator helpers
+│   │   ├── mouse.ts                  # Mouse class
+│   │   ├── keyboard.ts               # Keyboard class
+│   │   ├── assertions.ts             # expect() and expect.soft() implementation
+│   │   ├── aria.ts                   # ARIA tree snapshot builder
+│   │   ├── bridges.ts                # Per-protocol event bridges (fetch, XHR, console, dialogs, …)
+│   │   ├── route.ts                  # Route / page.route() intercept system
+│   │   ├── page-events.ts            # page.on() event emitter and waitForEvent
+│   │   ├── log.ts                    # log / log.group / attach fixture implementations
+│   │   ├── abort.ts                  # AbortController helpers
+│   │   ├── ws.ts                     # WebSocket client (browser → server)
+│   │   ├── config.ts                 # Runtime config received from server
+│   │   └── devPanel.ts               # Dev-panel bridge (selector playground, snapshots)
+│   ├── core/
+│   │   ├── wrapper.ts                # Orchestrates proxy, HTTP server, and browser lifecycle
+│   │   ├── server.ts                 # HTTP + WebSocket server (control panel + API endpoints)
+│   │   ├── controller.ts             # Browser-side UI glue (test list, run buttons)
+│   │   └── tsLoader.ts               # TypeScript require hook for spec files
+│   ├── panel/
+│   │   ├── controlPanel.ts           # Control panel HTML generation
+│   │   ├── controlPanel.html         # Panel HTML template
+│   │   ├── controlPanel.css          # Panel styles
+│   │   ├── render.ts                 # Panel rendering helpers
+│   │   ├── runner-bridge.ts          # Panel ↔ runner WebSocket bridge
+│   │   └── selectors.ts              # CSS selector playground logic
+│   ├── runner/
+│   │   ├── runner.ts                 # Test bundling (esbuild) and execution
+│   │   ├── executor.ts               # Test executor (fixture DI, hooks, retries)
+│   │   ├── testRunner.ts             # Server-side spec file parsing
+│   │   ├── testRegistrar.ts          # test() / describe() / beforeEach() registration
+│   │   ├── reporter.ts               # Reporter interface and ReporterEmitter
+│   │   └── watcher.ts                # File-change watcher (live reload)
+│   ├── reporters/
+│   │   ├── ConsoleReporter.ts        # Console reporter
+│   │   ├── HtmlReporter.ts           # Self-contained HTML reporter
+│   │   └── JunitReporter.ts          # JUnit XML reporter
+│   ├── proxy/
+│   │   └── collector.ts              # Hammerhead proxy response collector
+│   └── utils/
+│       ├── glob.ts                   # Glob-pattern file matching
+│       └── htmlUtils.ts              # HTML serialisation helpers
 ├── types/
-│   └── tx.d.ts           # Public type declarations
-├── dist/                 # Compiled output
-├── tx.config.js          # Example config (in the test/ directory for local dev)
+│   └── tx.d.ts                       # Public type declarations
+├── dist/                             # Compiled output
 └── package.json
 ```
 

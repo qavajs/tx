@@ -6,10 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Breaking Changes
+- **Control panel URL changed** — the control panel is now served directly from the proxy port instead of a dedicated port. The URL is `http://<proxyHost>:<port1>/tx` (e.g. `http://localhost:11337/tx`). The separate `controlPanelPort` is no longer used.
+- **`controlPanelPort` config option removed** — set `port1` and `port2` for the proxy ports; the panel lives at `/tx` on `port1`. Update any bookmarks, CI scripts, or config files that reference the old panel port (default was `11339`).
+
 ### Fixed
 - `ECONNRESET` crash when a second browser connects to the WebSocket server — each WebSocket connection now has an `error` event handler that removes the client from the active set, preventing the error from becoming an unhandled Node.js exception; `_send` is also wrapped in try/catch so messages dispatched to a concurrently-closing socket fail silently
+- Two Hammerhead client bundle bugs patched at startup that caused crashes when the control panel and proxy share the same origin: `parentLocationWrapper.origin` is now guarded against a missing wrapper, and `topSameDomainHammerhead.sandbox.storageSandbox` falls back to the local sandbox when the parent window has no Hammerhead instance
+- `framedetached` event now properly removes the `load` handler added by the `frameattached` listener (previously the handler was anonymous and could not be removed, causing a listener leak on pages with dynamic iframes)
+- Closing a tab no longer leaves a stale `_lastBridgedWin` reference — the bridge watcher would re-use the closed window's bridge on the next navigation tick, causing spurious events
+- Closing a tab now clears Hammerhead storage sandboxes (`hammerhead|sandbox-backup`, `hammerhead|windows-storage`) for the closed window, preventing orphaned sandbox data from interfering with subsequent navigations
+- `page.resetSession()` and `initIframe()` now clear Hammerhead storage sandboxes as part of their cleanup, preventing sandbox state from leaking across tests
 
 ### Changed
+- Control panel is now served through the proxy's own HTTP server on routes `/tx`, `/controller.js`, and `/tx/about-blank` — the dedicated `http.Server` inside `TestServer` has been removed; `TestServer` now exposes `handleHttpRequest()` and `handleWsUpgrade()` for the proxy to delegate to
 - Specs-list autoscroll now always scrolls the running test item into view, regardless of prior manual scrolling — the `_userScrolled` one-shot disable flag has been removed
 - Log section autoscroll is now "smart": new log entries scroll to the bottom only when the user is already within 40 px of it; scrolling up to review earlier entries pauses auto-scroll, and it resumes automatically once the user scrolls back near the bottom
 
