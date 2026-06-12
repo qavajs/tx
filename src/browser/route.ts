@@ -4,6 +4,7 @@
 // fetch function is available (set once per bridge installation).
 let _routeOrigFetch: typeof fetch | null = null;
 export function _setRouteOrigFetch(fn: typeof fetch): void { _routeOrigFetch = fn; }
+export function _clearRouteOrigFetch(): void { _routeOrigFetch = null; }
 
 function _globToRegex(pattern: string): RegExp {
   const reStr = pattern

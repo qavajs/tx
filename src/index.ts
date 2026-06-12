@@ -11,7 +11,7 @@ import { ReporterEmitter, type Reporter, type TestCase } from './runner/reporter
 import { parseTestFile } from './runner/runner';
 import { register as registerTsLoader } from './core/tsLoader';
 import { matchGlob } from './utils/glob';
-import { DEFAULT_PROXY_PORT_1, DEFAULT_PROXY_PORT_2, DEFAULT_CONTROL_PANEL_PORT } from './constants';
+import { DEFAULT_PROXY_PORT_1, DEFAULT_PROXY_PORT_2 } from './constants';
 
 registerTsLoader();
 
@@ -109,8 +109,6 @@ const CONFIG_FIELDS: Record<string, FieldSetter> = {
   proxyHost:         (c, v) => { c.proxyHost = v; },
   port1:             (c, v) => { c.port1 = parseInt(v, 10); },
   port2:             (c, v) => { c.port2 = parseInt(v, 10); },
-  controlPanelPort:  (c, v) => { c.controlPanelPort = parseInt(v, 10); },
-  port:              (c, v) => { c.controlPanelPort = parseInt(v, 10); },
   headless:          (c, v) => { c.headless = v === 'true' || v === '1'; },
   test:              (c, v) => { c.testMode = v === 'true' || v === '1'; },
   grep:              (c, v) => { c.grep = v; },
@@ -266,7 +264,6 @@ async function runParallel(
   const t0 = Date.now();
   const port1 = baseConfig.port1 ?? DEFAULT_PROXY_PORT_1;
   const port2 = baseConfig.port2 ?? DEFAULT_PROXY_PORT_2;
-  const controlPanelPort = baseConfig.controlPanelPort ?? DEFAULT_CONTROL_PANEL_PORT;
 
   const wrappers = groups.map((files, i) => {
     const streamingReporter: Reporter = {
@@ -277,12 +274,11 @@ async function runParallel(
     };
     return new TxWrapper({
       ...baseConfig,
-      headless:         true,
-      testFiles:        files,
-      port1:            port1 + i * 10,
-      port2:            port2 + i * 10,
-      controlPanelPort: controlPanelPort + i * 10,
-      reporters:        [streamingReporter],
+      headless:  true,
+      testFiles: files,
+      port1:     port1 + i * 10,
+      port2:     port2 + i * 10,
+      reporters: [streamingReporter],
     });
   });
 
@@ -339,7 +335,6 @@ async function main() {
     proxyHost:        cliConfig.proxyHost ?? fileConfig.proxyHost ?? 'localhost',
     port1:            cliConfig.port1 ?? fileConfig.port1 ?? DEFAULT_PROXY_PORT_1,
     port2:            cliConfig.port2 ?? fileConfig.port2 ?? DEFAULT_PROXY_PORT_2,
-    controlPanelPort: cliConfig.controlPanelPort ?? fileConfig.controlPanelPort ?? DEFAULT_CONTROL_PANEL_PORT,
     headless:         cliConfig.headless ?? fileConfig.headless ?? (process.env.HEADLESS === 'true'),
     browser:          cliConfig.browser ?? fileConfig.browser,
     viewport:         fileConfig.viewport,

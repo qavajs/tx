@@ -3,7 +3,8 @@ import { actionTimeout, waitTimeout } from './config';
 import type { WindowConfig } from '../types';
 import { Route, routeHandlers as _routeHandlers, matchesRoutePattern as _matchesRoutePattern } from './route';
 export { Route };
-import { installEventBridges as _installEventBridges, installWindowBridges as _installWindowBridges } from './bridges';
+import { installEventBridges as _installEventBridges, installWindowBridges as _installWindowBridges, cleanupBridges as _cleanupBridges } from './bridges';
+import { _clearRouteOrigFetch } from './route';
 import { Locator, resolveSelector, _locatorHandlers } from './locator';
 import { isXPath, resolveXPath, queryXPath } from './locator-utils';
 import { makeLocatorQueries } from './locator-queries';
@@ -106,11 +107,25 @@ let _activeTabId: string | null = null;
 let _tabCounter = 0;
 function _activeTab(): TabEntry | null { return _tabs.find(t => t.id === _activeTabId) ?? null; }
 
-export const API_BASE = 'http://localhost:' + window.__CONFIG__.port;
+export const API_BASE = window.__CONFIG__.apiBase;
 
 // Derive proxy prefix by stripping the trailing page URL (e.g. "about:blank") from the session URL
 // e.g. "http://host/proxy/SESSION/about:blank" → "http://host/proxy/SESSION/"
 const _proxyPrefix = window.__CONFIG__.proxyUrl.replace(/[^/]+$/, '');
+
+// Base without trailing slash, used to strip any resource-type variant (e.g. "!i") from hrefs.
+const _proxyBase = _proxyPrefix ? _proxyPrefix.slice(0, -1) : '';
+// Iframe variant: adds Hammerhead's "i" resource-type flag so the proxy does not treat
+// navigation responses as attachments (which it does for non-HTML content without this flag).
+const _iframeProxyPrefix = _proxyBase ? _proxyBase + '!i/' : '';
+
+// Strip any proxy prefix variant (with or without resource-type flags) from a URL.
+function _stripProxy(href: string): string {
+  if (!_proxyBase || !href.startsWith(_proxyBase)) return href;
+  const rest = href.slice(_proxyBase.length); // e.g. "/" or "!i/"
+  const slashIdx = rest.indexOf('/');
+  return slashIdx >= 0 ? rest.slice(slashIdx + 1) : href;
+}
 
 // ── WebSocket connection — see ./ws ───────────────────────────────────────────
 
@@ -187,8 +202,7 @@ export function onSnapshotsChanged(fn: () => void): () => void {
 
 export function fromProxiedUrl(url: string): string {
   if (!url) return url ?? '';
-  if (_proxyPrefix && url.startsWith(_proxyPrefix)) return url.slice(_proxyPrefix.length);
-  return url;
+  return _stripProxy(url);
 }
 
 export function toProxiedUrl(url: string): string {
@@ -215,6 +229,28 @@ export function toProxiedUrl(url: string): string {
 
 function removeTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+
+// Like toProxiedUrl but includes the "!i" iframe resource-type flag so Hammerhead
+// does not classify non-HTML responses (e.g. application/json) as attachments.
+export function toIframeProxiedUrl(url: string): string {
+  if (!_iframeProxyPrefix) return removeTrailingSlash(url);
+  if (url.startsWith(_iframeProxyPrefix) || url.startsWith(_proxyPrefix)) return removeTrailingSlash(url);
+
+  if (!/^https?:\/\//.test(url)) {
+    const baseUrl = _activeTab()?.url;
+    if (baseUrl && /^https?:\/\//.test(baseUrl)) {
+      try {
+        url = new URL(url, baseUrl).href;
+      } catch {
+        return removeTrailingSlash(url);
+      }
+    } else {
+      return removeTrailingSlash(url);
+    }
+  }
+
+  return removeTrailingSlash(_iframeProxyPrefix + url);
 }
 
 // ── iframe helpers ────────────────────────────────────────────────────────────
@@ -275,7 +311,7 @@ export function createTab(url?: string) {
     try { tab.title = iframeEl.contentDocument?.title || 'New Tab'; } catch {}
     try {
       const href = iframeEl.contentWindow?.location.href ?? '';
-      tab.url = (_proxyPrefix && href.startsWith(_proxyPrefix)) ? href.slice(_proxyPrefix.length) : href;
+      tab.url = _stripProxy(href);
     } catch {}
     if (_activeTabId === tabId) {
       const navInput = document.getElementById('navUrl') as HTMLInputElement | null;
@@ -293,8 +329,8 @@ export function createTab(url?: string) {
   iframeEl.addEventListener('error', () => { _emitPage('crash'); });
   document.getElementById('iframe-container')!.appendChild(iframeEl);
   _tabs.push(tab);
-  // Resolve src BEFORE switching active tab so toProxiedUrl can use the origin tab's URL as base
-  iframeEl.src = url ? toProxiedUrl(url) : API_BASE + '/about-blank';
+  // Resolve src BEFORE switching active tab so toIframeProxiedUrl can use the origin tab's URL as base
+  iframeEl.src = url ? toIframeProxiedUrl(url) : API_BASE + '/about-blank';
   setActiveTab(tabId);
   _onTabsChanged?.();
   return page;
@@ -303,9 +339,24 @@ export function createTab(url?: string) {
 export function closeTab(tabId: string) {
   const tab = _tabs.find(t => t.id === tabId);
   if (!tab) return;
+  const tabWin = tab.iframe ? tab.iframe.contentWindow : tab.popup ?? null;
+  if (tabWin && tabWin === _lastBridgedWin) _lastBridgedWin = null;
+  if (tabWin) {
+    _clearHammerheadStorages(tabWin);
+    try {
+      const ws = (window as any)['hammerhead|windows-storage'];
+      if (ws && typeof ws.length === 'number') {
+        for (let i = ws.length - 1; i >= 0; i--) {
+          if (ws[i] === tabWin) ws.splice(i, 1);
+        }
+      }
+    } catch { /* cross-origin */ }
+  }
   if (tab.iframe) tab.iframe.remove();
   if (tab.popup) tab.popup.close();
   _tabs = _tabs.filter(t => t.id !== tabId);
+  _cleanupBridges();
+  _clearRouteOrigFetch();
   if (_activeTabId === tabId) {
     if (_tabs.length > 0) {
       setActiveTab(_tabs[_tabs.length - 1].id);
@@ -555,7 +606,7 @@ export const page = {
       const timer = setTimeout(() => reject(new Error(`goto("${url}") timed out`)), 30_000);
       if (tab.iframe) {
         tab.iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
-        tab.iframe.src = toProxiedUrl(url);
+        tab.iframe.src = toIframeProxiedUrl(url);
       } else if (tab.popup) {
         const popup = tab.popup;
         const cleanup = () => {
@@ -568,7 +619,7 @@ export const page = {
             if (popup.document.readyState === 'complete') {
               try {
                 const href = popup.location.href;
-                tab.url = (_proxyPrefix && href.startsWith(_proxyPrefix)) ? href.slice(_proxyPrefix.length) : href;
+                tab.url = _stripProxy(href);
               } catch { /* ignore cross-origin */ }
               cleanup();
               reapplyViewport();
@@ -635,10 +686,7 @@ export const page = {
     return _withCommand('page.title()', 'title', async () => iframeDoc()?.title ?? '');
   },
   url(): string {
-    try {
-      const href = iframeWin()?.location.href ?? '';
-      return (_proxyPrefix && href.startsWith(_proxyPrefix)) ? href.slice(_proxyPrefix.length) : href;
-    } catch { return ''; }
+    try { return _stripProxy(iframeWin()?.location.href ?? ''); } catch { return ''; }
   },
 
   // ── Waits ──────────────────────────────────────────────────────────────────
@@ -818,6 +866,7 @@ export const page = {
   async resetSession(): Promise<void> {
     _locatorHandlers.length = 0;
     _routeHandlers.length = 0;
+    _clearHammerheadStorages(window);
     clearPageListeners();
 
     try {
@@ -932,16 +981,26 @@ export const page = {
 // are captured.
 
 let _earlyWatcherStarted = false;
+let _lastBridgedWin: object | null = null;
+
+function _clearHammerheadStorages(win: any): void {
+  if (!win) return;
+  try {
+    const sb = win['hammerhead|sandbox-backup'];
+    if (sb?.length) sb.length = 0;
+    const ws = win['hammerhead|windows-storage'];
+    if (ws?.length) ws.length = 0;
+  } catch { /* cross-origin */ }
+}
 
 function _startEarlyBridgeWatcher(): void {
   if (_earlyWatcherStarted) return;
   _earlyWatcherStarted = true;
-  let lastWin: object | null = null;
   const tick = () => {
     try {
       const win = iframeWin() as any;
-      if (win && win !== lastWin) {
-        lastWin = win;
+      if (win && win !== _lastBridgedWin) {
+        _lastBridgedWin = win;
         _installWindowBridges(win);
       }
     } catch { /* cross-origin — ignore */ }
@@ -967,11 +1026,15 @@ export function _resetBrowserState(): void {
 // ── iframe init ───────────────────────────────────────────────────────────────
 
 export function initIframe() {
+  _cleanupBridges();
+  _clearRouteOrigFetch();
+  _lastBridgedWin = null;
   _tabs = []; _activeTabId = null; _tabCounter = 0;
   _initScripts.length = 0;
   _locatorHandlers.length = 0;
   _routeHandlers.length = 0;
   document.getElementById('iframe-container')!.innerHTML = '';
+  _clearHammerheadStorages(window);
   viewportObserver?.disconnect();
   viewportObserver = new ResizeObserver(reapplyViewport);
   viewportObserver.observe(document.getElementById('iframe-container')!);
@@ -1092,7 +1155,7 @@ export function createWindow(url?: string) {
   let popupWin: Window | null = null;
   try {
     // @ts-ignore
-    popupWin = window['%hammerhead%'].nativeMethods.windowOpen.call(window, targetUrl, tabId, winFeatures);
+    popupWin = window.open.call(window, targetUrl, tabId, winFeatures);
   } catch (_) {}
 
   if (!popupWin) {
@@ -1113,7 +1176,7 @@ export function createWindow(url?: string) {
       try { tab.title = popupWin!.document.title || 'New Window'; } catch {}
       try {
         const href = popupWin!.location.href ?? '';
-        tab.url = (_proxyPrefix && href.startsWith(_proxyPrefix)) ? href.slice(_proxyPrefix.length) : href;
+        tab.url = _stripProxy(href);
       } catch {}
       if (_activeTabId === tabId) {
         const navInput = document.getElementById('navUrl') as HTMLInputElement | null;

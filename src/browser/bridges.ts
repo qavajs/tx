@@ -4,6 +4,7 @@ import { _emitPage, fromProxiedUrl, iframeWin, iframeDoc, createTab, wsRequest }
 import { Route, routeHandlers, dispatchRoute, matchesRoutePattern, _setRouteOrigFetch } from './route';
 
 let _frameObserver: MutationObserver | null = null;
+const _frameLoadHandlers = new WeakMap<Element, () => void>();
 
 function _normalizeHeaders(h: any): Record<string, string> {
   const out: Record<string, string> = {};
@@ -312,10 +313,6 @@ function _bridgeWebSocket(win: any): void {
       _emitPage('websocket', this);
     }
   };
-  win.WebSocket.CONNECTING = OrigWS.CONNECTING;
-  win.WebSocket.OPEN = OrigWS.OPEN;
-  win.WebSocket.CLOSING = OrigWS.CLOSING;
-  win.WebSocket.CLOSED = OrigWS.CLOSED;
 }
 
 function _bridgeWorker(win: any): void {
@@ -401,17 +398,24 @@ function _bridgeDocumentEvents(doc: Document): void {
         if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
           const frame = { url: () => (el as HTMLIFrameElement).src, name: () => (el as any).name ?? '', isMainFrame: () => false };
           _emitPage('frameattached', frame);
-          el.addEventListener('load', () => {
+          const loadHandler = () => {
             try {
               const url = (el as HTMLIFrameElement).contentWindow?.location.href ?? (el as HTMLIFrameElement).src;
               _emitPage('framenavigated', { url: () => url, name: () => (el as any).name ?? '', isMainFrame: () => false });
             } catch { /* cross-origin sub-frame */ }
-          });
+          };
+          _frameLoadHandlers.set(el, loadHandler);
+          el.addEventListener('load', loadHandler);
         }
       }
       for (const node of Array.from(m.removedNodes)) {
         const el = node as HTMLElement;
         if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+          const loadHandler = _frameLoadHandlers.get(el);
+          if (loadHandler) {
+            el.removeEventListener('load', loadHandler);
+            _frameLoadHandlers.delete(el);
+          }
           _emitPage('framedetached', { url: () => (el as HTMLIFrameElement).src, name: () => (el as any).name ?? '', isMainFrame: () => false });
         }
       }
@@ -428,6 +432,11 @@ function _bridgeDocumentEvents(doc: Document): void {
 }
 
 // ── Event bridge orchestrators ────────────────────────────────────────────────
+
+export function cleanupBridges(): void {
+  _frameObserver?.disconnect();
+  _frameObserver = null;
+}
 
 export function installWindowBridges(win: any): void {
   if (!win.__cyEventBridges) {

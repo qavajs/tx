@@ -2,9 +2,8 @@ import { test, expect } from '@qavajs/tx';
 
 const API_BASE = 'http://localhost:3000';
 
-async function loadTestPage({ page, node }: any) {
-    const dirname = await node.task('dirname');
-    await page.goto(`file://${dirname}/app/testPage.html`);
+async function loadTestPage({ page }: any) {
+    await page.goto('http://localhost:3000/testPage.html');
 }
 
 // ── getBy* locator factories ───────────────────────────────────────────────────
@@ -303,19 +302,17 @@ test.describe('Page APIs', () => {
         await expect(page.locator('#clickBtn')).toBeVisible();
     });
 
-    test('addInitScript string form injects on navigation', async ({ page, node }) => {
+    test('addInitScript string form injects on navigation', async ({ page }) => {
         const handle = page.addInitScript('window.__initFlag = "injected";');
-        const dirname = await node.task('dirname');
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         const val = await page.evaluate(() => (window as any).__initFlag);
         expect(val).toBe('injected');
         handle.dispose();
     });
 
-    test('addInitScript function form injects on navigation', async ({ page, node }) => {
+    test('addInitScript function form injects on navigation', async ({ page }) => {
         const handle = page.addInitScript(() => { (window as any).__initFn = 99; });
-        const dirname = await node.task('dirname');
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         const val = await page.evaluate(() => (window as any).__initFn);
         expect(val).toBe(99);
         handle.dispose();
@@ -327,13 +324,12 @@ test.describe('Page APIs', () => {
         expect(shot.length).toBeGreaterThan(0);
     });
 
-    test('page.off removes event listener', async ({ page, node }) => {
+    test('page.off removes event listener', async ({ page }) => {
         let count = 0;
         const handler = () => { count++; };
         page.on('load', handler);
         page.off('load', handler);
-        const dirname = await node.task('dirname');
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         expect(count).toBe(0);
     });
 
@@ -641,10 +637,9 @@ test.describe('Page navigation – extended', () => {
         expect(page.url()).toContain('testPage.html');
     });
 
-    test('waitForURL resolves when URL matches', async ({ page, node }) => {
-        const dirname = await node.task('dirname');
+    test('waitForURL resolves when URL matches', async ({ page }) => {
         const urlPromise = page.waitForURL(/testPage\.html/, { timeout: 5000 });
-        page.goto(`file://${dirname}/app/testPage.html`);
+        page.goto('http://localhost:3000/testPage.html');
         await urlPromise;
         expect(page.url()).toContain('testPage.html');
     });
@@ -672,13 +667,12 @@ test.describe('Page locator factories – extended', () => {
 // ── page.once ─────────────────────────────────────────────────────────────────
 
 test.describe('page.once', () => {
-    test('once fires the handler exactly once across two navigations', async ({ page, node }) => {
-        const dirname = await node.task('dirname');
+    test('once fires the handler exactly once across two navigations', async ({ page }) => {
         let count = 0;
         page.once('load', () => { count++; });
-        page.goto(`file://${dirname}/app/testPage.html`);
+        page.goto('http://localhost:3000/testPage.html');
         await page.waitForEvent('load');
-        page.goto(`file://${dirname}/app/testPage.html`);
+        page.goto('http://localhost:3000/testPage.html');
         await page.waitForEvent('load');
         expect(count).toBe(1);
     });
@@ -830,19 +824,17 @@ test.describe('Fixtures – log and attach', () => {
 // ── Page events – navigation lifecycle ────────────────────────────────────────
 
 test.describe('Page events – load / domcontentloaded', () => {
-    test('load fires after navigation', async ({ page, node }) => {
-        const dirname = await node.task('dirname');
+    test('load fires after navigation', async ({ page }) => {
         let fired = false;
         page.on('load', () => { fired = true; });
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         expect(fired).toBe(true);
     });
 
-    test('domcontentloaded fires during navigation', async ({ page, node }) => {
-        const dirname = await node.task('dirname');
+    test('domcontentloaded fires during navigation', async ({ page }) => {
         let fired = false;
         page.on('domcontentloaded', () => { fired = true; });
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         expect(fired).toBe(true);
     });
 });
@@ -906,19 +898,17 @@ test.describe('Page events – pageerror', () => {
 // ── Page events – frame ───────────────────────────────────────────────────────
 
 test.describe('Page events – frameattached / framenavigated / framedetached', () => {
-    test('frameattached fires when a page with an iframe is loaded', async ({ page, node }) => {
-        const dirname = await node.task('dirname');
+    test('frameattached fires when a page with an iframe is loaded', async ({ page }) => {
         const attached: any[] = [];
         page.on('frameattached', frame => { attached.push(frame); });
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         expect(attached.length).toBeGreaterThan(0);
     });
 
-    test('framenavigated fires during page navigation', async ({ page, node }) => {
-        const dirname = await node.task('dirname');
+    test('framenavigated fires during page navigation', async ({ page }) => {
         let navigated = false;
         page.on('framenavigated', () => { navigated = true; });
-        await page.goto(`file://${dirname}/app/testPage.html`);
+        await page.goto('http://localhost:3000/testPage.html');
         expect(navigated).toBe(true);
     });
 

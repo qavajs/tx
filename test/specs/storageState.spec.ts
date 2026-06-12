@@ -1,8 +1,7 @@
 import { test, expect } from '@qavajs/tx';
 
-async function loadTestPage({ page, node }: any) {
-    const dirname = await node.task('dirname');
-    await page.goto(`file://${dirname}/app/testPage.html`);
+async function loadTestPage({ page }: any) {
+    await page.goto('http://localhost:3000/testPage.html');
 }
 
 const API_BASE = 'http://localhost:3000';

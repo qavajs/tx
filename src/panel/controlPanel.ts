@@ -1,10 +1,10 @@
-import { DEFAULT_CONTROL_PANEL_PORT } from '../constants';
 import panelHtml from './controlPanel.html';
 import panelCss from './controlPanel.css';
 
 export interface ControlPanelConfig {
     proxyUrl: string;
-    controlPanelPort?: number;
+    wsUrl: string;
+    apiBase: string;
     viewport?: { width: number; height: number };
     testMode?: boolean;
     snapshot?: boolean;
@@ -17,7 +17,8 @@ export interface ControlPanelConfig {
 
 function buildConfigScript({
   proxyUrl,
-  controlPanelPort = DEFAULT_CONTROL_PANEL_PORT,
+  wsUrl,
+  apiBase,
   viewport,
   testMode,
   snapshot,
@@ -29,7 +30,8 @@ function buildConfigScript({
 }: ControlPanelConfig): string {
   const props: string[] = [
     `proxyUrl: "${proxyUrl}"`,
-    `port: ${controlPanelPort}`,
+    `wsUrl: "${wsUrl}"`,
+    `apiBase: "${apiBase}"`,
   ];
   if (viewport) props.push(`viewport: { width: ${viewport.width}, height: ${viewport.height} }`);
   if (testMode) props.push(`autorun: true`);

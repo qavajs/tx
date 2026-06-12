@@ -5,7 +5,8 @@
 /** Runtime config injected into window.__CONFIG__ by the control panel HTML */
 export interface WindowConfig {
   proxyUrl: string;
-  port: number;
+  wsUrl: string;
+  apiBase: string;
   viewport?: { width: number; height: number };
   autorun?: boolean;
   snapshot?: boolean;
@@ -51,9 +52,6 @@ export interface TxConfig {
 
   /** Proxy port 2 (default: 11338) */
   port2?: number;
-
-  /** Control panel port (default: 11339) */
-  controlPanelPort?: number;
 
   /** Run in headless mode (default: false) */
   headless?: boolean;
